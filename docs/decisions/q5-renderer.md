@@ -1,8 +1,18 @@
 # Q5 — which Wayland stack and renderer?
 
-Status: **open, narrowed by measurement.** PRD open question Q5. This is the one
-remaining question that gates P1, and unlike Q1–Q4 it is a technical question
-rather than a matter of taste, so most of it can be settled by measuring.
+Status: **settled, 2026-11-07.** `smithay-client-toolkit` for surfaces and
+input, **GL sharing GStreamer's context** for pixels. Not wgpu.
+
+The recommendation below said to decide only after a minimal GL renderer
+existed and had been measured. It now exists —
+[`crates/spike-q5`](../../crates/spike-q5), results in
+[`spike/q5/RESULTS.md`](../../spike/q5/RESULTS.md) — and the measurement
+supports the recommendation, so the recommendation is adopted. What it also
+found is a bigger thing than the renderer choice, and §"What the GL renderer
+measured" records it.
+
+The rest of this document is kept as it was written, because the reasoning
+that led here is the part worth re-reading if the decision is ever reopened.
 
 ## What the P0 spike settled
 
@@ -68,6 +78,41 @@ nearly free; repeated runs do not support that, and the claim is withdrawn.
 texture and one text label, measured at realtime 1440p against the spike's
 `wl_shm` path. That is P1 work and perhaps a day of it.
 
+## What the GL renderer measured
+
+Built and measured on 2026-11-07. Both paths present the same 2560×1440 60 fps
+clip to the same fullscreen surface, paced by Wayland frame callbacks, each
+drawing one line of 44 px text. Every run held 60 fps with no dropped frames.
+
+| pair | GL | shm | shm ÷ GL |
+|---|---:|---:|---:|
+| quiet batch, means | 44.3% | 70.2% | 1.58 |
+| busy 1–6 | 55–60% | 88–107% | 1.50–1.93 |
+
+So the GL path is **1.5–1.9× cheaper**, median about 1.65, and that ratio holds
+across a 2× shift in the machine's own load. The earlier `glimagesink`
+measurement could not show this because a general-purpose sink's own
+presentation cost swamped the difference. Writing the renderer was the only way
+to separate them, which is exactly why the brief declined to decide without it.
+
+**The absolute numbers are not usable, and an earlier draft of this section
+used them anyway.** It read 44% and 70% off the quiet batch and proposed 50% of
+a core as R7's ceiling. The busy batch then put the same GL path at 60%. A
+budget written from that would have encoded the maintainer's desktop rather
+than the greeter, so it is withdrawn; R7's whole-path ceiling waits on a `cage`
+measurement.
+
+**What does survive, because the gap is far too large to be load:** P0 measured
+decode alone at **2.5% of one core**. Presentation costs more than an order of
+magnitude beyond that, in every batch. The decoder is not where a greeter's CPU
+goes, and R7's budget — written as a decode budget because decode was the thing
+P0 could measure — constrains only the cheap half. That is a finding about the
+requirement, not about the renderer, and it is carried back into the PRD.
+
+The one limit that matters: the spike ran inside a live Hyprland session rather
+than under `cage`. That is cheap to fix — `spike/p0/` already has the scripts —
+and it is the next thing to do.
+
 ## The constraint that actually decides this
 
 Portability, from C6. Three memory types must all work:
@@ -113,7 +158,7 @@ back towards C++ and towards tracking an upstream, both of which the PRD already
 rejected when it ruled out forking hyprlock. **Unexamined**, and noted only so
 the question is not reopened later as if it had been missed.
 
-## Recommendation, for the maintainer to accept or reject
+## Recommendation, accepted 2026-11-07
 
 **`smithay-client-toolkit` for surfaces and input, plus GL sharing GStreamer's
 context.** Not wgpu — not because wgpu is worse, but because R7's no-readback
@@ -125,11 +170,30 @@ reason to prefer GL is a measurement nobody has taken yet, and if the GL
 renderer turns out to cost what `glimagesink` costs, the premise needs
 revisiting rather than defending.
 
+> **It did not.** The renderer was built, it negotiates `memory:GLMemory` with
+> `nvh264dec` for real, and it costs 1.6× less than the readback path at
+> 1440p60. The premise held and the recommendation is adopted. Had it come out
+> level, portability alone would still have pointed the same way — but it
+> would have been a much weaker decision, and worth saying so.
+
 ## Sub-questions this opens
+
+Updated after the spike. The first of these is now the most valuable thing to
+measure next, because presentation rather than decode turns out to be where
+the CPU goes.
+
+- **Skip `glcolorconvert`.** The spike converts to RGBA so one texture can be
+  sampled. Sampling NV12 directly with a two-texture shader removes a
+  full-resolution pass from every frame. Unmeasured, and the obvious next step.
+- **Measure under `cage`, not in a live session.** Both figures are inflated by
+  the desktop around them.
 
 - **Text rendering.** R11 wants MesloLGS at a large clock size across outputs
   at different scales. A glyph atlas is the normal answer; `cosmic-text` plus a
-  GL atlas is the obvious candidate and is unevaluated.
+  GL atlas is the obvious candidate and is unevaluated. The spike shows the
+  *cost* is not the issue — one line of 44 px text was below run-to-run
+  variance on both paths — so this is a question of engineering effort, not of
+  budget.
 - **One context or several.** R10 wants one surface per output at that output's
   scale. Whether a single GL context serves several surfaces, or each output
   gets its own, is unresolved and affects how the video texture is shared.
