@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A pull request that is pushed to twice should not run twice.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Path filtering lives here rather than on the `on:` trigger, because a
+  # required status check that never runs blocks a merge forever. Every job
+  # below is always scheduled; the filter decides whether it does any work,
+  # and `ci` at the bottom aggregates into one stable required check.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      docs: ${{ steps.filter.outputs.docs }}
+      devcontainer: ${{ steps.filter.outputs.devcontainer }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            rust:
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - '.github/workflows/ci.yml'
+              - '.github/actions/**'
+            docs:
+              - '**/*.md'
+              - '.github/scripts/check-doc-links.py'
+            devcontainer:
+              - '.devcontainer/**'
+
+  fmt:
+    name: rustfmt
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup component add rustfmt
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: clippy
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/rust-build-deps
+      - run: rustup component add clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    name: test
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/rust-build-deps
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The greetd codec is pure logic and fully testable here. The spike is
+      # only built: its measurements need a GPU and greetd's own user, so a
+      # green CI run deliberately claims nothing about hardware decode.
+      - run: cargo test --workspace --all-targets
+      - run: cargo build --workspace --all-targets
+
+  docs:
+    name: docs
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # The documents cross-reference each other heavily and are the whole
+      # state of the project, so a broken relative link is a real defect.
+      - run: python3 .github/scripts/check-doc-links.py
+
+  devcontainer:
+    name: devcontainer builds
+    needs: changes
+    if: needs.changes.outputs.devcontainer == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -f .devcontainer/Dockerfile .devcontainer
+
+  # One required status check. It passes when nothing relevant changed and when
+  # everything relevant passed, and fails if any job that ran did not.
+  ci:
+    name: CI
+    if: always()
+    needs: [changes, fmt, clippy, test, docs, devcontainer]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any needed job failed or was cancelled
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          FMT: ${{ needs.fmt.result }}
+          CLIPPY: ${{ needs.clippy.result }}
+          TEST: ${{ needs.test.result }}
+          DOCS: ${{ needs.docs.result }}
+          DEVCONTAINER: ${{ needs.devcontainer.result }}
+        run: |
+          set -eu
+          status=0
+          check() {
+            echo "$1: $2"
+            case "$2" in
+              success|skipped) ;;
+              *) echo "::error::job '$1' reported '$2'"; status=1 ;;
+            esac
+          }
+          check changes "$CHANGES"
+          check fmt "$FMT"
+          check clippy "$CLIPPY"
+          check test "$TEST"
+          check docs "$DOCS"
+          check devcontainer "$DEVCONTAINER"
+          exit $status

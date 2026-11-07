@@ -36,14 +36,29 @@ tracks the time of day and the seasons. Both are wanted; this is the order.
 
 **Because** *"dan is het toch de beweging die wauw geeft."*
 
-**Cost** The entire premise now rests on an assumption nobody has verified: that
-hardware video decode works inside the greeter's context, where there is no user
-session and no session runtime directory. Time-of-day switching would have been
-nearly free and carries no such risk. This tenet knowingly takes the expensive
-road.
+**Cost** The premise rested on an assumption nobody had verified: that hardware
+video decode works inside the greeter's context, where there is no user session
+and no session runtime directory. Time-of-day switching would have been nearly
+free and carried no such risk. This tenet knowingly took the expensive road.
 
 **Expires if** the P0 spike shows decode cannot work there. Then motion is a
 lock-screen feature only and this tenet inverts.
+
+**Status: survives.** The P0 spike ran on 2026-11-07 and the condition did not
+trigger. As greetd's own user, with no session, no runtime directory and no
+environment at all, a 1440p60 loop decodes in hardware at 59.5 fps for 2.5% of
+one core, with 9.2× headroom. See PRD C6.
+
+The expensive road turned out to be cheap, which is worth saying plainly rather
+than quietly banking: this tenet was right for a reason it did not know at the
+time. What the spike found instead was a different and smaller cost — the
+greeter has nowhere to cache, so a login pays about 0.9 s of plugin rescanning
+unless it is given a writable directory (PRD C15). That is a deployment detail,
+not a reason to invert anything.
+
+One narrower risk remains, and it is not this machine's: the path that works is
+NVDEC, and a machine where VA-API is the only option is untested. If this ever
+runs on AMD or Intel hardware, this tenet is unverified there.
 
 ---
 

@@ -1,0 +1,6 @@
+[toolchain]
+# Pinned so the devcontainer, CI and the maintainer's machine agree. The host
+# runs 1.94; CI installs the same rather than tracking stable, because a
+# silent toolchain bump is exactly the kind of drift that wastes an evening.
+channel = "1.94"
+components = ["rustfmt", "clippy"]

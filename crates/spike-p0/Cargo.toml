@@ -1,0 +1,17 @@
+[package]
+name = "spike-p0"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+description = "P0 spike: does hardware video decode work in greetd's context? Throwaway."
+
+[dependencies]
+greetd-proto = { path = "../greetd-proto" }
+gstreamer = "0.24"
+gstreamer-app = "0.24"
+gstreamer-video = "0.24"
+smithay-client-toolkit = "0.20"
+wayland-client = "0.31"
+fontdue = "0.9"
