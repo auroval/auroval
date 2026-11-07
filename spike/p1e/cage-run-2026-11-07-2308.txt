@@ -1,0 +1,62 @@
+auroval P1/E — first frame under cage on a real VT (R16, C15)
+2026-11-07T23:08:41+01:00
+
+binary    /home/dirk/Documents/projects/auroval/target/release/auroval-greet
+cache     /home/dirk/.cache/auroval-p1e
+runs      10 warm, 1 cold
+budget    500 ms  (provisional, from P0 at 1255x674 nested)
+host      games-werkkamer  kernel 7.3.1-1-cachyos
+tty       /dev/tty3
+
+cache dir /home/dirk/.cache/auroval-p1e
+deployed  /var/cache/auroval exists
+
+── probe, outside cage, as you ──
+problem      /etc/auroval/greet.lua: not read (No such file or directory (os error 2)); using defaults
+sessions     2
+  hyprland               Wayland  /usr/bin/start-hyprland
+  hyprland-uwsm          Wayland  uwsm start -e -D Hyprland hyprland.desktop
+state file   /var/lib/auroval/last-login
+  last user    —
+  last session —
+  writable     no — Permission denied (os error 13)
+preselected  hyprland
+geometry     clock 110px  date 22px  user 16px  field 340x56 r12 p4
+font         /usr/share/fonts/TTF/MesloLGSNerdFont-Regular.ttf
+fonts found  5
+
+auroval-greet: config: /etc/auroval/greet.lua: not read (No such file or directory (os error 2)); using defaults
+
+
+── probe, under cage ──
+problem      /etc/auroval/greet.lua: not read (No such file or directory (os error 2)); using defaults
+sessions     2
+  hyprland               Wayland  /usr/bin/start-hyprland
+  hyprland-uwsm          Wayland  uwsm start -e -D Hyprland hyprland.desktop
+state file   /var/lib/auroval/last-login
+  last user    —
+  last session —
+  writable     no — Permission denied (os error 13)
+preselected  hyprland
+geometry     clock 110px  date 22px  user 16px  field 340x56 r12 p4
+font         /usr/share/fonts/TTF/MesloLGSNerdFont-Regular.ttf
+fonts found  5
+
+cold  first frame 9.0 ms  wall 30104.4 ms  surface 2560x1440  exit 124
+warm  first frame 8.0 ms  wall 30112.2 ms  surface 2560x1440  exit 124
+warm  first frame 8.0 ms  wall 30119.0 ms  surface 2560x1440  exit 124
+warm  first frame — ms  wall 10014.3 ms  surface —  exit 1
+warm  first frame — ms  wall 10014.6 ms  surface —  exit 1
+warm  first frame — ms  wall 10013.9 ms  surface —  exit 1
+warm  first frame — ms  wall 10014.2 ms  surface —  exit 1
+warm  first frame — ms  wall 10012.7 ms  surface —  exit 1
+warm  first frame — ms  wall 10014.6 ms  surface —  exit 1
+warm  first frame — ms  wall 10014.9 ms  surface —  exit 1
+warm  first frame — ms  wall 10014.7 ms  surface —  exit 1
+
+── verdict ──
+median first frame 8.0 ms over 2 warm runs
+worst 8.0 ms
+surface 2560x1440
+R16 budget 500 ms HOLDS — median 8.0 ms, worst 8.0 ms
+cold first frame 9.0 ms — the cost of an unwarmed cache (C15)

@@ -2,16 +2,25 @@
 #
 # P1/E — R16's real number: first frame, at native resolution, on a real VT.
 #
-# The 500 ms budget in the PRD is provisional and says so. It was set from one
-# P0 measurement of 243 ms at 1255x674 through a NESTED cage inside a live
-# Hyprland session. Both halves of that are wrong for a greeter: the surface
-# was a window, not a 2560x1440 monitor, and the machine underneath it was a
-# running desktop. Q5 then measured the same binary at 44% of a core on a
-# quiet desktop and 60% on a busy one, which is the whole argument for why a
-# greeter cannot be judged from inside a session.
+# R16's budget was provisional until 2026-11-07, set from one P0 measurement
+# of 243 ms at 1255x674 through a NESTED cage inside a live Hyprland session.
+# Both halves of that are wrong for a greeter: the surface was a window, not a
+# 2560x1440 monitor, and the machine underneath it was a running desktop. Q5
+# then measured the same binary at 44% of a core on a quiet desktop and 60% on
+# a busy one, which is the whole argument for why a greeter cannot be judged
+# from inside a session.
 #
-# So this script runs the real binary under a real cage on a real VT, warm,
-# ten times, and prints the median. Whatever it says is R16's number.
+# This script runs the real binary under a real cage on a real VT, warm, ten
+# times, and prints the median. It has been run: median 8 ms, worst 9 ms, at
+# 2560x1440, receipt in cage-run-2026-11-07-2326.txt. 243 against 8 is the
+# cost of the nesting, not of the greeter.
+#
+# It is kept, and still the thing to run, because that number covers only the
+# still background. A video wallpaper and R23's audio both pull in GStreamer,
+# which nothing on this path touches yet — which is also why C15's 0.9 s
+# registry rescan does not show up here at all: cold and warm both came out at
+# 8 ms, a rescan that never happened rather than a cheap one. When the media
+# path lands this gets taken again, and the COLD run is the one that matters.
 #
 # NO SUDO. cage takes DRM master through logind from whichever VT you are
 # logged in on, so a TTY login is all this needs. That is also exactly why it
@@ -26,10 +35,18 @@
 #   2. auroval-vt          (written by deploy/install.nu; or the long form:
 #                           cd ~/Documents/projects/auroval
 #                           nu spike/p1e/cage-measure.nu)
-#   3. Ctrl+Alt+F1 to come back to your desktop
+#   3. STAY ON THIS VT until it prints `written to ...` — about twenty
+#      seconds. cage can only hold DRM master while its session is the
+#      active one, so switching to your desktop mid-run makes every
+#      remaining run fail after a ten-second wait for a device it will
+#      never get. The first real run of this script lost eight of eleven
+#      runs that way.
+#   4. Ctrl+Alt+F1 to come back to your desktop
 #
 # Escape route: your desktop session is untouched on its own VT the whole
-# time, and nothing here will switch you back to this one.
+# time, and nothing here will switch you back to this one. Nothing can hold
+# the screen either: every single run is wrapped in `timeout`, so the worst
+# case is one black frame for that many seconds and then your console back.
 
 const OUT = "~/auroval-p1e-first-frame.txt"
 const BUDGET_MS = 500
@@ -71,7 +88,7 @@ def main [
         $"binary    ($bin)"
         $"cache     ($cache)"
         $"runs      ($runs) warm, 1 cold"
-        $"budget    ($BUDGET_MS) ms  \(provisional, from P0 at 1255x674 nested)"
+        $"budget    ($BUDGET_MS) ms  \(settled 2026-11-07: median 8 ms at 2560x1440)"
         $"host      (sys host | get hostname)  kernel (sys host | get kernel_version)"
         $"tty       (do { ^tty } | complete | get stdout | str trim)"
         ""
@@ -158,6 +175,18 @@ def main [
         $results = ($results | append { mode: $mode, frame: $r.frame, size: $r.size, wall: $r.wall, code: $r.code })
         let shown = (if $r.frame == null { $"wall ($r.wall) ms \(no first-frame line)" } else { $"first frame ($r.frame) ms" })
         print $"           ($shown)  surface ($r.size)  exit ($r.code)"
+        # The failure that actually happened, named the moment it happens
+        # rather than left as a bare exit 1 in a table. cage can only take
+        # DRM master while its session is the ACTIVE one, so the instant you
+        # press Ctrl+Alt+F1 every remaining run dies — after a ten-second
+        # wait for a device it will never get. The first real run of this
+        # script lost eight of eleven runs exactly that way.
+        if $r.frame == null and $r.code == 1 and ($results | any { |x| $x.frame != null }) {
+            print "           ^ a run that worked already, so the binary is fine."
+            print "             cage needs this VT to be the active one. If you have"
+            print "             switched to your desktop, come back to this VT and"
+            print "             run it again — every run from here will fail."
+        }
         $lines = ($lines | append $"($mode)  first frame ($r.frame | default '—') ms  wall ($r.wall) ms  surface ($r.size)  exit ($r.code)")
         $lines | str join "\n" | save -f $out
     }
@@ -211,6 +240,16 @@ def main [
             $"worst ($worst) ms"
             $"surface ($size)"
         ])
+        # A median over three runs and a median over ten are not the same
+        # claim, and the file has to say which one it is making.
+        let lost = ($warm | where frame == null | length)
+        if $lost > 0 {
+            print $"  ($lost) of ($warm | length) warm runs produced no frame. Almost always this"
+            print "  means the VT stopped being the active one part-way through:"
+            print "  cage cannot hold DRM master from a background session. The"
+            print "  median above rests on the runs that did draw."
+            $lines = ($lines | append $"($lost) of ($warm | length) warm runs produced no frame — VT not active; median rests on ($frames | length) runs")
+        }
         if $size != $expect {
             print $"  surface is ($size), not ($expect) — this is NOT the native-"
             print "  resolution number R16 asked for. Check the monitor mode."
@@ -243,6 +282,11 @@ def run-once [bin: string, cache: string, timeout: int] {
         with-env {
             XDG_CACHE_HOME: $cache
             GST_REGISTRY: $"($cache)/gst-registry.bin"
+            # One frame and out. Without this, `preview` draws forever and
+            # every run has to be killed by the timeout above: eleven runs is
+            # five and a half minutes of black screen on a VT you have to stay
+            # on, and switching away costs you every remaining run.
+            AUROVAL_EXIT_AFTER_FIRST_FRAME: "1"
         } { ^timeout $"($timeout)s" cage -- $bin preview }
     } | complete)
     let wall = ((date now) - $t0 | into int) / 1000000

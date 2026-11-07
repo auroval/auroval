@@ -342,6 +342,17 @@ impl Shell {
                     target.width,
                     target.height
                 );
+                // The measurement harness in spike/p1e wants this number and
+                // nothing else, and `preview` otherwise draws forever. Eleven
+                // runs that each have to be killed by a 30 s timeout is five
+                // and a half minutes of black screen on a VT the measurement
+                // needs you to stay on — and the one thing that reliably went
+                // wrong was someone switching away out of boredom, which
+                // makes every remaining run fail for want of DRM master. So
+                // the harness asks for one frame and gets exactly one.
+                if std::env::var_os("AUROVAL_EXIT_AFTER_FIRST_FRAME").is_some() {
+                    self.done = true;
+                }
             }
             if self.preview {
                 // One frame is all a preview owes anybody, but the clock has

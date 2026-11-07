@@ -46,6 +46,9 @@ const USAGE: &str = "usage: auroval-greet <greet|preview|probe>
   probe    print what the greeter can see, and exit.
 
 AUROVAL_CONFIG overrides /etc/auroval/greet.lua.
+AUROVAL_EXIT_AFTER_FIRST_FRAME makes greet and preview exit as soon as
+  they have drawn once and printed the R16 line. For the measurement
+  harness; a login screen that does this is no login screen.
   snapshot <out.png> [stage]
            render one frame off-screen and write it, with no compositor and
            no greetd. stage is user | password | error | starting.";
