@@ -1,0 +1,17 @@
+{
+  "name": "auroval",
+  "build": { "dockerfile": "Dockerfile" },
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["rust-lang.rust-analyzer", "tamasfe.even-better-toml"],
+      "settings": {
+        "rust-analyzer.check.command": "clippy"
+      }
+    }
+  },
+  "postCreateCommand": "cargo fetch",
+  "remoteUser": "vscode"
+}
