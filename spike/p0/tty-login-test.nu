@@ -7,6 +7,14 @@
 # `GREETD_SOCK`, so the auth loop was always exercised separately. This closes
 # that gap and is the last unticked box on issue #1.
 #
+# greetd is a daemon, not a one-shot. When a session ends it starts a FRESH
+# greeter and switches back to its own VT — which is correct behaviour for a
+# display manager and makes a naive test unusable: every time you switch away,
+# the next greeter yanks you back. So this script runs greetd in the background,
+# waits for the authenticated session to leave its proof, and then stops greetd
+# itself. It never relies on greetd exiting of its own accord, because it will
+# not.
+#
 # What this does NOT do, deliberately:
 #   * it does not touch /etc/greetd/config.toml — it writes its own config
 #   * it does not enable or start the greetd service
@@ -27,6 +35,7 @@ const CONFIG = "/etc/greetd/auroval-spike.toml"
 def main [
     --user: string = "dirk"   # the account you will log in as on the test VT
     --vt: int = 3             # which VT to put the greeter on; must be free
+    --wait: int = 180         # seconds to allow for the login before giving up
     --clean                   # remove the spike's own config and exit
 ] {
     if $clean {
@@ -115,27 +124,52 @@ user = \"greeter\"
     print $"  1. switch to it with  Ctrl+Alt+F($vt)"
     print $"  2. the background should be moving — that is the point"
     print $"  3. type ($user)'s password and press Enter"
-    print "  4. you land on a script that writes a proof file and exits"
-    print $"  5. Ctrl+Alt+F1 returns to your own session at any time"
+    print "  4. you land on a plain screen; the proof file is written there"
+    print $"  5. switch back with Ctrl+Alt+F1 — greetd stops by itself once"
+    print "     the proof appears, so the console will not be grabbed again"
     print ""
     print "SDDM is untouched and still owns VT 1. Ctrl-C here aborts."
     print "────────────────────────────────────────────────────────────────"
     print ""
 
-    # `complete` blocks until greetd exits, which is what we want: it exits when
-    # the test session ends, and we get the whole log including the spike's own
-    # presentation measurement on stderr.
-    let r = (
-        with-env { AUROVAL_LOGIN_USER: $user } {
-            ^greetd --config $CONFIG | complete
-        }
-    )
-    let out = ([$r.stdout, $r.stderr] | str join "\n")
-    $out | save -f $log
-    ^chmod 0644 $log
+    # greetd is started detached, with its output going straight to the log
+    # file rather than being buffered until exit. An earlier version captured
+    # with `complete`, which meant aborting the test threw away every line the
+    # spike had printed — exactly what happened the first time it was run.
+    #
+    # `sh -c` is used for the one thing nushell has no clean equivalent for:
+    # detaching a process with its streams redirected to a file.
+    ^sh -c $"setsid greetd --config ($CONFIG) > ($log) 2>&1 < /dev/null &"
+    sleep 2sec
 
+    if (^pgrep -x greetd | complete).exit_code != 0 {
+        print "greetd did not start. Log:"
+        if ($log | path exists) { open $log | print }
+        exit 1
+    }
+    print $"greetd started on VT ($vt); output streaming to ($log)"
+    print $"waiting up to ($wait) seconds for a completed login…"
     print ""
-    print $"greetd exited with ($r.exit_code). Log saved to ($log)."
+
+    # Poll for the proof file the authenticated session writes. The moment it
+    # appears the login has succeeded, and greetd can be stopped before it
+    # restarts the greeter and grabs the console again.
+    mut waited = 0
+    mut ok = false
+    while $waited < $wait {
+        if ($proof | path exists) { $ok = true; break }
+        sleep 1sec
+        $waited = $waited + 1
+    }
+
+    # Stop greetd either way. This is the step whose absence made the first run
+    # switch the console back to the greeter every few seconds.
+    ^pkill -x greetd
+    sleep 1sec
+    if (^pgrep -x greetd | complete).exit_code == 0 { ^pkill -9 -x greetd }
+    print $"greetd stopped after ($waited)s."
+
+    let out = (if ($log | path exists) { open $log } else { "" })
     print ""
     print "── the spike's own lines ──"
     $out | lines | where { |l| $l =~ '^\[spike\]' } | each { |l| print $l }

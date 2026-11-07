@@ -20,6 +20,8 @@ out="$HOME/auroval-p0-login-proof.txt"
     echo "XDG_SESSION_CLASS : ${XDG_SESSION_CLASS-<unset>}"
 } > "$out" 2>&1
 chmod 0644 "$out" 2>/dev/null
-# Long enough to read the VT, short enough that the terminal comes back by
-# itself if nobody is watching.
-sleep 8
+# Stay alive. greetd restarts the greeter the moment a session ends, and
+# re-activates its own VT when it does — so a short-lived session makes the
+# console bounce back every few seconds. The orchestrator stops greetd once it
+# sees the proof file above, which is what ends the test.
+sleep 600
