@@ -37,13 +37,50 @@ pub struct Field {
     pub stroke: Rgba,
 }
 
-pub struct Renderer {
+/// One EGL surface, for one output. R10 wants one surface per output at that
+/// output's scale, so the thing that is per-output is separated from the thing
+/// that is not: the context, the programs and the glyph atlas are shared, and
+/// only the surface and its size are not. Building this the other way round —
+/// one renderer per output — would duplicate the atlas on every monitor.
+pub struct Target {
+    /// `None` for an off-screen target.
+    surface: Option<egl::Surface>,
+    /// Held because dropping it destroys the native window under EGL.
+    window: Option<wayland_egl::WlEglSurface>,
+    pub width: u32,
+    pub height: u32,
+    pub scale: i32,
+}
+
+impl Target {
+    /// A target that is not an output: `present` on it is a no-op, because
+    /// the pixels are read back rather than shown.
+    fn offscreen(width: u32, height: u32) -> Target {
+        Target {
+            surface: None,
+            window: None,
+            width,
+            height,
+            scale: 1,
+        }
+    }
+
+    pub fn resize(&mut self, w: u32, h: u32, scale: i32) {
+        self.width = w;
+        self.height = h;
+        self.scale = scale;
+        if let Some(win) = self.window.as_ref() {
+            win.resize(w as i32, h as i32, 0, 0);
+        }
+    }
+}
+
+/// The GL context and everything that can be shared across outputs.
+pub struct Gl {
     egl: Egl,
     display: egl::Display,
-    surface: egl::Surface,
-    _context: egl::Context,
-    /// Held because dropping it destroys the native window under EGL.
-    _window: wayland_egl::WlEglSurface,
+    config: egl::Config,
+    context: egl::Context,
     pub gl: glow::Context,
     pub atlas: Atlas,
 
@@ -51,8 +88,10 @@ pub struct Renderer {
     image: glow::Program,
     text: glow::Program,
     rect: glow::Program,
-    pub width: u32,
-    pub height: u32,
+    /// The size currently being drawn into: set by `make_current`, so draw
+    /// calls need not carry it.
+    width: u32,
+    height: u32,
 }
 
 const VERT: &str = r#"#version 100
@@ -93,6 +132,10 @@ void main() {
 // Superellipse distance: the n-norm of the corner offset instead of the
 // 2-norm a circular rounded rect would use. n = rounding_power.
 const FRAG_RECT: &str = r#"#version 100
+// fwidth is an extension in GLES2, not core. Without this the shader fails to
+// compile on a conformant driver with "requires #version 300 or later", which
+// is a confusing way of saying "ask for the extension".
+#extension GL_OES_standard_derivatives : enable
 precision mediump float;
 uniform vec2 half_size;         // in pixels
 uniform float radius;
@@ -140,18 +183,12 @@ unsafe fn program(gl: &glow::Context, vs: &str, fs: &str) -> Result<glow::Progra
     Ok(p)
 }
 
-impl Renderer {
+impl Gl {
+    /// Create the shared context. `display_ptr` must be a live `wl_display`.
+    ///
     /// # Safety
-    /// `display_ptr` must be a live `wl_display`, and `surface` a live
-    /// `wl_surface` on it.
-    pub unsafe fn new(
-        display_ptr: *mut std::ffi::c_void,
-        surface: &wayland_client::protocol::wl_surface::WlSurface,
-        width: u32,
-        height: u32,
-    ) -> Result<Renderer, String> {
-        use wayland_client::Proxy;
-
+    /// The pointer must outlive this value.
+    pub unsafe fn new(display_ptr: *mut std::ffi::c_void) -> Result<Gl, String> {
         let egl = Egl::load_required().map_err(|e| format!("libEGL: {e}"))?;
         let display = egl
             .get_display(display_ptr)
@@ -182,11 +219,6 @@ impl Renderer {
             .map_err(|e| e.to_string())?
             .ok_or("no suitable EGL config")?;
 
-        let window = wayland_egl::WlEglSurface::new(surface.id(), width as i32, height as i32)
-            .map_err(|e| format!("wl_egl_window: {e}"))?;
-        let es = egl
-            .create_window_surface(display, config, window.ptr() as egl::NativeWindowType, None)
-            .map_err(|e| e.to_string())?;
         let context = egl
             .create_context(
                 display,
@@ -195,7 +227,14 @@ impl Renderer {
                 &[egl::CONTEXT_CLIENT_VERSION, 2, egl::NONE],
             )
             .map_err(|e| e.to_string())?;
-        egl.make_current(display, Some(es), Some(es), Some(context))
+
+        // A context cannot be made current without a surface on GLES2, and
+        // the programs have to be built before the first output exists. A
+        // 1x1 pbuffer is the usual way out and costs nothing.
+        let scratch = egl
+            .create_pbuffer_surface(display, config, &[egl::WIDTH, 1, egl::HEIGHT, 1, egl::NONE])
+            .map_err(|e| format!("scratch pbuffer: {e}"))?;
+        egl.make_current(display, Some(scratch), Some(scratch), Some(context))
             .map_err(|e| e.to_string())?;
 
         let gl = glow::Context::from_loader_function(|s| {
@@ -203,8 +242,6 @@ impl Renderer {
                 .map(|p| p as *const _)
                 .unwrap_or(std::ptr::null())
         });
-        // The superellipse needs fwidth, which GLES2 only has through this.
-        let _ = gl.get_parameter_string(glow::EXTENSIONS);
 
         let quad = gl.create_buffer()?;
         gl.bind_buffer(glow::ARRAY_BUFFER, Some(quad));
@@ -223,34 +260,154 @@ impl Renderer {
         gl.enable(glow::BLEND);
         gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
 
-        Ok(Renderer {
+        Ok(Gl {
             egl,
             display,
-            surface: es,
-            _context: context,
-            _window: window,
+            config,
+            context,
             gl,
             atlas,
             quad,
             image,
             text,
             rect,
-            width,
-            height,
+            width: 1,
+            height: 1,
         })
     }
 
-    pub fn resize(&mut self, w: u32, h: u32) {
-        self.width = w;
-        self.height = h;
-        self._window.resize(w as i32, h as i32, 0, 0);
-        unsafe { self.gl.viewport(0, 0, w as i32, h as i32) };
+    /// A context with no Wayland behind it, drawing into an off-screen
+    /// buffer. This is what makes the view testable: a known `UiState`
+    /// renders to a PNG that can be compared, with no compositor, no greetd
+    /// and no login screen to log into. It is also the only way to look at
+    /// the layout while the shell is being written.
+    ///
+    /// # Safety
+    /// Creates an EGL context; must be called once, from one thread.
+    pub unsafe fn headless(width: u32, height: u32) -> Result<(Gl, Target), String> {
+        let mut gl = Gl::new(egl::DEFAULT_DISPLAY)?;
+        let fbo = gl.gl.create_framebuffer()?;
+        let tex = gl.gl.create_texture()?;
+        gl.gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+        gl.gl.tex_image_2d(
+            glow::TEXTURE_2D,
+            0,
+            glow::RGBA as i32,
+            width as i32,
+            height as i32,
+            0,
+            glow::RGBA,
+            glow::UNSIGNED_BYTE,
+            glow::PixelUnpackData::Slice(None),
+        );
+        gl.gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_MIN_FILTER,
+            glow::LINEAR as i32,
+        );
+        gl.gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_MAG_FILTER,
+            glow::LINEAR as i32,
+        );
+        gl.gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fbo));
+        gl.gl.framebuffer_texture_2d(
+            glow::FRAMEBUFFER,
+            glow::COLOR_ATTACHMENT0,
+            glow::TEXTURE_2D,
+            Some(tex),
+            0,
+        );
+        if gl.gl.check_framebuffer_status(glow::FRAMEBUFFER) != glow::FRAMEBUFFER_COMPLETE {
+            return Err("off-screen framebuffer is incomplete".into());
+        }
+        gl.width = width;
+        gl.height = height;
+        gl.gl.viewport(0, 0, width as i32, height as i32);
+        Ok((gl, Target::offscreen(width, height)))
+    }
+
+    /// Read the current buffer back as RGBA, top row first.
+    pub fn read_pixels(&self) -> Vec<u8> {
+        let (w, h) = (self.width as usize, self.height as usize);
+        let mut buf = vec![0u8; w * h * 4];
+        unsafe {
+            self.gl.read_pixels(
+                0,
+                0,
+                w as i32,
+                h as i32,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelPackData::Slice(Some(&mut buf)),
+            );
+        }
+        // GL's origin is bottom-left; every image format here is top-left.
+        let mut out = vec![0u8; buf.len()];
+        for y in 0..h {
+            let src = (h - 1 - y) * w * 4;
+            out[y * w * 4..(y + 1) * w * 4].copy_from_slice(&buf[src..src + w * 4]);
+        }
+        out
+    }
+
+    /// Give one output its own EGL surface.
+    ///
+    /// # Safety
+    /// `surface` must be a live `wl_surface` on the same display.
+    pub unsafe fn target(
+        &self,
+        surface: &wayland_client::protocol::wl_surface::WlSurface,
+        width: u32,
+        height: u32,
+        scale: i32,
+    ) -> Result<Target, String> {
+        use wayland_client::Proxy;
+        let window = wayland_egl::WlEglSurface::new(surface.id(), width as i32, height as i32)
+            .map_err(|e| format!("wl_egl_window: {e}"))?;
+        let es = self
+            .egl
+            .create_window_surface(
+                self.display,
+                self.config,
+                window.ptr() as egl::NativeWindowType,
+                None,
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(Target {
+            surface: Some(es),
+            window: Some(window),
+            width,
+            height,
+            scale,
+        })
+    }
+
+    /// Draw into this output from now on.
+    pub fn make_current(&mut self, t: &Target) -> Result<(), String> {
+        if let Some(es) = t.surface {
+            self.egl
+                .make_current(self.display, Some(es), Some(es), Some(self.context))
+                .map_err(|e| e.to_string())?;
+        }
+        self.width = t.width;
+        self.height = t.height;
+        unsafe { self.gl.viewport(0, 0, t.width as i32, t.height as i32) };
+        Ok(())
+    }
+
+    pub fn present(&self, t: &Target) {
+        if let Some(es) = t.surface {
+            let _ = self.egl.swap_buffers(self.display, es);
+        }
+    }
+
+    pub fn size(&self) -> (f32, f32) {
+        (self.width as f32, self.height as f32)
     }
 
     pub fn clear(&self, c: Rgba) {
         unsafe {
-            self.gl
-                .viewport(0, 0, self.width as i32, self.height as i32);
             self.gl.clear_color(c[0], c[1], c[2], c[3]);
             self.gl.clear(glow::COLOR_BUFFER_BIT);
         }
@@ -353,9 +510,5 @@ impl Renderer {
         let w = self.atlas.width(s, px);
         let ascent = self.atlas.ascent(px);
         self.draw_text(s, px, cx - w * 0.5, cy + ascent * 0.5, colour);
-    }
-
-    pub fn present(&self) {
-        let _ = self.egl.swap_buffers(self.display, self.surface);
     }
 }
