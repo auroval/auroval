@@ -1,8 +1,18 @@
 # Q5 — which Wayland stack and renderer?
 
-Status: **open, narrowed by measurement.** PRD open question Q5. This is the one
-remaining question that gates P1, and unlike Q1–Q4 it is a technical question
-rather than a matter of taste, so most of it can be settled by measuring.
+Status: **settled, 2026-11-07.** `smithay-client-toolkit` for surfaces and
+input, **GL sharing GStreamer's context** for pixels. Not wgpu.
+
+The recommendation below said to decide only after a minimal GL renderer
+existed and had been measured. It now exists —
+[`crates/spike-q5`](../../crates/spike-q5), results in
+[`spike/q5/RESULTS.md`](../../spike/q5/RESULTS.md) — and the measurement
+supports the recommendation, so the recommendation is adopted. What it also
+found is a bigger thing than the renderer choice, and §"What the GL renderer
+measured" records it.
+
+The rest of this document is kept as it was written, because the reasoning
+that led here is the part worth re-reading if the decision is ever reopened.
 
 ## What the P0 spike settled
 
@@ -68,6 +78,51 @@ nearly free; repeated runs do not support that, and the claim is withdrawn.
 texture and one text label, measured at realtime 1440p against the spike's
 `wl_shm` path. That is P1 work and perhaps a day of it.
 
+## What the GL renderer measured
+
+Built and measured on 2026-11-07. Both paths present the same 2560×1440 60 fps
+clip to the same fullscreen surface, paced by Wayland frame callbacks, each
+drawing one line of 44 px text. Every run held 60 fps with no dropped frames.
+
+Measured first inside a live Hyprland session, then again under `cage` on a
+free VT — the greeter's own context — with five alternating pairs at a held
+60 fps:
+
+| | GL | shm | shm ÷ GL |
+|---|---:|---:|---:|
+| live session, quiet | 44.3% | 70.2% | 1.58 |
+| live session, busy | 55–60% | 88–107% | 1.50–1.93 |
+| **under `cage`, mean of 5** | **33.7%** | **68.8%** | **2.09** |
+
+The GL path is cheaper in every pairing, and by more in the clean environment
+than the busy one — contention was flattering the readback path. The earlier
+`glimagesink` measurement could not show any of this, because a
+general-purpose sink's own presentation cost swamped the difference. Writing
+the renderer was the only way to separate them, which is exactly why the brief
+declined to decide without it.
+
+**The live-session absolutes were not usable, and an earlier draft of this
+section used them anyway.** It read 44% and 70% off a quiet batch and proposed
+50% of a core as R7's ceiling; a busy batch then put the same GL path at 60%.
+That number was withdrawn, the measurement was redone under `cage`, and 50% is
+now set — mean 33.7%, worst run 41.7%, readback failing at 68.8%. The figure is
+the same; the ground under it is not, and the difference between those two
+states is the whole point.
+
+**One thing the clean run did not explain.** The GL path's spread survived into
+`cage`: 26–42%, where the readback path sits inside two points. It is not
+contention from other clients, because there were none.
+
+**The finding that outlives the renderer choice.** P0 measured decode alone at
+**2.5% of one core**. Presentation costs more than an order of magnitude beyond
+that, in every batch and in every environment. The decoder is not where a
+greeter's CPU goes, and R7's budget — written as a decode budget because decode
+was the thing P0 could measure — constrained only the cheap half. The PRD now
+carries both ceilings.
+
+Remaining limits: `memory:DMABuf` on Intel and AMD is still unverified for want
+of the hardware, and the GL path's spread is unexplained.
+
 ## The constraint that actually decides this
 
 Portability, from C6. Three memory types must all work:
@@ -113,7 +168,7 @@ back towards C++ and towards tracking an upstream, both of which the PRD already
 rejected when it ruled out forking hyprlock. **Unexamined**, and noted only so
 the question is not reopened later as if it had been missed.
 
-## Recommendation, for the maintainer to accept or reject
+## Recommendation, accepted 2026-11-07
 
 **`smithay-client-toolkit` for surfaces and input, plus GL sharing GStreamer's
 context.** Not wgpu — not because wgpu is worse, but because R7's no-readback
@@ -125,11 +180,32 @@ reason to prefer GL is a measurement nobody has taken yet, and if the GL
 renderer turns out to cost what `glimagesink` costs, the premise needs
 revisiting rather than defending.
 
+> **It did not.** The renderer was built, it negotiates `memory:GLMemory` with
+> `nvh264dec` for real, and it costs 1.6× less than the readback path at
+> 1440p60. The premise held and the recommendation is adopted. Had it come out
+> level, portability alone would still have pointed the same way — but it
+> would have been a much weaker decision, and worth saying so.
+
 ## Sub-questions this opens
+
+Updated after the spike. The first of these is now the most valuable thing to
+measure next, because presentation rather than decode turns out to be where
+the CPU goes.
+
+- **Skip `glcolorconvert`.** The spike converts to RGBA so one texture can be
+  sampled. Sampling NV12 directly with a two-texture shader removes a
+  full-resolution pass from every frame. Unmeasured, and the obvious next step.
+- ~~**Measure under `cage`, not in a live session.**~~ Done; see above.
+- **Why does the GL path vary 26–42% under `cage`** while the readback path
+  sits in a 2-point band? Unexplained, and it is the reason 33.7% should not be
+  quoted as a single figure.
 
 - **Text rendering.** R11 wants MesloLGS at a large clock size across outputs
   at different scales. A glyph atlas is the normal answer; `cosmic-text` plus a
-  GL atlas is the obvious candidate and is unevaluated.
+  GL atlas is the obvious candidate and is unevaluated. The spike shows the
+  *cost* is not the issue — one line of 44 px text was below run-to-run
+  variance on both paths — so this is a question of engineering effort, not of
+  budget.
 - **One context or several.** R10 wants one surface per output at that output's
   scale. Whether a single GL context serves several surfaces, or each output
   gets its own, is unresolved and affects how the video texture is shared.

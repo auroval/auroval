@@ -1,0 +1,23 @@
+[package]
+name = "spike-q5"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+description = "Q5 spike: what does a real GL renderer cost against wl_shm? Throwaway."
+
+[dependencies]
+gstreamer = "0.24"
+gstreamer-app = "0.24"
+gstreamer-video = "0.24"
+gstreamer-gl = "0.24"
+gstreamer-gl-egl = "0.24"
+smithay-client-toolkit = "0.20"
+wayland-client = "0.31"
+wayland-egl = "0.32"
+khronos-egl = { version = "6", features = ["dynamic"] }
+glow = "0.16"
+glib = "0.21"
+fontdue = "0.9"
