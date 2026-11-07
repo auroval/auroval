@@ -1,0 +1,9 @@
+# Python here is tooling, not product: tools/ and .github/scripts/.
+# Line length is 100 rather than ruff's 88 because these files carry long
+# explanatory comments and tables, and wrapping them at 88 hurts more than it
+# helps.
+line-length = 100
+target-version = "py311"
+
+[lint]
+extend-select = ["I", "UP", "B"]
