@@ -81,8 +81,14 @@ the set can be extended later in the same voice rather than re-guessed.
 
 Tenet 6 says the user's own file wins: *"mensen moeten zelf ook eigen video's in
 kunnen gebruiken."* So the theme is a **contract** at least as much as it is a
-set of files. The contract is what a user's own media has to satisfy to be
-nightshade media.
+set of files.
+
+**The contract describes what nightshade's own media meets. It is not a gate on
+yours.** Nothing is refused. Every clause below names what happens when a file
+does not meet it, because tenet 6's own cost clause already committed the
+project to that shape: arbitrary files mean arbitrary formats, resolutions,
+aspect ratios and colour spaces, *"all of which must degrade gracefully rather
+than fail."*
 
 Values below are proposals to be tuned during the build, not measurements. The
 [tracking issue](https://github.com/auroval/auroval/issues/5) carries them as checklist items.
@@ -105,39 +111,50 @@ Values below are proposals to be tuned during the build, not measurements. The
 | Safe field | The central region — 60% of width by 70% of height — must be dark | This is where the clock, the date, the user label and the input field land. It is the contract clause that makes "no scrim" possible. |
 
 **Safe-field test:** within that region, mean relative luminance ≤ 0.06, and no
-more than 2% of pixels above 0.25. A frame that fails is not nightshade media.
+more than 2% of pixels above 0.25. nightshade's own artwork meets this by
+construction. Media that does not gets a local scrim (§2.4), not a rejection.
 
 ### 2.3 Loop
 
 | Property | Requirement | Why |
 |---|---|---|
 | Duration | 10–30 s | Long enough not to read as a repeat, short enough to hold in memory and to seek cheaply. |
-| Seam | First and last frame differ no more than two ordinary consecutive frames | This is R8's fit criterion, promoted into the contract so it is checked at packaging rather than discovered at 3 a.m. |
+| Seam | First and last frame differ no more than two ordinary consecutive frames | R8's fit criterion, measured at packaging so a visible cut is reported rather than discovered at 3 a.m. |
 | Motion | Slow, continuous, no cuts | §3 explains why this is a hard limit and not taste. |
 
-### 2.4 Enforcement
+### 2.4 What happens when media does not meet it
 
-Media that fails the contract is **refused, with a reason naming the clause**.
-It is not accepted and corrected.
+Nothing is refused. Each clause degrades, and the degradation is reported at
+import — information, not a veto.
 
-> *Chosen deliberately: "Refuse it, with a reason."*
+| Clause fails | What happens |
+|---|---|
+| Codec unsupported | Runtime fallback per R9: still image, then solid colour. Logged, not silent. This path already exists and is release-blocking. |
+| Resolution below 1440 | Upscaled. It looks soft. That is the user's file being soft. |
+| Aspect not 16:9 | Centre-crop to cover, as for any source. A centred subject survives it. |
+| Range undeclared | Assume limited, the safer guess, and say so in the import report. |
+| Loop seam visible | Played as-is. A visible cut once every 20 seconds is a flaw in their file, not a reason to refuse it. |
+| **Safe field too bright** | A local scrim is composited behind the UI — a soft radial gradient over the central region, only as strong as needed to reach the text contrast floor. |
 
-**Where the refusal happens matters.** Checking is done when media is packaged
-or imported into a theme — never at login. A greeter that rejects a background
-while you are trying to log in has broken the one goal the PRD calls
-non-negotiable: *"Authentication is never the thing that breaks."* At runtime
-the greeter still falls back per R9 (still image, then solid colour) and logs
-it. The contract is a packaging-time gate; R9 is the runtime floor. Both exist.
+The scrim is the one real piece of compensation, and it is worth being precise
+about. It is **not** applied to nightshade's own artwork, which meets the clause
+by construction, so the maintainer never sees one. It is applied only to media
+that would otherwise put bright pixels under the clock and the input field, and
+it is local to that region rather than a full-frame dim.
 
-**Cost, stated plainly.** This bites tenet 6 directly and knowingly. Someone's
-favourite video gets turned away with a message about luminance in the central
-60×70 region. Tenet 6's own cost clause anticipated exactly this and chose the
-other way — *"the user's own file wins"* — and nightshade is, on this point,
-stricter than the tenet. It is a theme-level choice, not a project-level one:
-a different theme is free to accept anything. But it should be read as what it
-is, which is the first place a theme has pushed back on a tenet.
+**Cost, stated plainly.** A user's bright video is shown with a dark patch
+behind the UI that nightshade's own images do not have, so the theme looks
+slightly different in kind on their machine than on the maintainer's. "One
+consistent theme" becomes "one consistent theme, plus compensation where the
+media forces it." That is a genuine dilution of tenet 1, accepted here because
+the alternative — turning the file away — is a larger dilution of tenet 6, and
+tenet 6 is the one that named this exact situation in advance.
 
----
+**Where checking happens.** Measurement is done at import, never at login. A
+greeter that evaluates a background while you are trying to log in has put work
+on the critical path of the one goal the PRD calls non-negotiable:
+*"Authentication is never the thing that breaks."* Import computes the scrim and
+the palette once; the greeter reads the result.
 
 ## 3. How the backgrounds switch
 
@@ -237,9 +254,74 @@ the project.
 nightshade's answer: **derive everywhere, from the media.** Greeter, lock and
 desktop all take their palette from the scene on screen.
 
-### 4.2 Derive once per scene, at packaging time
+### 4.2 What "derived" actually means — measured, not assumed
 
-A detail that falls out of §1.1 and §3.2 and matters more than it sounds.
+An earlier draft of this document specified contrast gates that a user's media
+had to pass, on the assumption that bad media yields an unreadable palette.
+**That assumption is false, and the measurement is worth recording because it
+dissolves the problem rather than solving it.**
+
+matugen run on four sources — a flat mid-grey field, a washed-out low-contrast
+gradient, a near-white field, and the maintainer's own skull wallpaper:
+
+| source | `surface` rel. luminance | `on_surface`/`surface` | `primary`/`surface` | `primary` L\* / C\* |
+|---|---|---|---|---|
+| flat grey `#808080` | 0.0065 | 14.41:1 | 10.88:1 | 79.9 / 31.1 |
+| washed gradient | 0.0066 | 14.37:1 | 10.92:1 | ~80 / ~31 |
+| near-white | 0.0065 | 14.41:1 | 10.88:1 | 79.9 / 31.1 |
+| skull wallpaper | 0.0066 | 14.39:1 | 10.91:1 | 80.0 / 33.0 |
+
+Material You fixes tones. `surface` is always near-black, `on_surface` always
+lands at ~14.4:1, `primary` always at ~10.9:1 — whatever you feed it. Repeated
+across `scheme-tonal-spot`, `-vibrant`, `-content`, `-fidelity` and
+`-expressive`, `primary` stays pinned at L\* ≈ 80 and C\* ≈ 31–33 in every one.
+
+**The only thing the media actually contributes is hue.** 354.8° for the skull,
+278.4° for flat grey. Everything else is a constant of the scheme.
+
+Two conclusions follow, and they point in opposite directions:
+
+1. **There is no such thing as an ugly derived palette.** A readable, correctly
+   contrasted dark scheme is guaranteed by construction. Refusing media to
+   protect the palette was defending against a failure that cannot occur.
+2. **nightshade cannot get its own look this way.** §1 says *"Saturated, never
+   pastel."* C\* ≈ 33 at L\* ≈ 80 is pastel — that is what `f8b1dd` in the live
+   `colors.lua` is. Neon magenta is roughly L\* 55–60 at C\* 70+. Taking matugen
+   as-is guarantees the accent is the one thing the theme says it is not.
+
+### 4.3 The derivation: hue from the media, tone and chroma from the theme
+
+> **The media supplies hue. nightshade supplies everything else.**
+
+This is tenet 1 doing exactly what it exists to do: the theme owns the look, and
+the media feeds it one parameter. It is also tenet 6 honoured in full, because
+every file has a hue — there is nothing to refuse, nothing to correct, and no
+file that can fail.
+
+| Role | Source | Target |
+|---|---|---|
+| Accent hue | Extracted from the scene's canonical frame | whatever the media gives |
+| Accent lightness / chroma | **nightshade** | L\* ≈ 55–60, C\* ≥ 70 — neon, not pastel |
+| Surface | **nightshade** | near-black, L\* ≤ 20 |
+| On-surface | **nightshade** | ≥ 7:1 against surface |
+| Error | **nightshade** | fixed; a failure message must not change colour with the wallpaper |
+
+Exact tonal targets are the maintainer's to pick — they are the theme's visual
+signature and the one number that decides whether nightshade reads as neon. They
+are carried as an open item, not settled here.
+
+The contrast figures from §4.2 are kept as **assertions**, not gates: cheap
+regression checks that matugen still behaves as measured, run at packaging time.
+They test the tool, not the user.
+
+**Cost, stated plainly.** "Derived from the media" now means less than it sounds
+like. Two different videos with similar hue produce identical palettes, and the
+coherence is more authored than discovered. The honest framing: matugen already
+worked this way and nobody had noticed — the live `colors.lua` is pastel because
+the scheme makes it pastel, not because the wallpaper is. This states it instead
+of leaving it to be discovered.
+
+### 4.4 Derive once per scene, at packaging time
 
 The greeter shows the loop; the desktop shows the still. If each surface derived
 its own palette from its own file, the three surfaces would agree approximately
@@ -255,8 +337,11 @@ theme is packaged. It ships with the scene.** This buys four things at once:
   doing anyway (R16's budget).
 - The greeter reads a world-readable theme package rather than analysing a
   file it may not be allowed to open (C10).
-- The §2.4 gates can be evaluated at the same moment, which is what makes
-  packaging-time refusal possible at all.
+- The scrim measurement (§2.4) happens at the same moment, on the same frame.
+
+Output shape stays as it is today: bare 6-digit hex with no leading `#`, so
+callers append their own alpha byte — *"that is the shape Hyprland's `rgba()`
+wants"*, per the existing template's own comment.
 
 **Consequence to state plainly:** live re-derivation on wallpaper change goes
 away. Today `awww-wallpaper.sh` runs `matugen image "$wp" --prefer saturation`
@@ -265,33 +350,20 @@ scene, already computed. matugen moves from runtime dependency to packaging
 tool. That is a change to something the maintainer currently has and uses, and
 it should be a conscious trade rather than a side effect.
 
-### 4.3 The gates
-
-The derived palette must satisfy these, or the media is refused (§2.4):
-
-| Gate | Threshold | Why |
-|---|---|---|
-| `surface` darkness | L\* ≤ 20 | The dark field is the composition. A light surface is a different theme. |
-| `on_surface` vs `surface` | contrast ≥ 7:1 | WCAG AAA for body text. The input field's placeholder sits here. |
-| `primary` vs `surface` | contrast ≥ 4.5:1 | The accent is also the focused border and the input outline; it has to be seen, not merely present. |
-| `primary` chroma | above a floor, to be set | A desaturated accent is not neon. This is the gate that keeps a grey video out, and it is the one most likely to need tuning against real generated media. |
-| `error` vs `surface` | contrast ≥ 4.5:1 | R3 renders auth failures here. A failure message you cannot read is a lockout. |
-
-Shape stays as it is today: the matugen template writes bare 6-digit hex with
-no leading `#`, so callers append their own alpha byte — *"that is the shape
-Hyprland's `rgba()` wants"*, per the existing template's own comment. No reason
-to change it.
-
-### 4.4 Tenet check
+### 4.5 Tenet check
 
 Tenet 1 refuses per-element overrides, and that refusal is only honest if the
-whole is reliably good. Derive-everywhere plus arbitrary media is the
-combination that breaks that promise: a bad file produces a bad desktop and the
-user is told they may not fix one colour. §2.4's refusal is what keeps tenet 1
-defensible. The two decisions stand or fall together — accepting arbitrary media
-*and* refusing overrides would have been the worst of both.
+whole is reliably good. §4.3 is what makes it honest: the theme owns tone and
+chroma, so the whole is good by construction rather than by luck, and a user
+never has a reason to want one colour changed because no file can produce a bad
+one.
 
----
+Tenet 6 is honoured without exception on the palette. Nothing is refused, and
+nothing needs correcting, because the media was only ever supplying hue.
+
+The remaining tension is §2.4's scrim, which is composition rather than colour,
+and it is the one place where a user's file changes how nightshade looks rather
+than just what colour it is. That cost is stated where it occurs.
 
 ## 5. The bar
 
@@ -437,9 +509,10 @@ explicitly on the table.
 
 | # | Item | Owner |
 |---|---|---|
-| N1 | The `primary` chroma floor (§4.3) — the gate most likely to be wrong on first contact with real generated media. | Maintainer, after the first scene exists |
+| N1 | nightshade's tonal targets (§4.3) — the accent's L\* and C\*, which decide whether it reads as neon or as pastel. The theme's visual signature, and the one number worth getting wrong a few times first. | Maintainer, against the first scene |
 | N2 | Does the centre window title stay in the bar (§5)? | Maintainer |
 | N3 | How many scenes does nightshade ship? Daily rotation over two scenes is a two-day cycle, which is not rotation. | Maintainer |
 | N4 | Fixed clock times or solar phase boundaries (§3.3)? Materially changes what the format must express. | Maintainer, with Q4 |
 | N5 | Should tenet 2 gain a per-surface clause (§3.2)? | Maintainer |
+| N7 | The scrim (§2.4) is the one place a user's file changes how nightshade looks rather than what colour it is. Acceptable, or does nightshade prefer to show bright media undimmed and let the text fight it? | Maintainer |
 | N6 | The name collides with Nightshade, the University of Chicago image-poisoning tool. Different domain, and theme names are namespaced under auroval — noted, not raised as a blocker. | Maintainer |
