@@ -1,7 +1,11 @@
 # Q4 — which configuration format?
 
-Status: **open, for the maintainer**. This document presents the choice; it does
-not make it. PRD open question Q4.
+Status: **decided — Lua, in a restricted interpreter.** Chosen by the maintainer
+on 2026-11-07, which is option B′ below. This document is kept as the reasoning
+behind that choice rather than rewritten; what changed in the PRD as a result is
+summarised at the end.
+
+PRD open question Q4, now settled.
 
 The PRD's original reason for hyprlang was consistency with Hyprland. That
 reason no longer points where it did, so the question is not "hyprlang or not"
@@ -122,3 +126,48 @@ TOML, KDL or a small bespoke one.
 - **The non-goal itself.** B and B′ require it to be rewritten rather than
   quietly bent. If the answer is Lua, the PRD should say so in that section
   explicitly, with the threat model it accepts.
+
+
+---
+
+## The decision, and what it cost
+
+**Lua, in a restricted interpreter** — option B′. Recorded 2026-11-07.
+
+The maintainer answered "Lua". Taken as B′ rather than B deliberately: plain
+Lua in a greeter would contradict the threat model stated in
+[`ideas.md`](../ideas.md), which is the maintainer's own framing and says an
+embedded scripting language *"hands over the whole process"*. B′ keeps
+everything B offers — the compositor's own language, direct consumption of
+matugen's `colors.lua`, and the ability to express how backgrounds switch — and
+closes the part that made executing a downloaded theme alarming. If
+unrestricted Lua was actually intended, this is the sentence to object to.
+
+What followed in the PRD:
+
+- **The scripting non-goal was rewritten, not bent.** It used to read *"no
+  scripting language in the config — hyprlang describes a look; it does not
+  run"*. It now refuses *unrestricted* scripting and states the threat model it
+  accepts, including the part that is not claimed: a Lua sandbox is a weaker
+  boundary than a separate process or a WebAssembly instance.
+- **R22 is new.** A theme that runs is a theme that can hang, and the goals
+  already promise that authentication is never what breaks. R22 makes a
+  misbehaving theme — erroring, looping, allocating, or reaching for the
+  filesystem, network or a process — degrade the appearance and never the
+  login, with four named failure modes as its fit criterion.
+- **C3 is moot.** No hyprlang parser to write, adopt or bridge. The binding is
+  `mlua`, MIT, over Lua, also MIT: both verified against their own manifests
+  and both compatible with this project's `MIT OR Apache-2.0`.
+- **The `theme` component's output format follows for free.** matugen already
+  generates `colors.lua` as a Lua table, so one generated palette serves every
+  consumer with no second template and nothing to keep in sync.
+
+### What this does *not* do to the parked WebAssembly idea
+
+[`ideas.md`](../ideas.md) argued that sandboxing was the strongest and most
+project-specific reason to want WebAssembly themes. Choosing sandboxed Lua
+spends part of that argument — the *capability* to run theme behaviour safely
+enough now exists — but not the strongest part of it. What WebAssembly still
+offers over a restricted Lua interpreter is a harder isolation boundary, and
+that remains unbuilt and unneeded. **The idea stays parked**, and the honest
+reading is that B′ lowers the urgency rather than settling the question.
