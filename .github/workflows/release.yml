@@ -21,7 +21,7 @@ jobs:
       id-token: write        # Sigstore OIDC token for provenance
       attestations: write    # record the attestation
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.ref || github.ref }}
 
@@ -55,11 +55,11 @@ jobs:
       # produced these exact bytes. Verified with:
       #   gh attestation verify <file> --repo auroval/auroval
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: 'dist/*'
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: auroval-${{ github.sha }}
           path: dist/
