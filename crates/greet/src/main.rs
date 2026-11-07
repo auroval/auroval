@@ -15,6 +15,7 @@
 #![allow(dead_code)]
 
 mod auth;
+mod background;
 mod config;
 mod render;
 mod sessions;
