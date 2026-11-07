@@ -192,18 +192,27 @@ it splits motion by surface:
 | Desktop | The scene's **still** for the current phase. At most an ambient drift — slow enough that you cannot tell it is moving without staring. |
 
 **This refines tenet 2 and should be read against it.** Tenet 2 says *"motion
-you can see over motion you infer"*, with the cost that the whole premise rests
-on decode working in the greeter's context (C6, unverified, P0's job). Split by
-surface, that cost shrinks: the desktop is unaffected by a decode failure
-because it was never going to move. Tenet 2's *"expires if"* clause — "then
-motion is a lock-screen feature only" — now has a cheaper failure mode than it
-anticipated. **This does not amend tenet 2;** it is flagged here so the
-maintainer can decide whether tenet 2 wants a per-surface clause.
+you can see over motion you infer"*, and its stated cost was that the whole
+premise rested on an unverified assumption: that hardware decode works in the
+greeter's context. **That risk is retired.** P0 measured it as greetd's own user
+(uid 950, `runuser` with `env -i`, no `XDG_RUNTIME_DIR`, no D-Bus, `HOME=/`):
+59.50 fps at 1440p60, 0 late buffers, 2.5% of one core, frames in
+`memory:CUDAMemory`. Tenet 2's *"expires if"* condition was tested and did not
+fire.
 
-It also sits squarely with tenet 3. A moving background on a login screen is
-seen for four seconds a day. A moving background on a desktop is in your
-peripheral vision for eight hours, which is precisely the thing that *"gaat
+So the split here is **not** risk mitigation, and should not be read as a
+cheaper fallback for a decode failure that can no longer be assumed. It is a
+taste decision, and it rests on tenet 3 alone — which is a stronger footing than
+the one an earlier draft of this section gave it. A moving background on a login
+screen is seen for four seconds a day; a moving background on a desktop is in
+your peripheral vision for eight hours, which is exactly what *"gaat
 irriteren"* by week two.
+
+**This does not amend tenet 2;** whether it wants a per-surface clause is
+flagged as N5.
+
+Tenet 2 and tenet 3 therefore do not conflict here. They apply to different
+surfaces, and each gets what it asks for.
 
 ### 3.3 Where a declarative format runs out
 
