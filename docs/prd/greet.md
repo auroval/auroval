@@ -240,6 +240,43 @@ Measured from process start to GStreamer ready, as the `greeter` user:
 | writable cache, registry absent | 1011 ms |
 | writable cache, registry warm | **93 ms** |
 
+**C16 — the greeter cannot reach a sound device at all, today.** Checked on
+the target machine on 2026-11-07, because R23 asks for ambient audio and this
+is the assumption underneath it. Three facts, and together they close the door:
+
+| | |
+|---|---|
+| Sound server | PipeWire 1.6.10, **per-user units only**; `systemctl list-unit-files` shows no system-wide `pipewire` or `pulseaudio` |
+| Device nodes | `/dev/snd/*` are `root:audio 0660`, plus a POSIX ACL granting `user:dirk:rw-` — logind's, for the **active session's** user |
+| The greeter user | uid 950, groups `greeter` and `video`. **Not `audio`.** And P0 established it has no session, so logind grants it no ACL either |
+
+So the greeter has neither a sound server to talk to nor permission to open the
+device directly. This is the same shape as C6 — an assumption about what works
+in a context with no session — and it has the same answer available: measure it
+before building on it.
+
+Two routes, and neither is free. Adding `greeter` to the `audio` group works
+without a session, but group `audio` is not playback-only: it carries the
+capture devices too, so a pre-authentication process would hold the
+microphone permanently. Giving the greeter a logind session gets the ACL
+instead, which is narrower, but it changes how greetd is deployed. **Q10.**
+
+**Why R23 is silent by default, and short.** The maintainer's framing is that
+this is something Apple does not do and it would be *"super cool"* — which is a
+first-impression argument, and [tenet 3](../tenets.md) says the fiftieth look
+beats the first. A sound that plays on every single login is close to the
+canonical example of what that tenet warns about: delightful in week one,
+something you reach to mute in week three, and by then it is attached to the
+one screen you cannot skip. The tenet does not forbid it; it sets the terms.
+Short, quiet, theme-supplied, and off unless a theme asks for it. A sound that
+is still wanted after two weeks of gate 3 has earned its place; one chosen from
+a demo has not.
+
+The lock screen is a separate question and the answer there is probably no.
+Login happens when you sit down at a machine you have just turned on. Unlocking
+happens in a meeting, next to someone sleeping, in an office. The same sound in
+those two places is not the same sound.
+
 So a writable cache directory for the greeter — `XDG_CACHE_HOME` and
 `GST_REGISTRY` pointed somewhere it owns — is part of deploying this, not an
 optimisation: it is worth more than nine tenths of a second on every single
@@ -427,6 +464,7 @@ theme may require of itself more than the greeter requires of every theme.
 | R14 | MUST | In lock mode, fail closed. | `SIGKILL` while locked leaves the session locked, per C5. Verified deliberately, with a second TTY open. |
 | R15 | MUST | No media path reads from a user's home directory (C10). | With `/home/<user>` at mode 700, the configured background still renders. |
 | R16 | SHOULD | Appear within a budget of first frame after launch. | Measured from process start to first presented frame. **Budget, set from P0:** 500 ms with a warm GStreamer registry. P0 measured 243 ms through `wl_shm` at 1255×674, so the budget allows for a full-resolution surface and a real renderer. The registry must be cached (C15) or roughly 0.9 s is added before any of this starts; an uncached greeter cannot meet this budget and the failure is in deployment, not in code. **Still provisional**: 243 ms was measured through a *nested* `cage` inside a running Hyprland session, which is both the wrong surface size and the wrong machine load. `spike/p1e/cage-measure.nu` is the harness that settles it — ten warm runs at 2560×1440 on a real VT — and it cannot be run until the Wayland shell exists. |
+| R23 | SHOULD | Play a short ambient sound while the login screen is up, supplied and configured by the theme, and silent by default. | With a theme that names a sound, it plays within a second of the first frame and stops when the session starts. With a theme that names none, nothing is opened and no device is held. The greeter still logs in when the sound device is absent, busy or unreadable, and says so in the log rather than failing. **Gated on C16:** the greeter currently cannot open a sound device at all, so this requirement is unbuildable until Q10 is answered. |
 
 ### WON'T (v1)
 
@@ -502,6 +540,7 @@ to publish. The README may describe how to create one; it must not contain one.
 | Q7 | Does authd's PAM module function under greetd, or only under GDM (C12)? | A spike: greetd plus authd on one machine, with a device-code client, driven by `agreety` first so the greeter is not a variable. This is the question that decides whether cloud login is weeks or months. | Maintainer |
 | Q8 | Is a snap dependency acceptable on an Arch-based distribution for the broker, or does this need a native PAM module (C12)? | Follows Q7. If snapd is unacceptable, the `pam_oauth2_device` forks need evaluating, or a broker needs writing — a separate project, not part of `greet`. | Maintainer |
 | Q9 | Who writes the avatar file, and is the `picture` claim even available to that component? | Reading what authd stores after a successful login. If it keeps nothing, R21's hook has to be driven by a PAM session module. | Maintainer |
+| Q10 | How does the greeter reach a sound device, and is it worth what it costs (C16, R23)? | Two routes measured against each other. Adding `greeter` to the `audio` group is a one-line deployment change that works with no session — and grants a pre-authentication process permanent access to the **capture** devices, not only playback, which is a real widening of what a compromised greeter could do. Giving the greeter a logind session gets logind's own ACL instead, which is scoped to the active session, but changes how greetd is deployed and has not been tried. A third answer is "not worth it", and that is a legitimate outcome: nothing else in the project needs audio. | Maintainer |
 
 ## What would change this plan
 
