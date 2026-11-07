@@ -7,6 +7,10 @@ met names the degradation that applies instead.
 
 See docs/themes/nightshade.md. Clause numbers below follow that document.
 
+Requires Pillow and numpy (tools/scene-check/requirements.txt). ffmpeg and
+ffprobe are needed for video candidates only. matugen is optional — without it,
+hue comes from internal extraction instead.
+
 Usage (nushell):
     python3 tools/scene-check/scene_check.py scene.png
     python3 tools/scene-check/scene_check.py loop.mp4 --preview /tmp/out.png
@@ -30,7 +34,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import colour as C  # noqa: E402
+import colourmath as C  # noqa: E402
 
 # --------------------------------------------------------------------------
 # Contract constants (docs/themes/nightshade.md §2, §4.3)

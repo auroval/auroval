@@ -1,0 +1,13 @@
+# Dependencies for scene-check. Install with:
+#     python3 -m pip install -r tools/scene-check/requirements.txt
+#
+# Pillow and numpy are the only third-party imports. `colourmath` is the local
+# module next to this file, deliberately NOT named `colour` — that is a real
+# package on PyPI, and the collision would mislead anyone who guessed at the
+# dependency instead of reading this file.
+#
+# ffmpeg and ffprobe are needed for video candidates only, and come from the
+# system package manager rather than from here. matugen is optional: without it
+# the tool falls back to internal hue extraction, which is the path CI takes.
+Pillow>=10
+numpy>=1.26

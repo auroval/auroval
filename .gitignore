@@ -5,3 +5,15 @@
 # Python bytecode from tools/
 __pycache__/
 *.py[cod]
+
+# Python caches and virtualenvs
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# Editor and OS droppings
+*.swp
+*~
+.DS_Store
