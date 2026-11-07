@@ -9,7 +9,7 @@ description = "P0 spike: does hardware video decode work in greetd's context? Th
 
 [dependencies]
 greetd-proto = { path = "../greetd-proto" }
-gstreamer = "0.24"
+gstreamer = "0.25"
 gstreamer-app = "0.24"
 gstreamer-video = "0.24"
 smithay-client-toolkit = "0.20"
