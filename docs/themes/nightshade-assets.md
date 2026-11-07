@@ -495,6 +495,38 @@ travels with her. That is not occlusion, and against a glowing disc it is far
 less visible than a ghost of her jawline, but A5 is still open and this is a
 cheaper alternative rather than an answer.
 
+### 7.2 Generate the background separately — the route to A5
+
+The maintainer's proposal, 2026-11-07, and the right one: generate the
+background as its own image instead of cutting the figure out of a finished
+scene. Then layer separation is not a extraction problem at all. The plate
+behind her was never occluded, so there is nothing to inpaint and nothing to
+guess, and real parallax --- the kind where the disc actually moves behind her
+--- becomes possible instead of the depth-dilation compromise in §7.1.
+
+Three ways to get there, and they are not equally good.
+
+| Route | How | Verdict |
+|---|---|---|
+| Two text-to-image passes | Generate the plate, then the figure | **No.** Two passes will not agree on light, style or disc position, and nothing forces them to. |
+| Inpaint the figure out of a finished scene | One scene, then an editing pass that removes her | Works, keeps agreement by construction, but needs an inpainting-capable model and the result behind her is invented anyway. |
+| **Render the background, generate only the figure** | The disc is a radial gradient with grain --- a shader, not a painting. Generate the figure on a flat plate and matte it. | **Recommended.** Agreement is guaranteed because there is only one generated layer. |
+
+The third route also pays forward: a disc that is drawn rather than painted can
+breathe, drift and change hue per phase (§4.4) without regenerating anything,
+and it is the same argument §7.1 already makes about the charm.
+
+**The cost, and it is the serious one.** What makes these images good is the
+rim light the model puts on her hair and shoulders *because it knows the disc
+is there*. Generate her on a flat plate and that interaction is gone; it has to
+be added back in the shader, from her matte's own normal, the way the skull
+already is. That is the hardest part of the look to fake and the part most
+likely to read as a cut-out --- which is exactly the failure §7.1 exists to
+avoid. It should be prototyped on one scene before the brief commits to it.
+
+Matting is already half-solved: BiRefNet (MIT) and ViTMatte (Apache-2.0) were
+both trialled while cutting the charm, and both are shippable licences.
+
 ---
 
 ## 8. What is already settled
@@ -521,7 +553,7 @@ re-runs the first of these and fails loudly if matugen's behaviour changes.
 | A2 | The phase grading recipe (§4.4) — the four parameter sets, fixed once and shared by all scenes. | Maintainer |
 | A3 | Does `--prefer saturation` pick the subject's colour or the background's? On the measured example it picked the background until the file was passed untouched. If it keeps missing, scenes declare their hue (§5.4). | Maintainer |
 | A4 | The reject threshold for scrim depth (§6, gate 1) is a guess at 25%. Needs one real rejection to calibrate. | Maintainer |
-| A5 | Layer separation for §7 — produced by the generator, or cut by hand per master? **Partly relieved 2026-11-07:** §7.1 gets usable parallax from a monocular depth map with no layers at all, so this is no longer blocking. It is still open for real occlusion, which needs both the layers and something to fill the gap behind the subject. | Maintainer |
+| A5 | Layer separation for §7 — produced by the generator, or cut by hand per master? **Partly relieved 2026-11-07:** §7.1 gets usable parallax from a monocular depth map with no layers at all, so this is no longer blocking. §7.2 proposes the actual answer — render the background and generate only the figure — and names the one thing that could sink it. Needs a prototype on one scene. | Maintainer |
 | A6 | Two weeks per candidate (§6, gate 3) is a guess. It may be one week; it is certainly not one day. | Maintainer |
 | ~~A7~~ | ~~nightshade's rendering style~~ **Settled 2026-11-07: ink-and-wash (sumi-e), recorded in §4.1.1.** Chosen from six candidates generated from an identical subject and seed. The paired finding went into §4.5: the style is traditional, the subject matter must not be. | Settled |
 | A8 | A4's scrim threshold now looks like the wrong axis on its own. Measured: the only candidate with correct composition scored 0.275, just *above* the 25% guess, while a candidate with **no subject** scored 0.000. Scrim alone rewards emptiness, so the reject rule needs a second term — minimum subject extent, or ornament density — or gate 1 will systematically prefer duller images. | Maintainer |
