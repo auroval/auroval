@@ -4,6 +4,7 @@ version = "0.0.0"
 edition.workspace = true
 rust-version.workspace = true
 repository.workspace = true
+license.workspace = true
 publish = false
 description = "P0 spike: does hardware video decode work in greetd's context? Throwaway."
 

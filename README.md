@@ -55,14 +55,27 @@ section. It includes a working alternative that needs no code.
 
 ## Licence
 
-**Not yet chosen** — see open question Q3 in the component PRD. Until a licence
-is added, default copyright applies and this is not yet open source in the legal
-sense.
+**MIT OR Apache-2.0**, at your option. See [`LICENSE-MIT`](LICENSE-MIT) and
+[`LICENSE-APACHE`](LICENSE-APACHE).
 
-The dependency that would have forced the choice no longer does. Q3 hung on Q2:
-whether the `greetd_ipc` crate is GPL-3.0-only. It is — declared in the crate's
-own manifest, which docs.rs does not display — so the protocol is implemented
-in-house instead, and no GPL code sits in the authentication path. **The licence
-is now a free choice rather than a constrained one**, and it is the one thing
-here that cannot be deferred indefinitely: a public repository with no licence
-is a repository nobody else may lawfully use.
+This is the Rust ecosystem's usual dual licence, and nothing in the project
+forced it either way. Open question Q2 had raised the possibility that the
+`greetd_ipc` crate — GPL-3.0-only, declared in its own manifest though not
+shown by docs.rs — would pull the authentication path into GPL. It would have,
+so the protocol is implemented in-house in `crates/greetd-proto` instead. An
+audit of the remaining 113 crates in the dependency graph found **no copyleft
+at all**: everything is MIT, Apache-2.0, Zlib or Unlicense, and the C libraries
+underneath (GStreamer and its plugins) are LGPL-2.1-or-later, which constrains
+nothing that links them dynamically.
+
+So the choice was free, and permissive is the one that matches
+[tenet 4](docs/tenets.md): copyleft's value is enforcement, and enforcement is
+work this project has already said it will not do. Apache-2.0 is offered
+alongside MIT for its express patent grant, which is worth having in a project
+built on hardware video decode.
+
+**A caveat that the licence does not cover.** Apache-2.0's patent grant
+concerns contributions to *this* software. It says nothing about H.264 or HEVC
+codec patents, which are a separate matter entirely. auroval ships no decoder —
+GStreamer and the GPU driver do the decoding — so this is somebody else's
+licensing problem, but it is not solved by anything in this file.
