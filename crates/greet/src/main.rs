@@ -54,33 +54,12 @@ fn main() {
     match std::env::args().nth(1).as_deref() {
         Some("probe") => probe(),
         Some("snapshot") => snapshot(),
-        Some(mode @ ("greet" | "preview")) => {
-            let preview = mode == "preview";
-            if !preview && std::env::var_os("GREETD_SOCK").is_none() {
-                eprintln!(
-                    "auroval-greet: GREETD_SOCK is unset — this has to be started by greetd."
-                );
-                eprintln!("       `auroval-greet preview` runs the same screen without it.");
-                std::process::exit(2);
-            }
-            // R13: the loader reports its own problems as it finds them, so
-            // they are not reported a second time here. They stay on `cfg`
-            // so the screen can show them too.
-            let cfg = Config::load(&config_path());
-            let found = sessions::discover();
-            if found.is_empty() {
-                eprintln!(
-                    "auroval-greet: no sessions found in {:?}",
-                    sessions::WAYLAND_DIRS
-                );
-            }
-            let last = Store::at(&cfg.state_path).load();
-            let ui = ui::UiState::new(found, &last);
-            if let Err(e) = shell::run(cfg, ui, preview) {
-                eprintln!("auroval-greet: {e}");
-                std::process::exit(1);
-            }
-        }
+        Some(mode @ ("greet" | "preview")) => greet(mode == "preview"),
+        // Belt and braces for the one caller that matters. The startup
+        // script names the mode, but a greeter that exits 2 on a missing
+        // argument fails in the context where nobody can read stderr, so a
+        // bare invocation with greetd behind it does the obvious thing.
+        None if std::env::var_os("GREETD_SOCK").is_some() => greet(false),
         _ => {
             eprintln!("{USAGE}");
             std::process::exit(2);
@@ -232,5 +211,32 @@ fn snapshot() {
             eprintln!("auroval-greet: read-back was the wrong size");
             std::process::exit(1);
         }
+    }
+}
+
+/// Start the screen. `preview` skips greetd entirely, which is how the look
+/// is worked on without a login screen to log into.
+fn greet(preview: bool) {
+    if !preview && std::env::var_os("GREETD_SOCK").is_none() {
+        eprintln!("auroval-greet: GREETD_SOCK is unset — this has to be started by greetd.");
+        eprintln!("       `auroval-greet preview` runs the same screen without it.");
+        std::process::exit(2);
+    }
+    // R13: the loader reports its own problems as it finds them, so they are
+    // not reported a second time here. They stay on `cfg` so the screen can
+    // show them too.
+    let cfg = Config::load(&config_path());
+    let found = sessions::discover();
+    if found.is_empty() {
+        eprintln!(
+            "auroval-greet: no sessions found in {:?}",
+            sessions::WAYLAND_DIRS
+        );
+    }
+    let last = Store::at(&cfg.state_path).load();
+    let ui = ui::UiState::new(found, &last);
+    if let Err(e) = shell::run(cfg, ui, preview) {
+        eprintln!("auroval-greet: {e}");
+        std::process::exit(1);
     }
 }
