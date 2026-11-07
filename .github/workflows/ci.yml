@@ -17,7 +17,7 @@ permissions:
 jobs:
   # Path filtering lives here rather than on the `on:` trigger, because a
   # required status check that never runs blocks a merge forever. Every job
-  # below is always *scheduled*; the filter decides whether it does any work,
+  # below is always scheduled; the filter decides whether it does any work,
   # and `ci` at the bottom aggregates into one stable required check.
   changes:
     name: Detect changes
@@ -27,7 +27,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       devcontainer: ${{ steps.filter.outputs.devcontainer }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
@@ -38,10 +38,10 @@ jobs:
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
               - '.github/workflows/ci.yml'
+              - '.github/actions/**'
             docs:
-              - 'docs/**'
-              - 'README.md'
               - '**/*.md'
+              - '.github/scripts/check-doc-links.py'
             devcontainer:
               - '.devcontainer/**'
 
@@ -51,8 +51,8 @@ jobs:
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - run: rustup show && rustup component add rustfmt
+      - uses: actions/checkout@v7
+      - run: rustup component add rustfmt
       - run: cargo fmt --all --check
 
   clippy:
@@ -61,9 +61,9 @@ jobs:
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/rust-build-deps
-      - run: rustup show && rustup component add clippy
+      - run: rustup component add clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
@@ -73,13 +73,12 @@ jobs:
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/rust-build-deps
-      - run: rustup show
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      # The greetd codec is pure logic and fully testable in CI. The spike is
+      # The greetd codec is pure logic and fully testable here. The spike is
       # only built: its measurements need a GPU and greetd's own user, so a
-      # green CI run deliberately claims nothing about decode.
+      # green CI run deliberately claims nothing about hardware decode.
       - run: cargo test --workspace --all-targets
       - run: cargo build --workspace --all-targets
 
@@ -89,28 +88,10 @@ jobs:
     if: needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       # The documents cross-reference each other heavily and are the whole
       # state of the project, so a broken relative link is a real defect.
-      - name: Check relative links between documents resolve
-        run: |
-          set -euo pipefail
-          fail=0
-          while IFS= read -r -d '' f; do
-            dir=$(dirname "$f")
-            grep -oE '\]\(([^)#]+)(#[^)]*)?\)' "$f" 2>/dev/null \
-              | sed -E 's/^\]\(//; s/\)$//; s/#.*$//' \
-              | while read -r link; do
-                  case "$link" in
-                    http*|mailto:*|'') continue ;;
-                  esac
-                  if [ ! -e "$dir/$link" ]; then
-                    echo "::error file=$f::broken link: $link"
-                    fail=1
-                  fi
-                done
-          done < <(find . -name '*.md' -not -path './target/*' -print0)
-          exit $fail
+      - run: python3 .github/scripts/check-doc-links.py
 
   devcontainer:
     name: devcontainer builds
@@ -118,7 +99,7 @@ jobs:
     if: needs.changes.outputs.devcontainer == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - run: docker build -f .devcontainer/Dockerfile .devcontainer
 
   # One required status check. It passes when nothing relevant changed and when
@@ -130,12 +111,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any needed job failed or was cancelled
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          FMT: ${{ needs.fmt.result }}
+          CLIPPY: ${{ needs.clippy.result }}
+          TEST: ${{ needs.test.result }}
+          DOCS: ${{ needs.docs.result }}
+          DEVCONTAINER: ${{ needs.devcontainer.result }}
         run: |
-          results='${{ join(needs.*.result, " ") }}'
-          echo "job results: $results"
-          for r in $results; do
-            case "$r" in
+          set -eu
+          status=0
+          check() {
+            echo "$1: $2"
+            case "$2" in
               success|skipped) ;;
-              *) echo "a required job reported: $r"; exit 1 ;;
+              *) echo "::error::job '$1' reported '$2'"; status=1 ;;
             esac
-          done
+          }
+          check changes "$CHANGES"
+          check fmt "$FMT"
+          check clippy "$CLIPPY"
+          check test "$TEST"
+          check docs "$DOCS"
+          check devcontainer "$DEVCONTAINER"
+          exit $status
