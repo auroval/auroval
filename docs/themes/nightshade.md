@@ -108,11 +108,19 @@ Values below are proposals to be tuned during the build, not measurements. The
 |---|---|---|
 | Resolution | Shorter side ≥ 1440 px | Below that, the renderer is upscaling on the maintainer's own output. |
 | Aspect | 16:9 source | The renderer **covers** (centre-crops) to the output, never letterboxes — R10 says neither letterboxed nor cropped-wrong, and a centre-crop of a centred subject survives both ultrawide and portrait. |
-| Safe field | The central region — 60% of width by 70% of height — must be dark | This is where the clock, the date, the user label and the input field land. It is the contract clause that makes "no scrim" possible. |
+| Composition | The central region — 60% of width by 70% of height — is dark | A look clause: this is what makes nightshade a subject-on-darkness theme rather than a landscape one. It earns no compensation on its own. |
+| Legibility | Behind **each UI element separately** — clock, date, username, input field — the background clears the 4.5:1 contrast floor | Measured per box at the 90th percentile, not as an average over the whole field. A mean hides a small bright thing: a measured image averaged 0.0905 while the disc behind its date line sat at 0.9936. |
 
-**Safe-field test:** within that region, mean relative luminance ≤ 0.06, and no
-more than 2% of pixels above 0.25. nightshade's own artwork meets this by
-construction. Media that does not gets a local scrim (§2.4), not a rejection.
+**Composition test:** within that region, mean relative luminance ≤ 0.06, and no
+more than 2% of pixels above 0.25.
+
+**Legibility test:** for each UI element, the background at the 90th percentile
+of its own box leaves the text above 4.5:1. This is the one that earns a scrim;
+composition does not, because dimming a picture for failing a taste rule would
+be absurd. nightshade's own artwork meets both by construction.
+
+Both are measured by `tools/scene-check/scene_check.py`; see
+[nightshade-assets.md](nightshade-assets.md) for how candidates are judged.
 
 ### 2.3 Loop
 
@@ -134,7 +142,8 @@ import — information, not a veto.
 | Aspect not 16:9 | Centre-crop to cover, as for any source. A centred subject survives it. |
 | Range undeclared | Assume limited, the safer guess, and say so in the import report. |
 | Loop seam visible | Played as-is. A visible cut once every 20 seconds is a flaw in their file, not a reason to refuse it. |
-| **Safe field too bright** | A local scrim is composited behind the UI — a soft radial gradient over the central region, only as strong as needed to reach the text contrast floor. |
+| **Legibility missed on an element** | A local scrim is composited behind the UI — a soft gradient over the central region, only as strong as the worst element needs to reach the contrast floor. |
+| **Composition missed** | Nothing. It is reported and the media is used as it is. A legible picture that is not subject-on-darkness still works; it just is not nightshade. |
 
 The scrim is the one real piece of compensation, and it is worth being precise
 about. It is **not** applied to nightshade's own artwork, which meets the clause
@@ -309,15 +318,24 @@ file that can fail.
 
 | Role | Source | Target |
 |---|---|---|
-| Accent hue | Extracted from the scene's canonical frame | whatever the media gives |
-| Accent lightness / chroma | **nightshade** | L\* ≈ 55–60, C\* ≥ 70 — neon, not pastel |
+| Accent hue | Extracted from the scene's canonical frame, or declared | whatever the media gives |
+| Accent lightness / chroma | **nightshade** | the sRGB cusp — the most chromatic colour available within L\* 50–70 that still clears the contrast floor. **Not a fixed C\***: C\* 75 is comfortable for magenta and impossible for cyan, so one number would make some hues neon and others pastel. |
 | Surface | **nightshade** | near-black, L\* ≤ 20 |
 | On-surface | **nightshade** | ≥ 7:1 against surface |
 | Error | **nightshade** | fixed; a failure message must not change colour with the wallpaper |
 
-Exact tonal targets are the maintainer's to pick — they are the theme's visual
-signature and the one number that decides whether nightshade reads as neon. They
-are carried as an open item, not settled here.
+The lightness band is the maintainer's to tune (N1). What is settled is the
+*form* of the answer: seek the cusp, never name a chroma. On a measured example
+this turns matugen's pastel `#ffb0cd` (C\* 33) into `#ff1296` (C\* 85.4) — the
+difference between the theme's stated look and its opposite.
+
+**Extraction is fragile, which is a third reason to commit the palette.**
+matugen's result depends on the file's bit depth: the same pixels at 16 and 8
+bits gave hues 118° apart (pink against cyan). Per file it is deterministic, but
+any re-encode changes the answer. So stills are never re-encoded before
+extraction, a video's canonical frame comes from one pinned command, and a scene
+may simply declare its hue. Detail in
+[nightshade-assets.md §5.4](nightshade-assets.md).
 
 The contrast figures from §4.2 are kept as **assertions**, not gates: cheap
 regression checks that matugen still behaves as measured, run at packaging time.
