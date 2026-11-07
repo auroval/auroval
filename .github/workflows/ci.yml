@@ -119,11 +119,23 @@ jobs:
       - run: pip install ruff==0.17.4 -r tools/scene-check/requirements.txt
       - run: ruff check tools .github/scripts
       - run: ruff format --check tools .github/scripts
-      # `scene-check` measures scene candidates and its numbers feed decisions
-      # in docs/themes/nightshade.md, so it is covered rather than treated as a
-      # scratch script. The smoke test is deliberately matugen-free: CI has no
-      # matugen, and the tool's internal hue extraction is the path CI and any
-      # fresh checkout actually hit.
+      # scene-check measures scene candidates and its numbers feed decisions in
+      # docs/themes/nightshade.md, so it is covered rather than treated as a
+      # scratch script. Two tests, deliberately not overlapping:
+      #
+      #   --self-test  the tool's own behavioural test, and the better one: it
+      #                asserts the measurements, including that a bright patch
+      #                behind a UI element is caught even when the composition
+      #                clause passes. Stills only, by design.
+      #   smoke-...py  what --self-test cannot reach: the --json key contract
+      #                that the theme documents quote, the internal hue
+      #                fallback that fires when matugen is absent (which is
+      #                CI's path), and the ffprobe branch a still never touches.
+      #
+      # --matugen-assertions is deliberately NOT run: it guards against
+      # matugen's behaviour changing on the maintainer's machine, which CI
+      # cannot observe, and matugen is not installed here.
+      - run: python tools/scene-check/scene_check.py --self-test
       - run: python .github/scripts/smoke-scene-check.py
 
   devcontainer:

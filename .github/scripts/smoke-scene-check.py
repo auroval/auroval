@@ -1,15 +1,26 @@
 #!/usr/bin/env python3
-"""Smoke-test `tools/scene-check` against a generated image.
+"""Check the parts of `tools/scene-check` that its own `--self-test` cannot.
 
-Why this exists rather than a unit test suite: `scene_check.py` is a
-measurement tool whose numbers feed design decisions in
-`docs/themes/nightshade.md`, and it has already been wrong twice in ways that
-changed the spec — once averaging luminance over one large field and calling an
-unreadable image acceptable, once re-encoding stills before handing them to
-matugen and silently swinging the extracted hue by 118 degrees. Both were found
-by looking at output, not by running it. A smoke test cannot catch a wrong
-number, but it can catch the tool not running at all, or its JSON contract
-changing underneath the documents that cite it.
+`scene_check.py --self-test` is the behavioural test and it is the better one:
+it asserts the measurements themselves, including that a bright patch behind a
+UI element is caught even when the composition clause passes, and that the
+accent reaches the sRGB cusp. CI runs it first. This file deliberately does not
+repeat any of that.
+
+What is left over, and why each piece is here:
+
+1. **The `--json` key contract.** `--self-test` exercises the tool's internals;
+   it does not go through `main()`, so a rename in the `--json` payload would
+   pass it. The theme documents quote these key names, so a silent rename is a
+   documentation break as much as a code change.
+2. **The internal hue fallback.** With matugen absent the tool falls back to its
+   own hue extraction, and that is the path CI and every fresh checkout take.
+   `--self-test` covers the `--hue` override instead, so this asserts the other
+   branch actually fires rather than merely not crashing.
+3. **The video path.** `--self-test` is stills-only by design. The ffprobe
+   argument list is built by implicit string concatenation inside an argv array,
+   one missing comma from becoming two arguments — and that exact line was
+   edited to satisfy `ISC004`. A stills-only test would have passed anyway.
 
 Deliberately matugen-free. CI has no matugen, and the tool's internal hue
 extraction is the path CI and any fresh checkout will actually hit, so
@@ -114,14 +125,12 @@ def run(scene: Path, *extra: str) -> dict:
         raise SystemExit(f"--json did not produce JSON: {exc}") from exc
 
 
-def check(result: dict, *, expect_source: str, expect_hue: float | None) -> None:
+def check(result: dict, *, expect_source: str) -> None:
     missing = REQUIRED_KEYS - set(result)
     if missing:
         raise SystemExit(f"missing keys in --json output: {sorted(missing)}")
     if result["hue_source"] != expect_source:
         raise SystemExit(f"hue_source was {result['hue_source']!r}, expected {expect_source!r}")
-    if expect_hue is not None and abs(result["hue"] - expect_hue) > 1e-6:
-        raise SystemExit(f"hue was {result['hue']}, expected {expect_hue}")
     if not isinstance(result["palette"], dict) or not result["palette"]:
         raise SystemExit("palette is empty or not an object")
     if not isinstance(result["clauses"], list):
@@ -136,15 +145,14 @@ def main() -> int:
         scene = Path(td) / "scene.png"
         make_scene(scene)
 
-        # 1. Declared hue: deterministic, so the value itself can be asserted.
-        check(run(scene, "--hue", "300"), expect_source="declared", expect_hue=300.0)
-
-        # 2. No declared hue and no matugen: the internal fallback must fire.
-        #    The value is not asserted — it is a measurement, and pinning it
-        #    here would turn a smoke test into a brittle snapshot.
-        check(run(scene), expect_source="internal", expect_hue=None)
-        if run(scene)["kind"] != "still":
-            raise SystemExit("a PNG was not classified as a still")
+        # 1. The internal fallback must fire when matugen is absent, and the
+        #    --json contract must hold. The hue value is not asserted: it is a
+        #    measurement, and pinning it would make this a brittle snapshot.
+        #    The --hue override is covered by --self-test, so it is not here.
+        result = run(scene)
+        check(result, expect_source="internal")
+        if result["kind"] != "still":
+            raise SystemExit(f"a PNG was classified as {result['kind']!r}")
 
         # 3. A video, for the ffprobe branch. Clause results are not asserted:
         #    a two-second clip legitimately fails the loop-duration clause, and
@@ -153,7 +161,7 @@ def main() -> int:
         clip = Path(td) / "clip.mp4"
         if make_clip(clip):
             result = run(clip, "--hue", "300")
-            check(result, expect_source="declared", expect_hue=300.0)
+            check(result, expect_source="declared")
             if result["kind"] != "video":
                 raise SystemExit(f"an mp4 was classified as {result['kind']!r}")
             if not result["clauses"]:
@@ -162,7 +170,7 @@ def main() -> int:
         else:
             print("  video path SKIPPED: ffmpeg not on PATH")
 
-    print("scene-check smoke test passed: both hue paths, JSON contract intact")
+    print("json contract intact, internal hue fallback fires, video path runs")
     return 0
 
 
