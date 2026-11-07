@@ -62,6 +62,20 @@ voice a year later, and §1.1 of the theme doc commits to recording it.
 Derived from [nightshade.md §1](nightshade.md), not invented here. Every clause
 below traces to a rule there.
 
+The brief has two halves and it is worth being explicit about which is which,
+because an earlier version of this section was not and the omission was costly
+— see §4.6.
+
+- **Constant across the whole theme**: the frame, the lighting, the chroma, the
+  grain, the composition rules, and the **rendering style** (§4.1). Every scene
+  in nightshade shares these. Changing any of them does not produce a nightshade
+  variant; it produces a different theme.
+- **Varies per scene**: the **subject**, and only the subject (§4.5).
+
+That split is tenet 1 at the level of artwork. A theme whose scenes disagree
+about how they are drawn is the *"four programs that have never met"* failure
+the thesis names, arriving through the back door.
+
 ### 4.1 The constant part
 
 > One subject, centred, filling the upper-middle of the frame, against
@@ -69,6 +83,43 @@ below traces to a rule there.
 > subject — no frontal key light. Saturated neon chroma: magenta, cyan,
 > violet. Near-black field below and around the subject. Visible film grain.
 > 16:9. No text, no logos, no watermark.
+
+#### 4.1.1 Rendering style — one theme, one style
+
+**A theme has exactly one rendering style, and it is not negotiable per scene.**
+nightshade's is recorded here once:
+
+> **Ink-and-wash painting.** Sumi-e brushwork on toned paper: fine
+> calligraphic black linework, soft pigment washes, visible brush and paper
+> texture. Painted, never photographed.
+
+The operative string, recorded because it is what actually reproduces the look
+and an art-historical label is not:
+
+> `Sumi-e ink wash painting with bold calligraphic brushstrokes on toned paper,`
+> `minimal flat colour accents, visible brush texture, no photographic realism`
+
+Chosen 2026-11-07 by comparing six candidates generated from an identical
+subject and seed, varying only this clause: ukiyo-e woodblock, ema votive
+panel, nihonga, maki-e lacquer, two-colour screenprint, and this. Those
+comparison images are not committed — the decision is, and it is reproducible
+from the strings above.
+
+Why this clause exists at all: nothing in the brief used to name a rendering
+style, and a generator with no style instruction returns **photorealism every
+time**. That is a default, not a choice, and it is not what the references look
+like — the kimono portrait reads as Japanese figurative art rather than as a
+photograph of a woman.
+
+Why it is a theme constant rather than a per-scene setting: two scenes drawn in
+different styles do not read as one theme no matter how well they match on
+palette, lighting and composition. The style is the most visible thing about an
+image and the least forgiving of inconsistency.
+
+**Consequence worth stating plainly.** Wanting nightshade's subjects in a
+different style is wanting a different theme, and the answer is to author one —
+which is exactly what [tenet 1](../tenets.md) says and exactly the answer it
+admits is steep.
 
 ### 4.2 The negative constraints — these matter more than the positive ones
 
@@ -110,6 +161,81 @@ together.
 
 This also means a scene's four phases are, by construction, the same picture.
 No consistency checking needed, because nothing was regenerated.
+
+### 4.5 The variable part — the subject
+
+This is the half that changes per scene, and it is the half the brief used to
+omit entirely.
+
+[nightshade.md §1](nightshade.md) sets the vocabulary without quite stating it
+as one: *"the skull pink-on-near-black under heavy grain, the kimono portrait
+with a cyan disc behind the head"*, and later *"A scene is one subject — one
+skull, one portrait"*. What those two share is not iconography but **density**:
+each is a single object carrying a lot of ornament, and the ornament is why the
+image holds up at the fiftieth look rather than the first.
+
+A subject qualifies when it is:
+
+- **Singular.** One object or one figure. Not a scene, not a pair, not a
+  landscape with something in it.
+- **Ornamented.** Carrying surface detail that rewards looking — embroidery,
+  engraving, inlay, filigree, botanical complexity. A plain object lit well is
+  what the brief produced before this section existed, and it was correct and
+  dull.
+- **Edged.** This is the clause that is easiest to lose and hardest to recover.
+  The rendering style is traditional; **the subject matter must not be.** The
+  reference kimono portrait is not a portrait of a geisha — it is a geisha
+  whose kimono is covered in skulls, with a fan of elaborate pins through her
+  hair. The form is traditional and the content subverts it, and that tension
+  is the whole reason the image holds attention.
+
+  Generated without this clause, the model returns cranes and florals every
+  time: competent, decorative, and exactly the thing the reference is reacting
+  against. Name the darker element explicitly in the subject phrase — skulls
+  among the florals, spider lilies, a cracked mask, bone, chain — or it will not
+  appear. This is a per-asset instruction precisely because *what* the edge is
+  changes per scene, while *that* there is one does not.
+- **Closed in silhouette.** It reads as a shape against black, with the field
+  around and below it staying dark.
+- **Still.** Nothing mid-motion. §7's loops animate by parallax over depth
+  layers, which a subject caught mid-gesture fights.
+
+Record the subject phrase for each scene in that scene's `source.md`, because
+it is the one part of the prompt that is not shared and therefore the one part
+that cannot be reconstructed from this document.
+
+### 4.6 What the first generation trial found
+
+Run on 2026-11-07 with FLUX.2 [klein] 4B, six candidates from the brief as it
+then stood, then eight more with a subject named. Three findings, all of which
+changed this document rather than the tooling.
+
+**The brief produced correct, compliant, boring images.** Every one of the
+first six passed all seven clauses. They were also characterless — a generic
+head, well lit and well placed. That is not a model failure: §4.1 called itself
+*"the constant part"*, no counterpart existed, and so the subject was never
+specified. Naming one produced the kimono portrait and the engraved skull on
+the first attempt. §4.5 exists because of this.
+
+**Nothing named a rendering style, so everything came back photoreal.** §4.1.1
+exists because of this.
+
+**§4.3 constrains the subject's glow but not its body, and that is not enough.**
+It says the bright mass must sit above the clock, and the kimono candidate
+obeyed that exactly — the cyan disc sat high and correct. It still scored
+maximum scrim, because the *torso* filled the centre and lower-middle where the
+input field goes. §4.3's rule should be read as applying to the subject's whole
+extent, not only to the part that is emitting light.
+
+**The gates cannot see any of this.** Scrim depth and the composition clauses
+measure legibility, not whether the brief was followed. The best-scoring
+candidate of the first six had **no subject at all** — an empty glow on black,
+scrim 0.000 — and a black frame would have scored better still. Gate 1 and
+gate 2 can reject an unusable image; only a human can reject an uninteresting
+one. That is what gate 3 is for, and it is a reason not to automate gate 3 away
+later when it feels slow.
+
+---
 
 ---
 
@@ -332,3 +458,5 @@ re-runs the first of these and fails loudly if matugen's behaviour changes.
 | A4 | The reject threshold for scrim depth (§6, gate 1) is a guess at 25%. Needs one real rejection to calibrate. | Maintainer |
 | A5 | Layer separation for §7 — produced by the generator, or cut by hand per master? Decides whether loops are cheap or expensive. | Maintainer |
 | A6 | Two weeks per candidate (§6, gate 3) is a guess. It may be one week; it is certainly not one day. | Maintainer |
+| ~~A7~~ | ~~nightshade's rendering style~~ **Settled 2026-11-07: ink-and-wash (sumi-e), recorded in §4.1.1.** Chosen from six candidates generated from an identical subject and seed. The paired finding went into §4.5: the style is traditional, the subject matter must not be. | Settled |
+| A8 | A4's scrim threshold now looks like the wrong axis on its own. Measured: the only candidate with correct composition scored 0.275, just *above* the 25% guess, while a candidate with **no subject** scored 0.000. Scrim alone rewards emptiness, so the reject rule needs a second term — minimum subject extent, or ornament density — or gate 1 will systematically prefer duller images. | Maintainer |
