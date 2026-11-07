@@ -53,3 +53,43 @@ rather than playing a file is the candidate most likely to justify it.
 Prior art for the pattern, not the use: Zellij's plugins are WebAssembly/WASI,
 and `zjstatus` — a status bar — is written as one. Zellij's own documentation
 calls its plugin system early and its API a work in progress.
+
+### Live motion: compositing depth layers in the renderer
+
+Parked on 2026-11-07, when the maintainer decided **bake** — see
+[the §7 note](themes/nightshade-assets.md) and issue #18.
+
+The idea: a theme ships separated depth layers plus motion parameters, and the
+renderer composites each frame with sine-driven parallax instead of decoding a
+video. No decoder on any surface, no loop seam even in principle, assets a
+fraction of the size, and the desktop's subtle drift costing almost nothing.
+
+**Why it is parked rather than rejected.** Tenet 3 is a real argument for it:
+*"het moet tijdloos zijn en niet gaan irriteren"*, and a 10–30 second loop will
+eventually be recognised as a loop. Recognising the loop point is exactly the
+kind of thing that grates by the second week. Sine-driven parallax has no loop
+point to recognise, so this is not a performance optimisation dressed up — it
+addresses the tenet the project is least able to test in advance.
+
+**Why it is not the architecture.** Tenet 6 settles that: *"mensen moeten zelf
+ook eigen video's in kunnen gebruiken"*. An arbitrary MP4 has no depth layers in
+it, so live compositing cannot serve the media the project has committed to
+supporting. The decoder is therefore mandatory, and live motion would add a
+second motion path alongside it rather than removing anything. Every constraint
+it appeared to retire — C6's memory-type portability, Q5's renderer difficulty,
+R8, C15's registry cost — stays required for the user-video path regardless.
+
+**The trigger to revisit, stated so it is falsifiable.** If living with a baked
+loop shows loop recognisability to be the irritation tenet 3 warns about — which
+gate 3 of the asset brief is two weeks of exactly this test — then this becomes
+worth building as an *additional* path for shipped themes, with user video still
+decoded. Nothing short of that observation should reopen it, because the
+alternative is building a second engine to fix a problem nobody has had yet.
+
+**If it is ever built: motion parameters, not a motion function.** A theme
+supplying amplitude, frequency, phase and parallax depth per layer is data, the
+maths is Rust, and R22 stays a load-time concern with §3.3's fallbacks. A theme
+supplying a motion *function* runs it sixty times a second in a
+pre-authentication process under a restricted interpreter, which turns every one
+of R22's failure modes into a per-frame concern. The first is buildable; the
+second is the attractive-sounding one.

@@ -297,12 +297,43 @@ Candidate motions, all sine-driven and all cheap: slow parallax between
 separated depth layers; drifting grain; a breathing rim-light intensity; slow
 drift of a glow's position; particles on a closed path.
 
-**Cost, stated plainly.** This is a renderer feature, not an asset. It needs
-layer separation on each master and a small amount of motion code, which is
-work that generating an MP4 would have avoided. It also caps how alive a scene
-can look: nothing walks, nothing turns. For a theme whose desktop is explicitly
-meant not to move, that cap is close to free — but it is a real limit and it
-would be the wrong choice for a theme that wanted spectacle.
+**This is an offline production step, not a renderer feature.** An earlier
+version of this section said the opposite, and it mattered: described as a
+renderer feature, sine-driven motion implied an architecture in which the
+greeter composites depth layers each frame and needs no decoder at all. That
+fork was raised on #18 and **the maintainer decided it on 2026-11-07: bake.**
+
+Tenet 6 is what settles it. *"mensen moeten zelf ook eigen video's in kunnen
+gebruiken"* — a user points the greeter at an arbitrary MP4, which has no depth
+layers in it, so runtime compositing cannot serve the media the project has
+committed to supporting. The decoder is mandatory, which means live compositing
+would add a second motion path rather than replace the first. See
+[`../ideas.md`](../ideas.md), where it is parked with its trigger condition.
+
+**Nothing in this section is lost by that.** The sine argument is about the
+*parameter*, not about when it is evaluated: a value that returns to its
+starting value and starting velocity at the loop boundary has no seam whether it
+is evaluated at 60 Hz in a renderer or written to frames by a script the night
+before. So the route stays recommended and the pipeline becomes: animate the
+master still offline with sine-driven parameters, render the frames, encode an
+HEVC loop. R8 is still satisfied by construction.
+
+**Cost, stated plainly.** It needs layer separation on each master and a small
+amount of animation code, which is work that generating an MP4 would have
+avoided. It caps how alive a scene can look: nothing walks, nothing turns. For a
+theme whose desktop is explicitly meant not to move, that cap is close to free —
+but it is a real limit and would be the wrong choice for a theme that wanted
+spectacle.
+
+**One residual risk, and it is the encoder's.** The seam is exact in the frames
+and only *nearly* exact in the file: inter-frame compression means the last
+encoded frame and the first are not reconstructed identically, and a keyframe at
+the loop point can differ in quality from the predicted frames before it. That
+is a subtle pop rather than a visible cut, and it is exactly what R8's fit
+criterion measures — frame-to-frame difference across the boundary no larger
+than between two ordinary consecutive frames. Worth measuring on the first
+scene rather than assuming, since it is the one part of the seam that
+mathematics does not hand us for free.
 
 ---
 
