@@ -21,6 +21,22 @@ use atlas::Atlas;
 
 type Egl = egl::DynamicInstance<egl::EGL1_4>;
 
+/// Everything the input field needs, as one value. The shape is R11's, and
+/// passing it whole keeps the signature readable — nine positional floats is
+/// how a radius ends up in the outline's place.
+#[derive(Debug, Clone, Copy)]
+pub struct Field {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub radius: f32,
+    pub power: f32,
+    pub outline: f32,
+    pub fill: Rgba,
+    pub stroke: Rgba,
+}
+
 pub struct Renderer {
     egl: Egl,
     display: egl::Display,
@@ -282,18 +298,18 @@ impl Renderer {
     }
 
     /// The input field: a superellipse with an outline, per R11.
-    pub fn draw_field(
-        &self,
-        x: f32,
-        y: f32,
-        w: f32,
-        h: f32,
-        radius: f32,
-        power: f32,
-        outline: f32,
-        fill: Rgba,
-        stroke: Rgba,
-    ) {
+    pub fn draw_field(&self, f: &Field) {
+        let Field {
+            x,
+            y,
+            w,
+            h,
+            radius,
+            power,
+            outline,
+            fill,
+            stroke,
+        } = *f;
         unsafe {
             self.bind_quad(self.rect);
             self.uniform4(self.rect, "box", [x, y, w, h]);
