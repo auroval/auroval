@@ -397,8 +397,23 @@ rendering and plumbing only.
 | R8 | MUST | Loop without a visible seam. | Frame-to-frame diff across the loop boundary is no larger than between two ordinary consecutive frames. |
 | R9 | MUST | Fall back, in order, to still image then solid colour, when decode is unavailable. | With GStreamer plugins made unavailable, the greeter still renders and still logs in; the fallback is logged, not silent. |
 | R10 | MUST | Render one surface per output at that output's scale. | On two outputs of differing scale, text is sharp on both and neither is letterboxed or cropped. |
-| R11 | MUST | Reproduce hyprlock's visual language: Catppuccin Mocha, MesloLGS Nerd Font, the large clock, and the rounded input field. | Side-by-side with hyprlock at the same resolution, palette values, font and the input field's size and rounding are identical. |
+| R11 | MUST | Reproduce hyprlock's geometry and typography — MesloLGS Nerd Font, the large clock, and the rounded input field at the desktop's own corner radius and rounding power. Colour comes from the active theme's palette, not from a fixed scheme. | Side-by-side with hyprlock at the same resolution, the font, the clock size and the input field's size and rounding are identical. Palette values match the active theme's table and are byte-identical across greeter, lock and desktop. |
 | R12 | SHOULD | Support time-of-day or light/dark background variants (C9). | A config naming two sources renders the one matching the current time, verified by faking the clock. **Confirmed as Should by Q1**, which chose video loops as the subject: this is the clock making a moving background stay interesting, not a substitute for motion. A build that shipped only this and no loop would fail tenet 2. |
+
+**R11 dropped its Catppuccin Mocha pin on 2026-11-07.** The original wording
+required reproducing hyprlock exactly, palette included. That is the wrong
+target: `hyprlock.conf` is hard-pinned to Catppuccin while the desktop takes a
+wallpaper-derived palette from matugen, which makes the lock screen the one
+surface on this machine that does not follow the others — the same fault as the
+SDDM greeter this project was started over. Reproducing it would have shipped
+the bug. The geometry and typography were always the valuable half of R11 and
+are kept, with the corner radius and rounding power now named explicitly. See
+[themes/nightshade.md](../themes/nightshade.md) for how a theme supplies colour.
+
+R12's priority was left open here pending Q1 and is **settled**: Q1 chose video
+loops, so time-of-day variants stay a Should. [nightshade](../themes/nightshade.md)
+treats them as part of what a theme *is*, which is consistent with that — a
+theme may require of itself more than the greeter requires of every theme.
 
 ### Robustness
 
