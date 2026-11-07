@@ -333,9 +333,14 @@ impl Shell {
                 // R16 is a budget, so the number is printed rather than
                 // assumed. P0's 243 ms was measured at 1255x674 in a nested
                 // cage; this is the figure that replaces it.
+                // One line, carrying both numbers a measurement needs, in a
+                // shape a script can parse. R16 is a budget, so this is not a
+                // debug print: the harness in spike/p1e reads exactly this.
                 eprintln!(
-                    "auroval-greet: first frame after {} ms",
-                    (Instant::now() - self.started).as_millis()
+                    "auroval-greet: first frame {} ms, surface {}x{}",
+                    (Instant::now() - self.started).as_millis(),
+                    target.width,
+                    target.height
                 );
             }
             if self.preview {

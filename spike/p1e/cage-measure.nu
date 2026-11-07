@@ -169,33 +169,34 @@ def main [
     $lines = ($lines | append ["" "── verdict ──"])
 
     if ($frames | is-empty) {
-        # Today this is the branch that runs: `auroval-greet` has no Wayland
-        # shell yet (that is piece #36) and so draws no frame to time. The
-        # wall times below are the process's whole lifetime, which is an
-        # upper bound on nothing useful — they are recorded so that the run
-        # is not silently empty, not so that R16 can be settled from them.
+        # This branch used to be the normal one, when `auroval-greet` had no
+        # Wayland shell to draw with. Now it means something went wrong: the
+        # wall times are the process's whole lifetime, an upper bound on
+        # nothing useful, recorded so a run is never silently empty rather
+        # than so R16 can be settled from them.
         let walls = ($warm | get wall | math median)
         let codes = ($results | get code | uniq)
         print ""
         print "  NO FIRST-FRAME LINE in any run."
-        print "  The binary printed no `first presented : Nms after start`, so"
-        print "  R16 is NOT measured by this run. That is expected until the"
-        print "  Wayland shell lands \(#36); re-run this script then."
+        print "  The binary printed no `first frame N ms, surface WxH`, so R16"
+        print "  is NOT measured by this run. This used to be the normal"
+        print "  outcome, before the greeter had a shell to draw with; now it"
+        print "  means something is wrong. Check the probe output above."
         print $"  Median warm wall time, for what little it is worth: ($walls) ms"
         $lines = ($lines | append [
             "R16 NOT MEASURED — the binary printed no first-frame line."
-            "Expected until the Wayland shell (#36) lands. Re-run then."
+            "This is now a fault, not the expected state — see the probe output above."
             $"median warm wall time ($walls) ms — process lifetime, not first frame"
         ])
         if not (0 in $codes) {
-            # Every run failed outright. Today that is simply `auroval-greet`
-            # with no subcommand printing its usage and exiting 2, which is
-            # the greeter not having a shell yet rather than anything broken.
-            # Said out loud, because "no first-frame line" and "the binary
-            # refused to start" deserve to be told apart on the console.
+            # "No first-frame line" and "the binary refused to start" deserve
+            # to be told apart on the console: the first is a greeter that ran
+            # and drew nothing, the second is a greeter that never ran. Exit 2
+            # is the usage message, which once meant the binary had no shell
+            # and now means it was handed no mode.
             print $"  Every run exited non-zero \(($codes | str join ', ')\) — the binary did"
-            print "  not even start a greeter. Until #36 lands, `auroval-greet`"
-            print "  with no subcommand prints its usage and exits 2."
+            print "  not even start a greeter. Exit 2 is its usage message:"
+            print "  check that this script passes a mode (`preview`)."
             $lines = ($lines | append $"every run exited non-zero (($codes | str join ', ')) — no greeter was started")
         }
     } else {
@@ -242,20 +243,26 @@ def run-once [bin: string, cache: string, timeout: int] {
         with-env {
             XDG_CACHE_HOME: $cache
             GST_REGISTRY: $"($cache)/gst-registry.bin"
-        } { ^timeout $"($timeout)s" cage -- $bin }
+        } { ^timeout $"($timeout)s" cage -- $bin preview }
     } | complete)
     let wall = ((date now) - $t0 | into int) / 1000000
     let text = $"($r.stdout)\n($r.stderr)"
-    # Both spellings the P0 spike used, so a run against either binary parses.
+    # One line from the greeter carries both numbers:
+    #     auroval-greet: first frame 14 ms, surface 2560x1440
+    # The P0 spike's older spellings are kept as a fallback so a run against
+    # that binary still parses.
     let frame = (
         $text
-        | parse -r '(?m)first presented[^:]*:\s*([\d.]+)\s*ms after start'
+        | parse -r '(?m)first frame (?:after )?([\d.]+)\s*ms'
         | get -o capture0.0
+        | default ($text | parse -r '(?m)first presented[^:]*:\s*([\d.]+)\s*ms after start' | get -o capture0.0)
     )
     let size = (
         $text
-        | parse -r '(?m)(?:surface )?configured\s*:?\s*(\d+x\d+)'
-        | get -o capture0.0 | default "—"
+        | parse -r '(?m)surface (\d+x\d+)'
+        | get -o capture0.0
+        | default ($text | parse -r '(?m)configured\s*:?\s*(\d+x\d+)' | get -o capture0.0)
+        | default "—"
     )
     {
         frame: (if ($frame | is-empty) { null } else { $frame | into float })
