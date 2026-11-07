@@ -73,7 +73,23 @@ ON_SURFACE_L, ON_SURFACE_C = 92.0, 8.0
 OUTLINE_L, OUTLINE_C = 58.0, 8.0
 ERROR_HEX = "ffb4ab"  # fixed by the theme; never tracks the media
 
-TEXT_CONTRAST_FLOOR = 4.5  # §2.4 scrim target
+# Which palette role each UI element is drawn in, and the contrast floor it is
+# held to. Both come from nightshade.md §4.6 and neither is this tool's to
+# choose. An earlier version picked `outline` for the date HERE, in the
+# measuring tool, and nothing in docs/ said otherwise --- so gate 1 was failing
+# artwork for a decision nobody had made. `outline` is Material's border role
+# and cannot clear 4.5:1 over any background brighter than Y 0.0186, which is
+# about 7.5x darker than `on_surface` tolerates.
+#
+# Floors follow WCAG: 4.5:1 for normal text, 3:1 for large text (>= 24 px).
+# `px` is also what sizes the measured region, so the size that justifies the
+# floor and the size that is measured cannot drift apart.
+UI_ELEMENTS = {
+    "clock": {"role": "on_surface", "px": 110, "floor": 3.0, "sample": "00:00"},
+    "date": {"role": "on_surface", "px": 22, "floor": 4.5, "sample": "Saturday, 7 November"},
+    "user": {"role": "primary", "px": 16, "floor": 4.5, "sample": "dirk"},
+    "input field": {"role": "primary", "px": 20, "floor": 4.5, "sample": None},
+}
 UI_PERCENTILE = 90  # the worst part of a region, not its average
 MATUGEN_FALLBACK = "adc6ff"  # what matugen returns when extraction fails
 
@@ -217,10 +233,12 @@ def ui_regions(W: int, H: int) -> dict[str, tuple[int, int, int, int]]:
         )
 
     fw, fh = 340, 56
+    # Sizes come from UI_ELEMENTS, so the px that justifies an element's
+    # contrast floor is the same px that defines the box being measured.
     return {
-        "clock": text_box("00:00", 110, cy - 220),
-        "date": text_box("Saturday, 7 November", 22, cy - 130),
-        "user": text_box("dirk", 16, cy - 40),
+        "clock": text_box(UI_ELEMENTS["clock"]["sample"], UI_ELEMENTS["clock"]["px"], cy - 220),
+        "date": text_box(UI_ELEMENTS["date"]["sample"], UI_ELEMENTS["date"]["px"], cy - 130),
+        "user": text_box(UI_ELEMENTS["user"]["sample"], UI_ELEMENTS["user"]["px"], cy - 40),
         "input field": (
             cx - fw // 2 - pad,
             cy + 40 - fh // 2 - pad,
@@ -401,13 +419,15 @@ def hue_of(hexv: str) -> float:
     return C.rgb_to_lch(C.hex_to_rgb(hexv))[2]
 
 
-def scrim_alpha_for(lum: float, fg_hex: str) -> float:
-    """Alpha of a black scrim needed to reach the text contrast floor.
+def scrim_alpha_for(lum: float, fg_hex: str, floor: float) -> float:
+    """Alpha of a black scrim needed to reach this element's contrast floor.
 
-    Compositing black at alpha a multiplies linear luminance by (1 - a).
+    Compositing black at alpha a multiplies linear luminance by (1 - a). The
+    floor is per element rather than one constant, because WCAG's 4.5:1 is for
+    normal text and large text is allowed 3:1 --- and the clock is 110 px.
     """
     lt = C.relative_luminance(C.hex_to_rgb(fg_hex))
-    target = (lt + 0.05) / TEXT_CONTRAST_FLOOR - 0.05
+    target = (lt + 0.05) / floor - 0.05
     if lum <= target or lum <= 0:
         return 0.0
     return float(min(0.90, max(0.0, 1 - target / lum)))
@@ -587,16 +607,11 @@ def evaluate(path: Path, tmp: Path, hue_override: float | None = None) -> Result
     res.assertions = palette_assertions(res.palette)
 
     # Legibility, measured where the UI actually lands.
-    fg = {
-        "clock": res.palette["on_surface"]["hex"],
-        "date": res.palette["outline"]["hex"],
-        "user": res.palette["primary"]["hex"],
-        "input field": res.palette["primary"]["hex"],
-    }
     measured = measure_regions(frame)
     worst = 0.0
     for name, lum in measured.items():
-        need = scrim_alpha_for(lum, fg[name])
+        spec = UI_ELEMENTS[name]
+        need = scrim_alpha_for(lum, res.palette[spec["role"]]["hex"], spec["floor"])
         res.regions[name] = (lum, need)
         worst = max(worst, need)
         res.clauses.append(
@@ -604,7 +619,8 @@ def evaluate(path: Path, tmp: Path, hue_override: float | None = None) -> Result
                 "§2.2",
                 f"legibility · {name}",
                 need == 0.0,
-                f"background at p{UI_PERCENTILE} = {lum:.4f}",
+                f"background at p{UI_PERCENTILE} = {lum:.4f}"
+                f"  ({spec['role']} @ {spec['floor']:g}:1)",
                 "" if need == 0.0 else f"scrim {need * 100:.0f}% behind this element",
             )
         )
@@ -684,9 +700,15 @@ def render_preview(
         d.text((cx - w // 2 + 3, y + 3), text, font=f, fill=(17, 17, 27, int(170 * alpha)))
         d.text((cx - w // 2, y), text, font=f, fill=_rgba(hexv, alpha))
 
-    centred(now.strftime("%H:%M"), cy - 220 - 70, 110, pal["on_surface"]["hex"])
-    centred(now.strftime("%A, %-d %B"), cy - 130 - 14, 22, pal["outline"]["hex"])
-    centred("dirk", cy - 40 - 10, 16, pal["primary"]["hex"])
+    # Roles and sizes from UI_ELEMENTS, so the preview shows what was measured.
+    # It previously drew the date in `outline` while nothing else did.
+    def element(name: str, text: str, y: int) -> None:
+        spec = UI_ELEMENTS[name]
+        centred(text, y, spec["px"], pal[spec["role"]]["hex"])
+
+    element("clock", now.strftime("%H:%M"), cy - 220 - 70)
+    element("date", now.strftime("%A, %-d %B"), cy - 130 - 14)
+    element("user", "dirk", cy - 40 - 10)
 
     fw, fh, r = 340, 56, 12
     x0, y0 = cx - fw // 2, cy + 40 - fh // 2
