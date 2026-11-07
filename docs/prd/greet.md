@@ -248,10 +248,14 @@ sets `DisplayServer=x11` and the journal confirms *"Starting X11 session:
 /usr/bin/sddm-greeter-qt6"*. `xorg-server` is installed for this and
 essentially nothing else; `/usr/share/xsessions/` does not exist.
 
-**C9 — "like Apple" covers two different things.** tvOS aerials are HEVC video
-loops; macOS dynamic desktops are HEIC containers holding several stills keyed
-to time of day or light/dark. **Unverified** which is meant; see Q1. The
-requirements below assume video loops and treat time-of-day variants as Should.
+**C9 — "like Apple" covers two different things, and the answer is the video
+one.** tvOS aerials are HEVC video loops; macOS dynamic desktops are HEIC
+containers holding several stills keyed to time of day or light/dark. Q1 is
+settled: **video loops**, decided 2026-11-07. So the tvOS model is the subject
+and the macOS one is the secondary feature — the requirements' existing
+assumption is now a decision, and R12 stays a Should rather than becoming a
+Must. HEVC loops are a measured path rather than an aspiration: C6 found
+`nvh265dec` holding 1440p60 for 2.9% of one core.
 
 **C10 — the greeter runs as a different user than the desktop.** A greeter runs
 as its own unprivileged system user, which cannot traverse a home directory at
@@ -368,7 +372,7 @@ rendering and plumbing only.
 | R9 | MUST | Fall back, in order, to still image then solid colour, when decode is unavailable. | With GStreamer plugins made unavailable, the greeter still renders and still logs in; the fallback is logged, not silent. |
 | R10 | MUST | Render one surface per output at that output's scale. | On two outputs of differing scale, text is sharp on both and neither is letterboxed or cropped. |
 | R11 | MUST | Reproduce hyprlock's visual language: Catppuccin Mocha, MesloLGS Nerd Font, the large clock, and the rounded input field. | Side-by-side with hyprlock at the same resolution, palette values, font and the input field's size and rounding are identical. |
-| R12 | SHOULD | Support time-of-day or light/dark background variants (C9). | A config naming two sources renders the one matching the current time, verified by faking the clock. |
+| R12 | SHOULD | Support time-of-day or light/dark background variants (C9). | A config naming two sources renders the one matching the current time, verified by faking the clock. **Confirmed as Should by Q1**, which chose video loops as the subject: this is the clock making a moving background stay interesting, not a substitute for motion. A build that shipped only this and no loop would fail tenet 2. |
 
 ### Robustness
 
@@ -443,7 +447,7 @@ to publish. The README may describe how to create one; it must not contain one.
 
 | # | Question | What would settle it | Owner |
 |---|---|---|---|
-| Q1 | Video loops, or Apple-style time-of-day stills, or both? | Picking a reference the maintainer actually wants to look at daily. Changes whether R12 is Should or Must. | Maintainer |
+| Q1 | ~~Video loops, or Apple-style time-of-day stills, or both?~~ **Answered: video loops.** | Decided by the maintainer, 2026-11-07. Video loops are the subject; time-of-day variants stay a Should (R12) rather than becoming a Must. This is tenet 2 applied rather than overridden — motion you can see comes first, and the clock is how it stays interesting. P0 having shown decode is cheap (C6) means nothing forces the fallback to stills. | Settled |
 | Q2 | ~~Is `greetd_ipc` usable, and under what licence?~~ **Answered: GPL-3.0-only, and not used.** | `greetd_ipc` 0.10.3 declares `license = "GPL-3.0-only"` in its own `Cargo.toml.orig` and bundles the GPLv3 text; docs.rs simply does not render the field, which is why the secondary source looked unreliable. The codec is therefore implemented in-house in `crates/greetd-proto` — the whole protocol, with tests, well under 200 lines — so no GPL code sits in the authentication path and Q3 is free. | Settled |
 | Q3 | ~~Which licence for `greet`?~~ **Answered: MIT OR Apache-2.0.** | Q2 removed the only constraint, and an audit of all 113 crates in the dependency graph found no copyleft whatsoever, so the choice was entirely free. Permissive follows tenet 4: copyleft's worth is enforcement, which this project has said it will not do. Apache-2.0 accompanies MIT for its patent grant, relevant in a project built on hardware video decode — though that grant covers contributions here and not codec patents, which are unrelated. | Settled |
 | Q4 | Which configuration format at all? The stated reason for hyprlang was consistency with Hyprland — but **Hyprland deprecated hyprlang in 0.55 and moves to Lua**, so that argument now points the other way. hyprlock still uses hyprlang. | Deciding what consistency is worth being consistent *with*: the compositor's new direction (Lua), the lock screen's current one (hyprlang), or neither. Only then does C3's reimplement/adopt/bridge question matter. See also [parked ideas](../ideas.md) on executable themes. | Maintainer |
