@@ -97,7 +97,7 @@ Values below are proposals to be tuned during the build, not measurements. The
 
 | Property | Requirement | Why |
 |---|---|---|
-| Video codec | H.264 High, or HEVC Main / Main10 | The profiles [C6](../prd/greet.md) verified at `VAEntrypointVLD` on the target. Anything else is a software-decode trap. |
+| Video codec | H.264 High, or HEVC Main / Main10 | The formats [C6](../prd/greet.md) measured decoding in hardware in the greeter's own context — 59.50 and 59.70 fps at 1440p60, against a 36–54% software baseline. The theme names **formats, never decoders**: `decodebin3` rank-selects, which is what keeps the same media working on AMD and Intel. |
 | Still format | PNG or JPEG | Matches what the desktop path already handles. |
 | Colour primaries | BT.709, range declared (full or limited) | An undeclared range is the usual cause of a washed-out or crushed render, and it would poison the derived palette (§4). |
 | Bit depth | 8-bit minimum, 10-bit preferred for video | A near-black field at 8-bit bands visibly. 10-bit or grain; ideally both. |
@@ -129,7 +129,7 @@ import — information, not a veto.
 
 | Clause fails | What happens |
 |---|---|
-| Codec unsupported | Runtime fallback per R9: still image, then solid colour. Logged, not silent. This path already exists and is release-blocking. |
+| Codec unsupported, or no hardware decoder for it | Runtime fallback per R9: still image, then solid colour. Logged, not silent. Release-blocking, and the only honest answer on hardware where the theme's own loops cannot be decoded — C6's remaining unverified case is a VA-API-only machine, which no one has tested. |
 | Resolution below 1440 | Upscaled. It looks soft. That is the user's file being soft. |
 | Aspect not 16:9 | Centre-crop to cover, as for any source. A centred subject survives it. |
 | Range undeclared | Assume limited, the safer guess, and say so in the import report. |
