@@ -2,16 +2,25 @@
 #
 # P1/E — R16's real number: first frame, at native resolution, on a real VT.
 #
-# The 500 ms budget in the PRD is provisional and says so. It was set from one
-# P0 measurement of 243 ms at 1255x674 through a NESTED cage inside a live
-# Hyprland session. Both halves of that are wrong for a greeter: the surface
-# was a window, not a 2560x1440 monitor, and the machine underneath it was a
-# running desktop. Q5 then measured the same binary at 44% of a core on a
-# quiet desktop and 60% on a busy one, which is the whole argument for why a
-# greeter cannot be judged from inside a session.
+# R16's budget was provisional until 2026-11-07, set from one P0 measurement
+# of 243 ms at 1255x674 through a NESTED cage inside a live Hyprland session.
+# Both halves of that are wrong for a greeter: the surface was a window, not a
+# 2560x1440 monitor, and the machine underneath it was a running desktop. Q5
+# then measured the same binary at 44% of a core on a quiet desktop and 60% on
+# a busy one, which is the whole argument for why a greeter cannot be judged
+# from inside a session.
 #
-# So this script runs the real binary under a real cage on a real VT, warm,
-# ten times, and prints the median. Whatever it says is R16's number.
+# This script runs the real binary under a real cage on a real VT, warm, ten
+# times, and prints the median. It has been run: median 8 ms, worst 9 ms, at
+# 2560x1440, receipt in cage-run-2026-11-07-2326.txt. 243 against 8 is the
+# cost of the nesting, not of the greeter.
+#
+# It is kept, and still the thing to run, because that number covers only the
+# still background. A video wallpaper and R23's audio both pull in GStreamer,
+# which nothing on this path touches yet — which is also why C15's 0.9 s
+# registry rescan does not show up here at all: cold and warm both came out at
+# 8 ms, a rescan that never happened rather than a cheap one. When the media
+# path lands this gets taken again, and the COLD run is the one that matters.
 #
 # NO SUDO. cage takes DRM master through logind from whichever VT you are
 # logged in on, so a TTY login is all this needs. That is also exactly why it
@@ -79,7 +88,7 @@ def main [
         $"binary    ($bin)"
         $"cache     ($cache)"
         $"runs      ($runs) warm, 1 cold"
-        $"budget    ($BUDGET_MS) ms  \(provisional, from P0 at 1255x674 nested)"
+        $"budget    ($BUDGET_MS) ms  \(settled 2026-11-07: median 8 ms at 2560x1440)"
         $"host      (sys host | get hostname)  kernel (sys host | get kernel_version)"
         $"tty       (do { ^tty } | complete | get stdout | str trim)"
         ""

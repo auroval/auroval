@@ -8,39 +8,55 @@ has not.
 
 | box | state |
 |---|---|
-| harness runs the greeter under `cage` on a real VT | **done**, run on tty3 on 2026-11-07 |
+| harness runs the greeter under `cage` on a real VT | **done**, run on tty3 on 2026-11-07; eleven runs, all `exit 0`, about six seconds |
 | `n/total` progress, results written after every step | **done**, verified by running it |
 | greetd config touching neither `config.toml` nor SDDM | **done** |
 | `/var/lib/auroval` owned by the greeter | **written** as tmpfiles; needs one root command to take effect |
 | C15 cache in the greeter's environment | **done** in `deploy/auroval-greet.sh` |
-| R16 re-measured at 2560×1440 on a real VT | **done** — 8 ms warm, 9 ms cold, surface 2560×1440. See below |
-| C15 cache measured in the greeter's own context | **not yet, and now known to be unmeasurable here** — nothing on the still-background path starts GStreamer, so cold and warm came out 9 ms and 8 ms. The 1018/93 ms figures remain P0's until the media path lands |
+| R16 re-measured at 2560×1440 on a real VT | **done** — median 8 ms over ten warm runs, worst 9 ms, cold 8 ms, surface 2560×1440. See below |
+| C15 cache measured in the greeter's own context | **not yet, and now known to be unmeasurable here** — nothing on the still-background path starts GStreamer, so cold and warm both came out at 8 ms. The 1018/93 ms figures remain P0's until the media path lands |
 
 ## R16's number, measured
 
-Run on **2026-11-07 23:08**, host `games-werkkamer`, kernel 7.3.1-1-cachyos,
+Run on **2026-11-07 23:26**, host `games-werkkamer`, kernel 7.3.1-1-cachyos,
 nvidia, from a TTY login on `/dev/tty3` with `cage` taking DRM master
-directly. No desktop session underneath it, no nesting.
+directly. No desktop session underneath it, no nesting. Eleven runs, all
+`exit 0`. Receipt: `cage-run-2026-11-07-2326.txt`.
 
 ```
-cold  first frame 9.0 ms  surface 2560x1440
-warm  first frame 8.0 ms  surface 2560x1440
-warm  first frame 8.0 ms  surface 2560x1440
+cold  first frame 8.0 ms  wall 550.3 ms  surface 2560x1440  exit 0
+warm  first frame 8.0 ms  wall 547.5 ms  surface 2560x1440  exit 0
+warm  first frame 8.0 ms  wall 565.6 ms  surface 2560x1440  exit 0
+warm  first frame 8.0 ms  wall 547.4 ms  surface 2560x1440  exit 0
+warm  first frame 8.0 ms  wall 567.8 ms  surface 2560x1440  exit 0
+warm  first frame 9.0 ms  wall 564.2 ms  surface 2560x1440  exit 0
+warm  first frame 8.0 ms  wall 549.9 ms  surface 2560x1440  exit 0
+warm  first frame 8.0 ms  wall 565.7 ms  surface 2560x1440  exit 0
+warm  first frame 8.0 ms  wall 547.6 ms  surface 2560x1440  exit 0
+warm  first frame 8.0 ms  wall 550.0 ms  surface 2560x1440  exit 0
+warm  first frame 8.0 ms  wall 550.4 ms  surface 2560x1440  exit 0
 
-median first frame 8.0 ms over 2 warm runs
-worst 8.0 ms
+median first frame 8.0 ms over 10 warm runs
+worst 9.0 ms
 surface 2560x1440
-R16 budget 500 ms HOLDS — median 8.0 ms, worst 8.0 ms
+R16 budget 500 ms HOLDS — median 8.0 ms, worst 9.0 ms
 ```
 
 **The 500 ms budget holds, with about sixty times the room.** The PRD's R16
-is settled and no longer marked provisional.
+is settled and no longer marked provisional. The spread is 8–9 ms across ten
+runs, which is as tight as the millisecond resolution of the print allows —
+nine of eleven runs landed on the same integer.
 
 The number it replaces was not a slower version of this measurement. P0's
 243 ms came from a nested `cage` at 1255×674 inside a running Hyprland
 session, and 243 against 8 is the cost of the nesting, not of the greeter.
 That is the whole reason this script refuses to run with `WAYLAND_DISPLAY`
 set.
+
+Wall time is ~550 ms per run against a first frame of 8 ms. The difference is
+`cage` starting, taking DRM master, setting the mode and handing it back —
+the greeter's share of a run is about 1.5% of it. Worth remembering before
+anyone optimises the wrong end.
 
 ### What this number does not cover
 
@@ -49,39 +65,42 @@ Two things, and both matter more than the number itself.
 It is the **still background only**. No video wallpaper, no R23 audio —
 and both of those pull in GStreamer, which nothing on this path touches.
 
-Which is why **C15 does not appear in it**. Cold 9 ms against warm 8 ms is
-not evidence that the registry rescan is cheap; it is evidence that the
-rescan never happened, because no GStreamer was initialised in either run.
-C15 remains a deployment requirement held on P0's measurement and on
-faith. When the media path lands, this number has to be taken again, warm
-and cold, and *the cold run is the one that tests C15*.
+Which is why **C15 does not appear in it**. The cold run, with the registry
+deleted, came out at 8.0 ms: the same as warm, to the millisecond. That is
+not evidence that the rescan is cheap, it is evidence that the rescan never
+happened, because no GStreamer was initialised in either run. C15 remains a
+deployment requirement held on P0's measurement and on faith. When the media
+path lands, this number has to be taken again, warm and cold, and *the cold
+run is the one that tests C15*.
 
-### Caveat on the sample: two runs, not ten
+### The first attempt, and what it cost
 
-Eleven runs were started and three drew a frame. The other eight failed
+Worth keeping, because the fix is reusable. An earlier run the same evening
+(`cage-run-2026-11-07-2308.txt`) got three runs and lost eight. They failed
 after exactly 10 s with exit 1, and the kernel log says why: at 23:10:12 the
 CRTC changed — the VT was switched back to the desktop, between run 3 and
 run 4. `cage` can only hold DRM master while its session is the **active**
 one, so from that moment every run waited ten seconds for a device it was
 never going to get.
 
-Three fixes went in because of this, and the first is the one that matters:
+That was the harness wasting its operator's attention, not a bug in the
+greeter. `preview` draws forever, so each run had to be killed by the 30 s
+timeout: eleven runs was five and a half minutes of black screen on a VT you
+have to sit still on, and sitting still was not a reasonable thing to ask.
 
 - The greeter takes `AUROVAL_EXIT_AFTER_FIRST_FRAME`, and the harness sets
-  it. A run now ends the instant it has printed its line: **303 ms instead
-  of 30 s**, measured. Eleven runs is a few seconds rather than five and a
-  half minutes, which removes the reason anyone would switch away mid-run.
-  The failure was a usability failure of the harness, not of the greeter.
-- The harness names the cause the moment a run fails after one has worked,
-  instead of leaving a bare `exit 1` in a table for someone to puzzle over
-  later.
-- The verdict says how many runs the median rests on. A median over two runs
-  and a median over ten are not the same claim.
+  it. A run ends the instant it has printed its line. **550 ms instead of
+  30 s**: the full eleven runs now take about six seconds, which is less
+  time than it takes to wonder whether it has hung.
+- The harness names the inactive-VT cause the moment a run fails after one
+  has already worked, instead of leaving a bare `exit 1` to be puzzled over.
+- The verdict says how many runs the median rests on.
 
-A median of 8.0 with a worst case of 8.0 over two runs is thin, but it is
-thin in a way that does not matter: the question was whether a 500 ms budget
-survives at native resolution, and the answer is not close enough for the
-sample size to decide it.
+The lesson generalises past this script. A measurement that requires an
+operator to sit still for five minutes will be abandoned halfway, and the
+abandonment will look like a bug in whatever was being measured. Making the
+run short was worth more than any amount of better error reporting around
+the long version.
 
 ## What the harness does
 
