@@ -1,3 +1,20 @@
+# Rust
 /target/
 **/*.rs.bk
 *.pdb
+
+# Python — `tools/` holds helper scripts, and CPython writes bytecode next to
+# them. A .pyc is build output: architecture- and interpreter-specific, and it
+# churns on every run. One was committed before this rule existed.
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# Editor and OS droppings
+*.swp
+*~
+.DS_Store
