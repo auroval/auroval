@@ -248,6 +248,9 @@ independently by loading font files by path rather than through fontconfig,
 because a font that needs a cache is a font that fails in the one context that
 matters.
 
+Deploying that cache is `deploy/auroval-greet.sh` and `deploy/auroval.tmpfiles.conf`;
+see `deploy/README.md`.
+
 **C7 — prior art already solves the animated login background; it does not
 solve the rest.** This matters more than it is comfortable to admit, so the
 quotes are verbatim from ReGreet's README:
@@ -423,7 +426,7 @@ theme may require of itself more than the greeter requires of every theme.
 | R22 | MUST | Theme code must not be able to prevent login. A theme that errors, loops forever, allocates without bound, or tries to touch the filesystem, network or a process is stopped and the greeter continues on defaults, with the reason logged. | Four themes, each misbehaving in one of those ways, each yield a usable login. A theme calling `io.open`, `os.execute` or `require` fails at the call rather than succeeding. A theme looping forever is terminated by the instruction ceiling and does not delay the first prompt. |
 | R14 | MUST | In lock mode, fail closed. | `SIGKILL` while locked leaves the session locked, per C5. Verified deliberately, with a second TTY open. |
 | R15 | MUST | No media path reads from a user's home directory (C10). | With `/home/<user>` at mode 700, the configured background still renders. |
-| R16 | SHOULD | Appear within a budget of first frame after launch. | Measured from process start to first presented frame. **Budget, set from P0:** 500 ms with a warm GStreamer registry. P0 measured 243 ms through `wl_shm` at 1255×674, so the budget allows for a full-resolution surface and a real renderer. The registry must be cached (C15) or roughly 0.9 s is added before any of this starts; an uncached greeter cannot meet this budget and the failure is in deployment, not in code. |
+| R16 | SHOULD | Appear within a budget of first frame after launch. | Measured from process start to first presented frame. **Budget, set from P0:** 500 ms with a warm GStreamer registry. P0 measured 243 ms through `wl_shm` at 1255×674, so the budget allows for a full-resolution surface and a real renderer. The registry must be cached (C15) or roughly 0.9 s is added before any of this starts; an uncached greeter cannot meet this budget and the failure is in deployment, not in code. **Still provisional**: 243 ms was measured through a *nested* `cage` inside a running Hyprland session, which is both the wrong surface size and the wrong machine load. `spike/p1e/cage-measure.nu` is the harness that settles it — ten warm runs at 2560×1440 on a real VT — and it cannot be run until the Wayland shell exists. |
 
 ### WON'T (v1)
 
