@@ -29,14 +29,20 @@ whose overall measurements looked acceptable. Looking at it is what caught it.
 ## 2. The pipeline
 
 ```
-  brief  →  generate  →  measure  →  preview  →  live with it  →  accept
-            (§4)         (§5)        (§5)        (§6)             (§7)
-                           ↑                        │
-                           └────── iterate ─────────┘
+  brief  →  generate  →  render  →  measure  →  preview  →  live with it  →  accept
+            (§4)         (§7.1)     (§5)        (§5)        (§6)             (§7)
+                            ↑                      │
+                            └─────── iterate ──────┘
 ```
 
-Five stages, three of which are gates. Nothing skips a gate, including
-artwork the maintainer made himself and likes.
+Six stages, three of which are gates. Nothing skips a gate, including artwork
+the maintainer made himself and likes.
+
+The **render** stage was not in the first version of this document, and it is
+the single biggest thing building the first scene changed. It is where anything
+that has to agree with the scene's own light gets drawn rather than painted:
+see §7.1. Putting it before `measure` is deliberate, because what the gates
+judge has to be the thing that ships.
 
 ---
 
@@ -430,6 +436,97 @@ can look: nothing walks, nothing turns. For a theme whose desktop is explicitly
 meant not to move, that cap is close to free — but it is a real limit and it
 would be the wrong choice for a theme that wanted spectacle.
 
+### 7.1 The render stage: draw what has to answer to the light
+
+`tools/nightshade-loop/`. Built for scene-01 on 2026-11-07 and generalised
+back into this document afterwards.
+
+The scene needed a pendant hanging from one of her hairpins, and the generator
+would not put one there — repeated, explicit instruction about structure was
+ignored while instruction about style and subject was obeyed (§10). So the
+charm was taken from a *different* generated image and composited in.
+
+**Pasting a bitmap failed, and failed for a reason worth generalising.** A
+region cut out of render B carries B's lighting, B's grain and B's perspective
+into a scene that has none of them. At the size it needed to be, a painted bead
+strand was a grey sliver. No amount of grading fixed it, because the problem
+was not the levels; it was that the object did not belong to the light.
+
+So the rule: **anything that must respond to the scene's light is drawn under
+that light, not painted and pasted.** In practice that splits the artwork in
+two.
+
+| | Comes from | Why |
+|---|---|---|
+| The scene | The generator | A painting. It is the source of truth and nothing redraws it. |
+| Anything added to it | A shader | It has to obey the scene's key light, and a shader can be told where that light is. |
+
+For scene-01 that meant beads as analytic spheres with real thin-film
+interference — the optical path through an aragonite film a few hundred
+nanometres thick, which is why the colour travels across a bead instead of
+sitting on it — and the skull keeping its painted albedo while gaining a normal
+map built from its own alpha and luminance. Both lit from the same disc.
+
+**The loop's physics and its seam are reconcilable, and the reconciliation
+generalises.** §7 says to drive every motion with a sine over the loop period,
+which is right and is what the camera path still does. But a chain cannot be
+driven that way: a bead strand moving on a sine reads as fake instantly,
+because the tell is the chain's *lag* behind its anchor. A free simulation, on
+the other hand, never returns to where it started.
+
+The way out is to stop trying to make the simulation return and let it forget.
+A damped chain under a periodic drive has a steady state whose period is the
+driving period; the transient from the initial conditions decays. Drive at a
+harmonic of the loop, run 24 periods, record the 25th. Measured closure:
+**0.0000 px**. The drive sits near the chain's own natural period on purpose —
+off resonance a chain merely follows its anchor, near it the chain swings
+several times further than the drive does.
+
+**Parallax without cutting layers.** §7 assumed depth-layer separation, which
+is open item A5 and expensive. A monocular depth map plus a one-step
+displacement gets most of it for nothing — but it smears silhouettes, because
+the displacement reads the depth at its *destination*, so next to her edge a
+foreground pixel takes its colour from behind her. Growing the near depth
+outward by more than the largest displacement (25 px against a maximum 23 px)
+removes the smear entirely.
+
+The cost, stated rather than buried: the background within those 25 px now
+travels with her. That is not occlusion, and against a glowing disc it is far
+less visible than a ghost of her jawline, but A5 is still open and this is a
+cheaper alternative rather than an answer.
+
+### 7.2 Generate the background separately — the route to A5
+
+The maintainer's proposal, 2026-11-07, and the right one: generate the
+background as its own image instead of cutting the figure out of a finished
+scene. Then layer separation is not a extraction problem at all. The plate
+behind her was never occluded, so there is nothing to inpaint and nothing to
+guess, and real parallax --- the kind where the disc actually moves behind her
+--- becomes possible instead of the depth-dilation compromise in §7.1.
+
+Three ways to get there, and they are not equally good.
+
+| Route | How | Verdict |
+|---|---|---|
+| Two text-to-image passes | Generate the plate, then the figure | **No.** Two passes will not agree on light, style or disc position, and nothing forces them to. |
+| Inpaint the figure out of a finished scene | One scene, then an editing pass that removes her | Works, keeps agreement by construction, but needs an inpainting-capable model and the result behind her is invented anyway. |
+| **Render the background, generate only the figure** | The disc is a radial gradient with grain --- a shader, not a painting. Generate the figure on a flat plate and matte it. | **Recommended.** Agreement is guaranteed because there is only one generated layer. |
+
+The third route also pays forward: a disc that is drawn rather than painted can
+breathe, drift and change hue per phase (§4.4) without regenerating anything,
+and it is the same argument §7.1 already makes about the charm.
+
+**The cost, and it is the serious one.** What makes these images good is the
+rim light the model puts on her hair and shoulders *because it knows the disc
+is there*. Generate her on a flat plate and that interaction is gone; it has to
+be added back in the shader, from her matte's own normal, the way the skull
+already is. That is the hardest part of the look to fake and the part most
+likely to read as a cut-out --- which is exactly the failure §7.1 exists to
+avoid. It should be prototyped on one scene before the brief commits to it.
+
+Matting is already half-solved: BiRefNet (MIT) and ViTMatte (Apache-2.0) were
+both trialled while cutting the charm, and both are shippable licences.
+
 ---
 
 ## 8. What is already settled
@@ -456,7 +553,117 @@ re-runs the first of these and fails loudly if matugen's behaviour changes.
 | A2 | The phase grading recipe (§4.4) — the four parameter sets, fixed once and shared by all scenes. | Maintainer |
 | A3 | Does `--prefer saturation` pick the subject's colour or the background's? On the measured example it picked the background until the file was passed untouched. If it keeps missing, scenes declare their hue (§5.4). | Maintainer |
 | A4 | The reject threshold for scrim depth (§6, gate 1) is a guess at 25%. Needs one real rejection to calibrate. | Maintainer |
-| A5 | Layer separation for §7 — produced by the generator, or cut by hand per master? Decides whether loops are cheap or expensive. | Maintainer |
+| A5 | Layer separation for §7 — produced by the generator, or cut by hand per master? **Partly relieved 2026-11-07:** §7.1 gets usable parallax from a monocular depth map with no layers at all, so this is no longer blocking. §7.2 proposes the actual answer — render the background and generate only the figure — and names the one thing that could sink it. Needs a prototype on one scene. | Maintainer |
 | A6 | Two weeks per candidate (§6, gate 3) is a guess. It may be one week; it is certainly not one day. | Maintainer |
 | ~~A7~~ | ~~nightshade's rendering style~~ **Settled 2026-11-07: ink-and-wash (sumi-e), recorded in §4.1.1.** Chosen from six candidates generated from an identical subject and seed. The paired finding went into §4.5: the style is traditional, the subject matter must not be. | Settled |
 | A8 | A4's scrim threshold now looks like the wrong axis on its own. Measured: the only candidate with correct composition scored 0.275, just *above* the 25% guess, while a candidate with **no subject** scored 0.000. Scrim alone rewards emptiness, so the reject rule needs a second term — minimum subject extent, or ornament density — or gate 1 will systematically prefer duller images. | Maintainer |
+| A9 | The generator obeys instruction about style and subject and ignores instruction about structure (§10). Is that FLUX.2 [klein] specifically, a 4B-parameter limit, or every model? Decides whether the filter stage can ever shrink. | Maintainer |
+
+---
+
+## 10. What building the first scene taught the pipeline
+
+Written 2026-11-07, after scene-01 went from six boring candidates to a
+finished loop. These are the lessons that changed how the work is done, not a
+log of what happened. Each one cost something to learn.
+
+### 10.1 The generator is steerable on style and subject, and not on structure
+
+Instruction about *what* and *in what manner* landed on the first attempt:
+naming a subject produced the kimono portrait immediately, and naming a
+rendering style ended the photoreal default (§4.6). Instruction about *where*
+and *how things connect* was ignored over and over — off-centre framing, pins
+rooted in the hair rather than floating, a side view rather than a
+three-quarter one. Re-prompting did not help, because the seed dominates those
+properties.
+
+**So the pipeline is generate-many-and-filter, not prompt-and-refine.** The
+useful lever on structure is the number of candidates, and the brief's job for
+structure is to describe what to *reject*, which is already why §4.2 says the
+negative constraints matter more than the positive ones.
+
+### 10.2 Separate on colour, not on luminance
+
+Three separate times, a luminance threshold silently deleted something: her
+hair and obi, then the dark moths, then the skull's beak. nightshade's palette
+is a near-black field with near-black objects on it, so **luminance is not a
+separable axis in this theme** — and a near-black element that vanishes does
+not look like an error, it looks like a slightly different picture, which is
+why it survived three rounds.
+
+Hue is separable. The bloom mask is `min(G,B) - R`, which isolates the cyan
+disc from a white kimono and pink skin without a hand-drawn mask. Any future
+masking step should reach for hue first and justify luminance if it uses it.
+
+### 10.3 Measure the complaint before fixing it
+
+"She still looks overexposed" became: the painting clips 0.066% of its pixels,
+the render clipped 14.3%, and 10.4% of the frame was clipped *on her* rather
+than on the disc. That number did two things a visual judgement could not —
+confirmed the complaint was about the bloom rather than the painting, and said
+exactly where to cut. After the fix, clipping away from the disc is 0.085%,
+against the painting's own 0.066%.
+
+The general form: a complaint phrased as a feeling usually has a number
+underneath it, and finding the number is faster than guessing at the fix.
+
+### 10.4 Any relative criterion is gameable, and two of ours are
+
+R8 asks that the seam between the last frame and the first be no worse than an
+ordinary frame step. That is a **ratio**, and a ratio improves when the
+denominator gets worse: an all-intra encode "passes" by making every frame
+noisier. A4's scrim threshold has the same shape — scrim alone rewards
+emptiness, which is why the best-scoring candidate of the first six had no
+subject at all (A8).
+
+**A relative criterion needs an absolute floor as its second term.** Neither of
+ours has one yet. Until they do, neither should be read as a pass on its own.
+
+### 10.5 A metric proposed for an aesthetic judgement has to be validated first
+
+Two attempts to automate taste produced confidently wrong answers:
+
+* A Laplacian "inkiness" score, meant to tell ink-and-wash from photoreal,
+  ranked a *detailed photoreal* skull highest — detail energy is detail
+  energy, whatever drew it.
+* A scale-and-shift search, meant to optimise the composition gates, returned a
+  gate-perfect framing with her head cut off, because dark bands where the UI
+  goes are exactly what the gates reward.
+
+Both were caught by looking. **A new metric gets checked against the eye on
+known-good and known-bad examples before anything is decided with it** — which
+is the same argument §4.6 makes for not automating gate 3 away.
+
+### 10.6 Place and anchor things by their function, not by their geometry
+
+Two bugs with one shape. The pendant was positioned by the centre of its
+bounding box, but its beak sticks far out to one side, so the cranium — the
+part a pendant actually hangs by — ended up floating beside the chain instead
+of under it. And the chain was driven by sliding its anchor, so the top bead
+slid against the painted hairpin it hangs from.
+
+**An attachment point is a named feature, not a coordinate**: hang from the
+crown, found from the alpha; pin to the pin, and drive the motion with a force
+instead. The fix for the second one is also physically truer — air moves a
+hairpin charm, the hairpin does not move.
+
+### 10.7 One convention for parallax, in one place
+
+The charm separated from its pin because the composite applied parallax with
+the opposite sign to the shader's: the shader moves the *sample*, so the image
+moves the other way. It also guessed the charm's depth instead of reading it at
+the pin. Both are the same mistake — a second implementation of a rule that
+already existed.
+
+**Anything composited over the scene takes its parallax from the same code and
+the same depth map as the scene does.**
+
+### 10.8 Verify that an edit applied
+
+Two edits to the renderer silently did not apply, because the text they were
+looking for had already been changed by an earlier edit. Neither failed; they
+simply did nothing, and the render came back identical. It was caught only when
+a later line referenced a variable that did not exist.
+
+**An edit that cannot fail loudly will eventually fail quietly.** Anchor edits
+on something that will raise if it is missing.

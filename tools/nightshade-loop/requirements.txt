@@ -1,0 +1,13 @@
+# Dependencies for the nightshade loop renderer.
+#     python3 -m pip install -r tools/nightshade-loop/requirements.txt
+#
+# moderngl runs the shader headless over EGL, so this needs a GPU and a driver
+# but no display server and no compositor. ffmpeg comes from the system package
+# manager, not from here.
+#
+# torch and transformers are needed ONLY by depth.py, which is run once per
+# scene master and whose output is checked in alongside the master. Rendering a
+# loop does not import them.
+numpy>=1.26
+opencv-python-headless>=4.10
+moderngl>=5.10
