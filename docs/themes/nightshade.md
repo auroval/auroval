@@ -412,6 +412,73 @@ The remaining tension is §2.4's scrim, which is composition rather than colour,
 and it is the one place where a user's file changes how nightshade looks rather
 than just what colour it is. That cost is stated where it occurs.
 
+### 4.6 Which role each element uses, and the floor it is held to
+
+Settled 2026-11-07, after gate 1 demanded a **78% scrim** on scene-01 and the
+artwork turned out not to be the cause.
+
+`scene-check` was drawing the date line in `outline`, and **nothing in these
+documents said otherwise** — the date was the one UI element whose colour had
+never been specified anywhere, so a default buried in the measuring tool was
+deciding it. `outline` is Material's role for strokes and dividers, and it is
+the lowest-contrast token in the palette by design. Written out as a budget,
+the brightest background each token can sit on and still clear 4.5:1:
+
+| token | L\* | max background Y @ 4.5:1 | ceiling vs pure black |
+|---|---:|---:|---:|
+| `on_surface` | 91.9 | 0.1402 | 17.12:1 |
+| `tertiary` | 74.1 | 0.0653 | 10.38:1 |
+| `primary` | 70.1 | 0.0519 | 9.17:1 |
+| `outline` | 57.9 | **0.0186** | **6.17:1** |
+
+`outline` needs a background about **7.5× darker** than `on_surface` does, and
+cannot reach 7:1 even against pure black. That is why the clock *passed* at
+p90 0.1169 while the date *failed* at p90 0.0828 — a darker background. The
+difference was entirely the text colour.
+
+**The decision.**
+
+| Element | Size | Role | Floor | Why that floor |
+|---|---:|---|---:|---|
+| Clock | 110 px | `on_surface` | 3:1 | WCAG large text |
+| Date | 22 px | `on_surface` | 4.5:1 | normal text |
+| Username | 16 px | `primary` | 4.5:1 | normal text |
+| Input field | 20 px | `primary` | 4.5:1 | normal text |
+| Error | — | `error` | 4.5:1 | fixed by the theme (R3) |
+
+**Hierarchy comes from size and weight, never from lightness.** This is the
+part worth remembering, because it is specific to a dark theme and it is
+counter-intuitive: on a near-black field, every way of making text *quieter* —
+a dimmer token, lower opacity — moves it **towards** the background and costs
+contrast. A date rendered at 22 px in a dim colour is the worst case in the
+whole layout. Five times the clock's size is already all the hierarchy the
+layout needs.
+
+**Why the brighter option rather than the looser one.** The date could instead
+have been held to 3:1, which WCAG allows for text at 24 px or more, and then an
+L\* of 66 would have been enough. That was rejected: tenet 6 promises the user
+their own media, which means arbitrary and often bright backgrounds, and the
+surface that has to absorb that is the text, not the picture. Making the text
+robust costs nothing; dimming the user's artwork to rescue a dim colour costs
+exactly what tenet 6 says not to spend.
+
+The clock does move to 3:1, because at 110 px that is simply the correct floor.
+It loosens the clock's clause, which is worth saying plainly rather than
+quietly banking.
+
+**Effect on scene-01.** Gate 1 goes from a 78% scrim to **no scrim at all**;
+all four legibility clauses pass. Nothing about the artwork changed.
+
+**Consequence for A4.** The scrim reject threshold must be calibrated knowing
+that it measures the image *and* the palette's role assignment. With the date
+in `outline`, almost any scene with a glow near the date line would have been
+rejected regardless of how it looked, and a calibration run against that would
+have encoded the wrong cause.
+
+`scene_check.py` now reads both the role and the floor from one table, and that
+table also sizes the measured regions — so the px that justifies a floor and
+the px that is measured cannot drift apart.
+
 ## 5. The bar
 
 Tenet 3 asks what earns a permanent place on screen for someone who will see it

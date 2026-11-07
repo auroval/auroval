@@ -1,0 +1,29 @@
+{
+  "_": "Relative paths resolve against this file; absolute ones are used here because the assets live outside the repository. The master, its depth map and the charm sprite are assets, not code, and are not in the repository; point these at wherever the scene lives.",
+  "master": "/home/dirk/Pictures/auroval-nightshade/scene-01/clean-031-master16.png",
+  "depth": "/home/dirk/Pictures/auroval-nightshade/scene-01/clean-031-depth.npy",
+  "grain": 0.012,
+  "depth_grow": 25,
+  "charm": {
+    "sprite": "/home/dirk/Pictures/auroval-nightshade/scene-01/charm-skull.npz",
+    "anchor": [1448, 382],
+    "halo": [1825, 454],
+    "beads": 12,
+    "bead_radius": 12.5,
+    "height": 128
+  },
+  "loop": {
+    "seconds": 10,
+    "fps": 30,
+    "substeps": 8,
+    "crf": 16,
+    "gravity": 2400,
+    "wind": 150,
+    "drive_harmonic": 4,
+    "damping": 0.9965,
+    "pan_x": 0.014,
+    "pan_y": 0.008,
+    "glow_mean": 0.45,
+    "glow_swing": 0.40
+  }
+}
