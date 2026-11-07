@@ -1,0 +1,24 @@
+auroval Q5 — render paths measured under cage
+2026-11-07T18:38:28+01:00
+
+clip      /var/lib/auroval-spike/media/loop1440p60.h264.mp4
+runs      5 pairs, 10 s each
+host      games-werkkamer  kernel 7.3.1-1-cachyos
+
+pair 1  gl  cpu 26.2%  fps 60.1
+           negotiated: video/x-raw(memory:GLMemory), format=(string)RGBA, width=(int)2560, height=(int)1440, interlace-mode=(string)progressive, multiview-mode=(string)mono, multiview-flags=(GstVideoMultiviewFlagsSet)0:ffffffff:/right-view-first/left-flipped/left-flopped/right-flipped/right-flopped/half-aspect/mixed-mono, pixel-aspect-ratio=(fraction)1/1, framerate=(fraction)60/1, texture-target=(string)2D
+pair 1  shm  cpu 69.3%  fps 60.0
+pair 2  gl  cpu 33.9%  fps 60.1
+           negotiated: video/x-raw(memory:GLMemory), format=(string)RGBA, width=(int)2560, height=(int)1440, interlace-mode=(string)progressive, multiview-mode=(string)mono, multiview-flags=(GstVideoMultiviewFlagsSet)0:ffffffff:/right-view-first/left-flipped/left-flopped/right-flipped/right-flopped/half-aspect/mixed-mono, pixel-aspect-ratio=(fraction)1/1, framerate=(fraction)60/1, texture-target=(string)2D
+pair 2  shm  cpu 67.4%  fps 60.0
+pair 3  gl  cpu 41.7%  fps 60.1
+           negotiated: video/x-raw(memory:GLMemory), format=(string)RGBA, width=(int)2560, height=(int)1440, interlace-mode=(string)progressive, multiview-mode=(string)mono, multiview-flags=(GstVideoMultiviewFlagsSet)0:ffffffff:/right-view-first/left-flipped/left-flopped/right-flipped/right-flopped/half-aspect/mixed-mono, pixel-aspect-ratio=(fraction)1/1, framerate=(fraction)60/1, texture-target=(string)2D
+pair 3  shm  cpu 69.3%  fps 60.0
+pair 4  gl  cpu 36.9%  fps 60.0
+           negotiated: video/x-raw(memory:GLMemory), format=(string)RGBA, width=(int)2560, height=(int)1440, interlace-mode=(string)progressive, multiview-mode=(string)mono, multiview-flags=(GstVideoMultiviewFlagsSet)0:ffffffff:/right-view-first/left-flipped/left-flopped/right-flipped/right-flopped/half-aspect/mixed-mono, pixel-aspect-ratio=(fraction)1/1, framerate=(fraction)60/1, texture-target=(string)2D
+pair 4  shm  cpu 68.6%  fps 60.0
+pair 5  gl  cpu 30.0%  fps 60.1
+           negotiated: video/x-raw(memory:GLMemory), format=(string)RGBA, width=(int)2560, height=(int)1440, interlace-mode=(string)progressive, multiview-mode=(string)mono, multiview-flags=(GstVideoMultiviewFlagsSet)0:ffffffff:/right-view-first/left-flipped/left-flopped/right-flipped/right-flopped/half-aspect/mixed-mono, pixel-aspect-ratio=(fraction)1/1, framerate=(fraction)60/1, texture-target=(string)2D
+pair 5  shm  cpu 69.3%  fps 60.0
+
+raw output follows, so nothing above has to be trusted

@@ -70,9 +70,15 @@ def main [
     $lines | str join "\n" | save -f $out
 
     # Alternate the modes so that any drift in the machine lands on both.
+    let steps = ($runs * 2)
+    mut step = 0
     for i in 1..$runs {
         for mode in ["gl" "shm"] {
-            print $"  pair ($i): ($mode)…"
+            $step = $step + 1
+            # Counted, not just named: ten identical-looking fullscreen videos
+            # with no sense of how many are left reads as a loop you should
+            # interrupt, and someone nearly did.
+            print $"  ($step)/($steps)  ($mode), ($seconds) s…"
             let r = (do { ^cage -- $"($env.PWD)/($bin)" $mode $clip ($seconds | into string) }
                      | complete)
             let text = $"($r.stdout)\n($r.stderr)"

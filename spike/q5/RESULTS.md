@@ -63,14 +63,57 @@ What survives that is the **ratio**, measured as back-to-back pairs:
 **GL costs 1.5–1.9× less than the readback path**, median about 1.65, stable
 across a 2× shift in the machine's own load. That is the result.
 
-### What the absolute numbers are NOT good for
+## Measured again under `cage` — and this time the numbers hold
 
-They cannot set a budget. An earlier draft of this document proposed 50% of one
-core as R7's ceiling, read straight off the quiet batch; the busy batch then put
-the same GL path at 60%. Writing a requirement against a number that moves with
-what else is on screen would have encoded the desktop, not the greeter. **R7's
-whole-path budget needs a `cage` measurement**, in the context the greeter
-actually runs in, and does not have one yet.
+Taken 2026-11-07 18:38 on a free VT with
+[`cage-measure.nu`](cage-measure.nu): five alternating pairs, 10 s each, the
+same clip and the same binary. Every run held 60.0–60.1 fps. Each GL run
+re-reported its negotiated caps, and all five read
+`video/x-raw(memory:GLMemory), RGBA, 2560x1440, 60/1`.
+
+| pair | GL | shm | shm ÷ GL |
+|---|---:|---:|---:|
+| 1 | 26.2% | 69.3% | 2.65 |
+| 2 | 33.9% | 67.4% | 1.99 |
+| 3 | 41.7% | 69.3% | 1.66 |
+| 4 | 36.9% | 68.6% | 1.86 |
+| 5 | 30.0% | 69.3% | 2.31 |
+| **mean** | **33.7%** | **68.8%** | **2.09** |
+
+Three things change against the live-session figures.
+
+**The readback path is a constant.** 67.4–69.3% under `cage`, against 69–71% on
+a quiet desktop and 88–107% on a busy one. It is CPU-bound work that does not
+care what the compositor is doing, which is why it barely moved when the
+machine was quiet and why it is pinned to a 2-point band here.
+
+**The GL path is genuinely cheaper than the live session suggested** — 33.7%
+mean against 44.3% — and its spread (26–42%) survives into the clean
+environment. So the variance is not the desktop; it is something in the GL or
+driver path, and it is still unexplained. Worth knowing before anyone treats
+33.7% as a reliable single figure.
+
+**The ratio is bigger here: 2.09× rather than 1.65×.** The live session was
+flattering the readback path, because contention cost both paths something and
+the readback's floor was already high.
+
+### This is enough to set R7's whole-path budget
+
+**50% of one core at 1440p60**, against a measured mean of 33.7% and a worst
+observed run of 41.7%. That mirrors how the decode ceiling was set — 5% against
+2.5% measured — and it discriminates, which a looser number would not: the
+readback path fails it at 68.8%.
+
+An earlier draft of this document proposed that same 50% from the live-session
+batch and it was withdrawn, correctly: the figure it was read off moved from
+44% to 60% with the desktop's own load. The number is the same; the ground
+under it is not.
+
+### What the live-session numbers were NOT good for
+
+They could not set a budget, which is why the `cage` run above exists. The same
+GL path read 44% on a quiet desktop and 60% on a busy one; a requirement
+written against that would have encoded the desktop rather than the greeter.
 
 What the numbers do establish, because the gap is far too large to be load:
 P0 measured decode alone at **2.5% of one core**, and presentation costs more
@@ -88,13 +131,15 @@ the glyph question is a question of engineering effort, not of cost.
 
 ## What this does not establish
 
-* **Measured inside a running Hyprland session**, with the maintainer's own
-  desktop and other clients on screen. P0 measured under `cage` on a TTY,
-  which is the greeter's real context. This is the single biggest weakness of
-  the spike: the absolute figures moved by 2× with load, so only the ratio can
-  be relied on, and a budget cannot be set from this at all. **A `cage` run is
-  the next thing to do**, and it is cheap — `spike/p0/` already has the
-  scripts for driving one.
+* ~~**Measured inside a running Hyprland session**~~ — **closed.** Re-measured
+  under `cage` on a free VT; see above. The live-session figures are kept
+  because the comparison between them is itself the argument for not trusting
+  a benchmark run next to a desktop.
+* **The GL path's spread is unexplained.** 26–42% under `cage`, where the
+  readback path sits in a 2-point band. Whatever causes it is not contention
+  from other clients, because there were none.
+* **One machine, NVIDIA only.** Everything here is `nvh264dec` and
+  `memory:GLMemory`.
 * **`memory:DMABuf` on Intel or AMD remains unverified.** There is no such
   hardware here. This is the same gap tenet 2 records, and it is unchanged.
 * **`glcolorconvert` is in the measured path.** The pipeline converts to RGBA

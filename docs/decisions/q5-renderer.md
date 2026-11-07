@@ -84,34 +84,44 @@ Built and measured on 2026-11-07. Both paths present the same 2560×1440 60 fps
 clip to the same fullscreen surface, paced by Wayland frame callbacks, each
 drawing one line of 44 px text. Every run held 60 fps with no dropped frames.
 
-| pair | GL | shm | shm ÷ GL |
+Measured first inside a live Hyprland session, then again under `cage` on a
+free VT — the greeter's own context — with five alternating pairs at a held
+60 fps:
+
+| | GL | shm | shm ÷ GL |
 |---|---:|---:|---:|
-| quiet batch, means | 44.3% | 70.2% | 1.58 |
-| busy 1–6 | 55–60% | 88–107% | 1.50–1.93 |
+| live session, quiet | 44.3% | 70.2% | 1.58 |
+| live session, busy | 55–60% | 88–107% | 1.50–1.93 |
+| **under `cage`, mean of 5** | **33.7%** | **68.8%** | **2.09** |
 
-So the GL path is **1.5–1.9× cheaper**, median about 1.65, and that ratio holds
-across a 2× shift in the machine's own load. The earlier `glimagesink`
-measurement could not show this because a general-purpose sink's own
-presentation cost swamped the difference. Writing the renderer was the only way
-to separate them, which is exactly why the brief declined to decide without it.
+The GL path is cheaper in every pairing, and by more in the clean environment
+than the busy one — contention was flattering the readback path. The earlier
+`glimagesink` measurement could not show any of this, because a
+general-purpose sink's own presentation cost swamped the difference. Writing
+the renderer was the only way to separate them, which is exactly why the brief
+declined to decide without it.
 
-**The absolute numbers are not usable, and an earlier draft of this section
-used them anyway.** It read 44% and 70% off the quiet batch and proposed 50% of
-a core as R7's ceiling. The busy batch then put the same GL path at 60%. A
-budget written from that would have encoded the maintainer's desktop rather
-than the greeter, so it is withdrawn; R7's whole-path ceiling waits on a `cage`
-measurement.
+**The live-session absolutes were not usable, and an earlier draft of this
+section used them anyway.** It read 44% and 70% off a quiet batch and proposed
+50% of a core as R7's ceiling; a busy batch then put the same GL path at 60%.
+That number was withdrawn, the measurement was redone under `cage`, and 50% is
+now set — mean 33.7%, worst run 41.7%, readback failing at 68.8%. The figure is
+the same; the ground under it is not, and the difference between those two
+states is the whole point.
 
-**What does survive, because the gap is far too large to be load:** P0 measured
-decode alone at **2.5% of one core**. Presentation costs more than an order of
-magnitude beyond that, in every batch. The decoder is not where a greeter's CPU
-goes, and R7's budget — written as a decode budget because decode was the thing
-P0 could measure — constrains only the cheap half. That is a finding about the
-requirement, not about the renderer, and it is carried back into the PRD.
+**One thing the clean run did not explain.** The GL path's spread survived into
+`cage`: 26–42%, where the readback path sits inside two points. It is not
+contention from other clients, because there were none.
 
-The one limit that matters: the spike ran inside a live Hyprland session rather
-than under `cage`. That is cheap to fix — `spike/p0/` already has the scripts —
-and it is the next thing to do.
+**The finding that outlives the renderer choice.** P0 measured decode alone at
+**2.5% of one core**. Presentation costs more than an order of magnitude beyond
+that, in every batch and in every environment. The decoder is not where a
+greeter's CPU goes, and R7's budget — written as a decode budget because decode
+was the thing P0 could measure — constrained only the cheap half. The PRD now
+carries both ceilings.
+
+Remaining limits: `memory:DMABuf` on Intel and AMD is still unverified for want
+of the hardware, and the GL path's spread is unexplained.
 
 ## The constraint that actually decides this
 
@@ -185,8 +195,10 @@ the CPU goes.
 - **Skip `glcolorconvert`.** The spike converts to RGBA so one texture can be
   sampled. Sampling NV12 directly with a two-texture shader removes a
   full-resolution pass from every frame. Unmeasured, and the obvious next step.
-- **Measure under `cage`, not in a live session.** Both figures are inflated by
-  the desktop around them.
+- ~~**Measure under `cage`, not in a live session.**~~ Done; see above.
+- **Why does the GL path vary 26–42% under `cage`** while the readback path
+  sits in a 2-point band? Unexplained, and it is the reason 33.7% should not be
+  quoted as a single figure.
 
 - **Text rendering.** R11 wants MesloLGS at a large clock size across outputs
   at different scales. A glyph atlas is the normal answer; `cosmic-text` plus a
