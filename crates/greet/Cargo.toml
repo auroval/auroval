@@ -1,0 +1,23 @@
+[package]
+name = "greet"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+description = "auroval's login screen: a greetd greeter with the desktop's own look."
+
+[[bin]]
+name = "auroval-greet"
+path = "src/main.rs"
+
+[dependencies]
+greetd-proto = { path = "../greetd-proto" }
+smithay-client-toolkit = "0.20"
+wayland-client = "0.31"
+wayland-egl = "0.32"
+khronos-egl = { version = "6", features = ["dynamic"] }
+glow = "0.16"
+fontdue = "0.9"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
