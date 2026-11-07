@@ -95,7 +95,7 @@ def main [
         "# One word, because the clipboard does not survive a VT switch."
         $"cd ($repo) || exit 1"
         $"exec nu spike/p1e/cage-measure.nu \"$@\""
-    ] | str join "\n" | save -f $wrapper
+    ] | append "" | str join "\n" | save -f $wrapper
     ^chmod 0755 $wrapper
     print $"         ($wrapper)"
     let on_path = (($env.PATH | path expand) | any { |p| $p == ($wrapper | path dirname) })
@@ -128,7 +128,7 @@ def main [
         "# greetd's config for auroval, alongside its own, never replacing it."
         "install -d -m 0755 /etc/greetd"
         $"install -m 0644 ($stage)/greetd-auroval.toml /etc/greetd/auroval.toml"
-    ] | str join "\n" | save -f $root_sh
+    ] | append "" | str join "\n" | save -f $root_sh
     ^chmod 0755 $root_sh
     print $"         ($root_sh)"
 

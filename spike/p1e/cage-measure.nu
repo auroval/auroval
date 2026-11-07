@@ -155,10 +155,10 @@ def main [
         # nearly interrupted a good measurement on exactly that.
         print $"  ($step)/($steps)  ($mode) run…"
         let r = (run-once $bin $cache $timeout)
-        $results = ($results | append { mode: $mode, frame: $r.frame, size: $r.size, wall: $r.wall })
+        $results = ($results | append { mode: $mode, frame: $r.frame, size: $r.size, wall: $r.wall, code: $r.code })
         let shown = (if $r.frame == null { $"wall ($r.wall) ms \(no first-frame line)" } else { $"first frame ($r.frame) ms" })
-        print $"           ($shown)  surface ($r.size)"
-        $lines = ($lines | append $"($mode)  first frame ($r.frame | default '—') ms  wall ($r.wall) ms  surface ($r.size)")
+        print $"           ($shown)  surface ($r.size)  exit ($r.code)"
+        $lines = ($lines | append $"($mode)  first frame ($r.frame | default '—') ms  wall ($r.wall) ms  surface ($r.size)  exit ($r.code)")
         $lines | str join "\n" | save -f $out
     }
 
@@ -175,17 +175,29 @@ def main [
         # upper bound on nothing useful — they are recorded so that the run
         # is not silently empty, not so that R16 can be settled from them.
         let walls = ($warm | get wall | math median)
+        let codes = ($results | get code | uniq)
         print ""
         print "  NO FIRST-FRAME LINE in any run."
         print "  The binary printed no `first presented : Nms after start`, so"
         print "  R16 is NOT measured by this run. That is expected until the"
-        print "  Wayland shell lands (#36); re-run this script then."
+        print "  Wayland shell lands \(#36); re-run this script then."
         print $"  Median warm wall time, for what little it is worth: ($walls) ms"
         $lines = ($lines | append [
             "R16 NOT MEASURED — the binary printed no first-frame line."
             "Expected until the Wayland shell (#36) lands. Re-run then."
             $"median warm wall time ($walls) ms — process lifetime, not first frame"
         ])
+        if not (0 in $codes) {
+            # Every run failed outright. Today that is simply `auroval-greet`
+            # with no subcommand printing its usage and exiting 2, which is
+            # the greeter not having a shell yet rather than anything broken.
+            # Said out loud, because "no first-frame line" and "the binary
+            # refused to start" deserve to be told apart on the console.
+            print $"  Every run exited non-zero \(($codes | str join ', ')\) — the binary did"
+            print "  not even start a greeter. Until #36 lands, `auroval-greet`"
+            print "  with no subcommand prints its usage and exits 2."
+            $lines = ($lines | append $"every run exited non-zero (($codes | str join ', ')) — no greeter was started")
+        }
     } else {
         let median = ($frames | math median)
         let worst = ($frames | math max)
@@ -249,5 +261,6 @@ def run-once [bin: string, cache: string, timeout: int] {
         frame: (if ($frame | is-empty) { null } else { $frame | into float })
         size: $size
         wall: ($wall | math round -p 1)
+        code: $r.exit_code
     }
 }

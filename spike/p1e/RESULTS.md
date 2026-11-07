@@ -8,12 +8,13 @@ has not.
 
 | box | state |
 |---|---|
-| harness runs the greeter under `cage` on a real VT | **written**, logic exercised against a stub; not yet run on a TTY |
+| harness runs the greeter under `cage` on a real VT | **written**, exercised end to end against the real `auroval-greet`; not yet run on a TTY, where `cage` is real |
 | `n/total` progress, results written after every step | **done**, verified by running it |
 | greetd config touching neither `config.toml` nor SDDM | **done** |
 | `/var/lib/auroval` owned by the greeter | **written** as tmpfiles; needs one root command to take effect |
 | C15 cache in the greeter's environment | **done** in `deploy/auroval-greet.sh` |
 | R16 re-measured at 2560×1440 on a real VT | **not yet measured** — see below |
+| C15 cache measured in the greeter's own context | **not yet** — the greeter has no GStreamer in it yet; the 1018/93 ms figures remain P0's |
 
 ## Why R16 is not measured here
 
@@ -61,18 +62,60 @@ caused someone to abort a good measurement.
 
 ## What was verified without a TTY
 
+Against the real `auroval-greet`, built from `crates/greet` at `3eea410`:
+
+- `deploy/install.nu` builds, stages, substitutes the VT into the greetd
+  config, writes the root script and the `auroval-vt` wrapper, and runs no
+  `sudo`. The root script it emits installs four files and runs
+  `systemd-tmpfiles --create`, and nothing else.
+- The harness runs the real binary through all of its steps. Its `probe`
+  output is reproduced below.
+- Every measurement run exits 2, which the harness now says out loud: until
+  the Wayland shell lands, `auroval-greet` with no subcommand prints its usage
+  and never starts a greeter. "No first-frame line" and "the binary refused to
+  start" are different failures and the console now distinguishes them.
+
+`cage` itself was stood in for, because taking DRM master needs a console.
+Everything downstream of `cage` is the real thing.
+
+Against stubs, because the real binary cannot yet produce the output:
+
+- The success path: a stub printing P0's `first presented : Nms after start`
+  lines gives a median, a worst case, a surface check against 2560×1440, and a
+  budget verdict.
+
+And without either:
+
 - The harness refuses to run with `WAYLAND_DISPLAY` set, exit 2.
-- Both verdict paths were exercised against stub binaries: one that prints
-  P0's `first presented : Nms after start` lines (median computed, budget
-  compared, surface checked) and one that prints nothing (the "R16 NOT
-  MEASURED" path).
-- Results are on disk after every step, confirmed by reading the file from a
-  run that was still going.
-- `deploy/install.nu` stages, substitutes the VT into the greetd config,
-  writes the root script and the `auroval-vt` wrapper, and runs no `sudo`.
+- Results are on disk after every step, confirmed by reading the file during a
+  run that had not finished.
 - `greeter-probe.nu` and `greetd-session.nu` refuse to run as non-root.
 - The `greeter` user on this machine is in `video`, so `cage` will get DRM
   master. Checked with `id -nG greeter`: `greeter video`.
+
+## `auroval-greet probe` today, as you
+
+```
+problem      configuration is not implemented yet; using defaults (wanted /etc/auroval/greet.lua)
+sessions     2
+  hyprland               Wayland  /usr/bin/start-hyprland
+  hyprland-uwsm          Wayland  uwsm start -e -D Hyprland hyprland.desktop
+state file   /var/lib/auroval/last-login
+  last user    —
+  last session —
+  writable     no — Permission denied (os error 13)
+preselected  hyprland
+geometry     clock 110px  date 22px  user 16px  field 340x56 r12 p4
+font         /usr/share/fonts/TTF/MesloLGSNerdFont-Regular.ttf
+fonts found  5
+```
+
+That `writable no` is the box this piece exists to close, and it is one root
+command away. Run as `greeter` it would say the same thing for the same
+reason; run as `greeter` *after* the tmpfiles snippet is installed, it should
+say `writable yes`. `greeter-probe.nu` is how that gets checked, and nobody
+should believe the box is ticked on the strength of the line above, which was
+produced by an account that does not own the directory either.
 
 ## What needs the maintainer
 
