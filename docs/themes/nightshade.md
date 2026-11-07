@@ -223,38 +223,58 @@ flagged as N5.
 Tenet 2 and tenet 3 therefore do not conflict here. They apply to different
 surfaces, and each gets what it asks for.
 
-### 3.3 Where a declarative format runs out
+### 3.3 The three rules that have to run
 
-This section exists for [Q4](../prd/greet.md#open-questions) and takes no
-position on it.
+This section was written while [Q4](../prd/greet.md#open-questions) was open and
+deliberately took no position. **Q4 is now answered: Lua, in a restricted
+interpreter** — created without `io`, `os`, `package`, `require`, `debug`,
+`load` or `dofile`, under instruction and memory ceilings. A theme can express
+behaviour and has no capabilities to abuse.
 
-**Expressible as data** — a table, in any format with no execution:
+So the question is no longer *whether* these three rules can live in a theme.
+It is what they are allowed to do.
+
+**Data — a table, no execution needed:**
 
 - The scene list, and each scene's phase variants and still/loop pair.
 - The phase boundaries, if they are fixed clock times.
-- The derived palette per scene (§4), precomputed.
+- The derived palette per scene (§4), precomputed and committed.
 - Every clause of the media contract (§2) as thresholds.
 
-**Not expressible as data** — this is behaviour:
+**Behaviour — this is what Q4 bought:**
 
 - *Which scene today.* Random, sequential, seeded by date? "Pick one per day"
-  is a rule, and the rule has to live somewhere.
+  is a rule, and the rule now has somewhere to live.
 - *When a phase begins*, if boundaries follow the sun rather than the clock.
   Solar dawn needs latitude, longitude and a date — a computation, not a
   constant. Fixed clock times would be data; they would also be wrong in
-  December.
+  December. **N4** chooses between them, and it is now a free choice rather
+  than one constrained by the format.
 - *The transition.* Crossfade on phase change, on wake from suspend, on unlock
   — duration, curve, and whether it happens at all when the screen was off.
 
-This is the same observation [docs/ideas.md](../ideas.md) makes about executable
-themes: *"The thesis already says a theme determines 'hoe die switchen'. That is
-behaviour, not data, and no config format expresses it."* nightshade is the
-first concrete instance of it. **It does not argue for WebAssembly, for Lua, or
-for anything else.** It says: whatever Q4 decides, it has to have an answer for
-those three bullets, and "put it in the config file" is not one. The cheapest
-answer — the renderer implements these three rules natively and the theme only
-selects between named strategies — is also a legitimate answer and should be
-priced before anything executable is.
+**These three run inside a greeter, so R22 is binding.** Theme code must not be
+able to prevent login. R22 names four failure modes — erroring, looping forever,
+allocating without bound, and reaching for the filesystem, the network or a
+process. The last is denied by construction, since the interpreter never
+receives those capabilities. The other three all end the same way: no answer
+comes back. So every rule nightshade specifies needs a defined answer for that
+case, and here they are:
+
+| Rule | If the theme's code does not produce an answer |
+|---|---|
+| Which scene today | The first scene in the list. Always exists; never empty. |
+| When a phase begins | Fixed clock boundaries, from the theme's own data. |
+| The transition | No transition. The new scene is simply there. |
+
+None of those is a degraded login. They are a slightly less clever one, which
+is the correct trade when the alternative is a locked-out machine.
+
+**What nightshade does not need.** The cheapest option — the renderer owns the
+three rules natively and the theme selects between named strategies — remains
+sufficient for nightshade as specified, and is worth preferring where it fits.
+Q4 made behaviour possible; it did not make it compulsory. The parked
+[WebAssembly idea](../ideas.md) stays parked, with its own condition to watch.
 
 ---
 
@@ -488,31 +508,45 @@ this machine that does not follow the others. The pin is gone; the geometry and
 typography are kept, with the corner radius and rounding power now named, and
 colour comes from the active theme. The PRD carries a dated note saying why.
 
-R12's priority is **still open**. §3.1 makes time-of-day variants part of what a
-theme *is*, which argues for MUST, but that follows Q1 and is not settled here.
+R12 stays a **Should**, confirmed by Q1 (below).
 
-### Q1 is effectively answered — confirm it
+### Q1 is answered: video loops
 
-[Q1](../prd/greet.md#open-questions) asks: video loops, or Apple-style
-time-of-day stills, or both? nightshade uses **both, with different jobs**:
-loops on login and lock, time-of-day stills on the desktop (§3.2). That was not
-a design preference imposed here — it follows from the maintainer's own line
-about the desktop not animating noticeably, combined with his choice of
-time-of-day switching.
+[Q1](../prd/greet.md#open-questions) asked: video loops, or Apple-style
+time-of-day stills, or both? **The maintainer chose video loops**, and C9 is
+rewritten from an open question into a decision: tvOS-style loops are the
+subject, macOS-style time-of-day stills are secondary.
 
-It is recorded as a consequence, **not** closed. Q1 is the maintainer's to
-settle in the PRD, and doing so changes R12's priority.
+That is consistent with what this document already specified. nightshade uses
+both, *with different jobs* — loops on login and lock, where the motion is the
+point, and time-of-day stills on the desktop, which deliberately does not move
+(§3.2). The PRD's framing says the same thing from the other side: time-of-day
+variants are the clock making a moving background stay interesting, not a
+substitute for motion, and a build shipping only stills would fail tenet 2.
 
-### Q4 gets a requirement, not an answer
+So R12 stays a Should. nightshade requires time-of-day variants of *itself*
+(§3.1), which is a theme asking more of itself than the greeter asks of every
+theme — not a conflict.
 
-§3.3 lists the three things a theme has to express that are behaviour rather
-than data: which scene today, when a phase begins, and how the transition
-happens. [Q4](../prd/greet.md#open-questions) and
-[issue 3](https://github.com/auroval/auroval/issues/3) decide the format;
-nightshade only supplies the test it has to pass. The parked
-[WebAssembly idea](../ideas.md) is not pulled forward, and the cheapest option —
-the renderer owns these three rules and the theme names a strategy — is
-explicitly on the table.
+### Q4 is answered, and nightshade is its first customer
+
+Q4 chose **Lua in a restricted interpreter**, and
+[issue 3](https://github.com/auroval/auroval/issues/3) is closed. §3.3 named
+three things a theme has to express that are behaviour rather than data — which
+scene today, when a phase begins, how the transition happens — as a test any
+answer had to pass. Lua passes it.
+
+Two consequences for this document, both now applied:
+
+- §3.3 states, per rule, what happens when theme code fails to produce an
+  answer, because **R22** requires that theme code cannot prevent login and
+  nightshade is specifying code that runs in a greeter.
+- N4 — fixed clock times or solar boundaries — is no longer constrained by what
+  the format can express. It is now purely a question of what is wanted.
+
+The palette needs no translation either: matugen already emits `colors.lua` as a
+Lua table, so a Lua config consumes it directly. One generated palette, nothing
+to keep in sync.
 
 ---
 
@@ -523,7 +557,7 @@ explicitly on the table.
 | N1 | nightshade's tonal targets (§4.3) — the accent's L\* and C\*, which decide whether it reads as neon or as pastel. The theme's visual signature, and the one number worth getting wrong a few times first. | Maintainer, against the first scene |
 | N2 | Does the centre window title stay in the bar (§5)? | Maintainer |
 | N3 | How many scenes does nightshade ship? Daily rotation over two scenes is a two-day cycle, which is not rotation. | Maintainer |
-| N4 | Fixed clock times or solar phase boundaries (§3.3)? Materially changes what the format must express. | Maintainer, with Q4 |
+| N4 | Fixed clock times or solar phase boundaries (§3.3)? No longer constrained by the format — Q4 chose Lua — so this is now purely what is wanted. Solar is right and costs a location; clock is wrong in December and costs nothing. | Maintainer |
 | N5 | Should tenet 2 gain a per-surface clause (§3.2)? | Maintainer |
 | N7 | The scrim (§2.4) is the one place a user's file changes how nightshade looks rather than what colour it is. Acceptable, or does nightshade prefer to show bright media undimmed and let the text fight it? | Maintainer |
 | N6 | The name collides with Nightshade, the University of Chicago image-poisoning tool. Different domain, and theme names are namespaced under auroval — noted, not raised as a blocker. | Maintainer |
