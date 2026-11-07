@@ -62,6 +62,13 @@ def main [
         ""
     ]
 
+    let total = ($runs * 2 * ($seconds + 3))
+    print $"  ($runs) pairs, about ($total) s in total. Writing to ($out)."
+    print "  Ctrl+Alt+F1 returns to your desktop at any point; the run just"
+    print "  carries on here and nothing will switch you back."
+    print ""
+    $lines | str join "\n" | save -f $out
+
     # Alternate the modes so that any drift in the machine lands on both.
     for i in 1..$runs {
         for mode in ["gl" "shm"] {
@@ -79,6 +86,10 @@ def main [
                 $lines = ($lines | append $"           negotiated: ($caps)")
             }
             print $"           cpu ($cpu)%  fps ($fps)"
+            # Saved after every pair, not at the end: P0 lost a whole run's
+            # evidence to output that was only flushed on exit, and a measurement
+            # you cannot abort halfway is a measurement you will not repeat.
+            $lines | str join "\n" | save -f $out
         }
     }
 
