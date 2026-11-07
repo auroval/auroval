@@ -1,0 +1,28 @@
+# auroval's greetd configuration — installed as /etc/greetd/auroval.toml.
+#
+# NOT /etc/greetd/config.toml. That file is greetd's default and the one the
+# `greetd.service` unit reads, and this project does not touch it. SDDM stays
+# the way into this machine until the last box of P1 is ticked, and until then
+# greetd is started by hand, in the foreground, on a spare VT:
+#
+#     sudo greetd --config /etc/greetd/auroval.toml
+#
+# Nothing about this file enables greetd, and installing it changes no
+# behaviour on its own. That is deliberate: the P0 spike learned the hard way
+# that greetd is a daemon, not a one-shot — when a session ends it starts a
+# FRESH greeter and switches the console back to its own VT. Run as a service
+# before you are ready, it will keep yanking you off whatever you were doing.
+#
+# `vt` must be a free console. 3 is the convention across this repo's spikes;
+# VT 1 and 2 belong to SDDM and your desktop session. Change it here if 3 is
+# taken, or pass --vt to spike/p1e/greetd-session.nu, which writes a copy of
+# this file with the number substituted.
+
+[terminal]
+vt = 3
+
+[default_session]
+# deploy/auroval-greet.sh, installed. It sets the C15 cache variables and
+# execs cage; see that file for why it is /bin/sh and why it exists at all.
+command = "/usr/local/lib/auroval/auroval-greet.sh"
+user = "greeter"
