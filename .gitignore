@@ -1,3 +1,7 @@
 /target/
 **/*.rs.bk
 *.pdb
+
+# Python bytecode from tools/
+__pycache__/
+*.py[cod]
