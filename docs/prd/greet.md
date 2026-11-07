@@ -160,6 +160,45 @@ configured. This is a property of this driver and this packaging, not a general
 guarantee: a VA-API-only machine would depend on `/dev/dri/renderD128`, which is
 `0666` here but is `0660 root:render` on distributions that tighten it.
 
+*Portability: VA-API is the more portable API and the weaker path here.*
+Measured on the same clip, 2026-11-07, after forcing the plugin past its own
+filter:
+
+| | NVDEC `nvh264dec` | VA-API `vah264dec` |
+|---|---|---|
+| 1440p60 rate | 59.50 fps | 59.90 fps |
+| late buffers | 0 | 0 |
+| CPU | 2.5% of one core | 3.8% |
+| frame memory | `memory:CUDAMemory` | plain `video/x-raw` |
+
+VA-API decodes in hardware and holds the rate, but hands frames back in
+**system memory**, so it fails R7's no-readback budget on this machine. The
+reason GStreamer refuses it is explicit rather than accidental:
+`_gst_va_display_filter_driver` matches the driver's vendor string against an
+allowlist and logs *"Unsupported driver: VA-API NVDEC driver [direct
+backend]"*. `GST_VA_ALL_DRIVERS=1` bypasses that filter, which is how the
+figures above were obtained — and the measurement shows the filter is a
+reasonable judgement, not an oversight.
+
+This does not make VA-API the wrong choice elsewhere. On Intel (`iHD`) and
+Mesa/AMD (`radeonsi`) it is the *only* hardware path, its vendor string is on
+the allowlist, and the `va` plugin exports DMABuf rather than copying down. So
+the portable position is not to pick one API:
+
+- **Never name a decoder.** `decodebin3` rank-selects, and it chose
+  `nvh264dec` unaided here — and still chose it with the VA-API filter
+  bypassed, since `nvcodec` outranks `va`. The same pipeline would select
+  `vah264dec` on AMD or Intel with no code change. Portability costs nothing
+  as long as no element is hard-coded.
+- **Do not assume where frames live.** This is the real cost, and it lands on
+  Q5: the renderer must accept `memory:CUDAMemory`, `memory:DMABuf` and
+  `memory:VAMemory`, and fall back to system memory per R9. A renderer written
+  against CUDA memory alone would work on this machine and nowhere else.
+
+**Still unverified:** every VA-API figure here comes from NVIDIA's shim. Real
+Intel and AMD behaviour, including whether DMABuf export actually avoids the
+readback, has not been measured on that hardware. That is a P4 question.
+
 Reproduce with `spike/p0/greeter-decode-test.nu`; full output in
 `spike/p0/RESULTS.md`.
 
@@ -408,7 +447,7 @@ to publish. The README may describe how to create one; it must not contain one.
 | Q2 | ~~Is `greetd_ipc` usable, and under what licence?~~ **Answered: GPL-3.0-only, and not used.** | `greetd_ipc` 0.10.3 declares `license = "GPL-3.0-only"` in its own `Cargo.toml.orig` and bundles the GPLv3 text; docs.rs simply does not render the field, which is why the secondary source looked unreliable. The codec is therefore implemented in-house in `crates/greetd-proto` — the whole protocol, with tests, well under 200 lines — so no GPL code sits in the authentication path and Q3 is free. | Settled |
 | Q3 | Which licence for `greet`? | Follows Q2. Permissive invites reuse by other greeters; GPL matches the ecosystem it sits in. | Maintainer |
 | Q4 | Which configuration format at all? The stated reason for hyprlang was consistency with Hyprland — but **Hyprland deprecated hyprlang in 0.55 and moves to Lua**, so that argument now points the other way. hyprlock still uses hyprlang. | Deciding what consistency is worth being consistent *with*: the compositor's new direction (Lua), the lock screen's current one (hyprlang), or neither. Only then does C3's reimplement/adopt/bridge question matter. See also [parked ideas](../ideas.md) on executable themes. | Maintainer |
-| Q5 | Which Wayland stack: smithay-client-toolkit with wgpu, or a toolkit? | **Still open, but narrowed by P0.** The spike used smithay-client-toolkit with `wl_shm` and it was unproblematic: surface configured 71 ms after start, keyboard and fullscreen straightforward. `wl_shm` itself is not the answer — it forces a GPU-to-CPU readback per frame, which R7's budget now forbids. So what remains is how NVDEC's `memory:CUDAMemory` frames reach a texture without that readback, which is the real deciding constraint and is specific to the `nvcodec` path C6 settled on. `hyprtoolkit` also now exists as a Hyprland-native option and did not when this question was written. | Maintainer |
+| Q5 | Which Wayland stack: smithay-client-toolkit with wgpu, or a toolkit? | **Still open, but narrowed by P0.** The spike used smithay-client-toolkit with `wl_shm` and it was unproblematic: surface configured 71 ms after start, keyboard and fullscreen straightforward. `wl_shm` itself is not the answer — it forces a GPU-to-CPU readback per frame, which R7's budget now forbids. So what remains is how NVDEC's `memory:CUDAMemory` frames reach a texture without that readback, which is the real deciding constraint and is specific to the `nvcodec` path C6 settled on. `hyprtoolkit` also now exists as a Hyprland-native option and did not when this question was written. **Portability constrains this:** C6 measured VA-API handing frames back in system memory while NVDEC keeps them in CUDA memory, so the renderer must accept several memory types rather than one. A design written against CUDA memory alone runs on this machine and nowhere else. | Maintainer |
 | Q6 | Does the two-mode design hold, or does lock mode become its own binary? | P3. If the renderer shares cleanly through P1 and P2, one binary; if the lock path needs materially different plumbing, split. | Maintainer |
 
 | Q7 | Does authd's PAM module function under greetd, or only under GDM (C12)? | A spike: greetd plus authd on one machine, with a device-code client, driven by `agreety` first so the greeter is not a variable. This is the question that decides whether cloud login is weeks or months. | Maintainer |
@@ -420,10 +459,13 @@ to publish. The README may describe how to create one; it must not contain one.
 - ~~**Decode does not work in greetd's context**~~ — **retired by P0.** It
   works, measured (C6). Had it not, the animated background would have become a
   lock-screen feature only and "patch hyprlock" the better project. The
-  residual version of this risk is narrower and worth stating: the working path
-  is NVDEC via `nvcodec`, so a machine without it — an AMD or Intel GPU, where
-  VA-API is the only path and `gst-plugin-va` must actually register elements —
-  has not been tested. That affects P4, not this machine.
+  residual version of this risk is narrower and now partly measured. VA-API
+  does decode in hardware here, at rate, once past GStreamer's vendor filter —
+  but it copies frames to system memory, so it fails R7's budget on this
+  machine. On Intel and AMD the same plugin exports DMABuf instead, which is
+  why the portable answer is to name no decoder and accept several memory
+  types (C6). What remains untested is real Intel and AMD hardware, which is a
+  P4 question, not a premise question.
 - **hyprlock gains video support upstream** before P3. Then lock mode is not
   worth writing; `greet` stays a greeter and contributes a config bridge
   instead.

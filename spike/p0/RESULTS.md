@@ -211,3 +211,48 @@ goes through `wl_shm`, which means a GPU-to-CPU readback and one copy per frame
 and the spike must not prejudge it. And the greetd login was exercised
 separately: `GREETD_SOCK` is unset under a nested `cage`, so this run proves the
 decode-and-present path, not the auth path.
+
+---
+
+## Portability — VA-API measured against NVDEC
+
+GStreamer's `va` plugin registers **zero features** on this machine despite
+`libva` working and `gst-plugin-va` being installed. The cause is explicit, not
+a misconfiguration:
+
+```
+vadisplay gstvadisplay_drm.c:157: DRM render node with kernel driver nvidia-drm
+vadisplay gstvadisplay.c:176:     VA-API driver vendor: VA-API NVDEC driver [direct backend]
+vadisplay gstvadisplay.c:186: WARN Unsupported driver: VA-API NVDEC driver [direct backend]
+```
+
+`_gst_va_display_filter_driver` matches the driver's vendor string against an
+allowlist and rejects NVIDIA's VA-API shim by name. `GST_VA_ALL_DRIVERS=1`
+bypasses the filter, after which `vah264dec`, `vah265dec`, `vaav1dec`,
+`vavp9dec` and others appear — which is how the comparison below was obtained.
+
+Same clip, 1440p60 H.264 High, 20 s, realtime:
+
+| | NVDEC `nvh264dec` | VA-API `vah264dec` (forced) |
+|---|---|---|
+| rate | 59.50 fps | 59.90 fps |
+| late buffers | 0 | 0 |
+| CPU | 2.5% of one core | 3.8% |
+| frame memory | `memory:CUDAMemory` | plain `video/x-raw` (system memory) |
+
+So VA-API works and holds rate, but copies frames down — failing R7's
+no-readback budget. The filter is a sound judgement rather than an oversight.
+
+With the filter bypassed, `decodebin3` *still* selects `nvh264dec`, because
+`nvcodec` ranks 257 against `va`'s lower rank. Rank selection therefore gets
+this right unaided, which is the whole portability argument: name no decoder.
+
+Reproduce:
+
+```nu
+GST_VA_ALL_DRIVERS=1 target/release/spike-p0 decode <file.mp4> --path vaapi --seconds 20
+```
+
+This also makes the AMD/Intel code path exercisable on this machine, which is
+useful for P4 — with the caveat that it exercises NVIDIA's shim, not Mesa or
+`iHD`, so DMABuf export behaviour is still unmeasured.
