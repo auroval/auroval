@@ -20,17 +20,27 @@ pub struct Style {
     pub palette: Palette,
 }
 
-pub fn draw(gl: &mut Gl, ui: &UiState, style: &Style, background: Option<glow::Texture>) {
+pub fn draw(
+    gl: &mut Gl,
+    ui: &UiState,
+    style: &Style,
+    background: Option<(glow::Texture, u32, u32)>,
+) {
     let (w, h) = gl.size();
     let (cx, cy) = (w * 0.5, h * 0.5);
     let g = &style.geometry;
     let p = &style.palette;
 
-    // R9's last resort is a solid colour, and it is also what is behind a
-    // background with transparency, so it is always drawn first.
+    // R9's last resort is a solid colour. It is drawn first whatever happens,
+    // because it is also what fills the strip a crop-to-fill cannot reach and
+    // what shows while a decode is still in flight.
     gl.clear([0.07, 0.07, 0.11, 1.0]);
-    if let Some(tex) = background {
-        gl.draw_image(tex, 0.0, 0.0, w, h, [1.0, 1.0, 1.0, 1.0]);
+    if let Some((tex, iw, ih)) = background {
+        // Crop to fill, never stretch: an aspect-ratio mismatch must not
+        // distort a face. `fill_rect` is the background module's and is
+        // tested on its own.
+        let [x, y, rw, rh] = crate::background::fill_rect(w as u32, h as u32, iw, ih);
+        gl.draw_image(tex, x, y, rw, rh, [1.0, 1.0, 1.0, 1.0]);
     }
 
     // The clock and date carry a drop shadow in hyprlock (shadow_passes = 2).

@@ -31,9 +31,8 @@ use std::time::Instant;
 
 use glow::HasContext;
 
-use crate::render::Renderer;
+use crate::render::Gl;
 use crate::store::is_outside_homes;
-use crate::theme::Rgba;
 
 /// Where a background may live, named once so the refusal message can say it.
 /// Any directory outside the homes would do; this is the one the project's own
@@ -57,6 +56,7 @@ pub struct Still {
 
 impl Still {
     /// How many bytes go to the driver. Only used in the measurement harness.
+    #[allow(dead_code)]
     fn bytes(&self) -> usize {
         self.rgba.len()
     }
@@ -300,22 +300,27 @@ impl Background {
         }
     }
 
-    /// Cover the surface: the still if there is one, the solid colour
-    /// otherwise. Clears first either way, so the colour also fills the strip
-    /// a crop cannot reach if the surface were ever wider than the scale
-    /// allows.
-    pub fn draw(&mut self, r: &Renderer, solid: Rgba) {
-        self.poll(r);
-        r.clear(solid);
-        if let State::Ready { tex, w, h } = self.state {
-            let [x, y, rw, rh] = fill_rect(r.width, r.height, w, h);
-            r.draw_image(tex, x, y, rw, rh, [1.0, 1.0, 1.0, 1.0]);
+    /// Take delivery of the decode if it has arrived, and say what there is
+    /// to draw: the texture and its own size, or nothing.
+    ///
+    /// This used to be a `draw` that cleared the surface and placed the image
+    /// itself. It was split when the view turned out to clear as well, which
+    /// merged naively would have cleared twice — but the *poll* could not
+    /// simply move to the caller, because the upload has to happen on the
+    /// thread holding the GL context and only this type knows when the pixels
+    /// have landed. So the poll stays here and the placing goes to the view,
+    /// which keeps the view a pure function of what it is given.
+    pub fn ready(&mut self, gl: &Gl) -> Option<(glow::Texture, u32, u32)> {
+        self.poll(gl);
+        match self.state {
+            State::Ready { tex, w, h } => Some((tex, w, h)),
+            _ => None,
         }
     }
 
     /// Take delivery of the decode, if it has arrived, and upload it. Costs a
     /// `try_recv` per frame while pending and nothing at all once settled.
-    fn poll(&mut self, r: &Renderer) {
+    fn poll(&mut self, r: &Gl) {
         let State::Pending(rx) = &self.state else {
             return;
         };
@@ -373,6 +378,17 @@ impl Background {
 
     /// Whether a still is on screen. For the probe; `draw` needs no caller
     /// that asks first.
+    /// Whether the outcome is known: the image has arrived, or it is not
+    /// coming. A caller that waits for a background — the snapshot does, since
+    /// one frame rendered immediately would always show the fallback — needs
+    /// to stop waiting on a failure too, and `ready()` returning `None` does
+    /// not distinguish "not yet" from "never".
+    pub fn settled(&mut self, gl: &Gl) -> bool {
+        self.poll(gl);
+        !matches!(self.state, State::Pending(_))
+    }
+
+    #[allow(dead_code)]
     pub fn has_image(&self) -> bool {
         matches!(self.state, State::Ready { .. })
     }

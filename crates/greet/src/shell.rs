@@ -43,6 +43,7 @@ use wayland_client::{
 };
 
 use crate::auth::{self, Answer};
+use crate::background::Background;
 use crate::config::Config;
 use crate::render::{Gl, Target};
 use crate::store::Store;
@@ -70,6 +71,7 @@ pub struct Shell {
 
     screens: HashMap<u32, Screen>,
     gl: Option<Gl>,
+    background: Background,
     style: Style,
     store: Store,
 
@@ -101,24 +103,25 @@ pub fn run(cfg: Config, ui: UiState, preview: bool) -> Result<(), String> {
     let gl = unsafe { Gl::new(conn.backend().display_ptr() as *mut _) }?;
     // R11 names MesloLGS. Saying which font was actually loaded makes the
     // wrong one a visible failure rather than a silent substitution.
-    eprintln!("greet: font {}", gl.atlas.source);
+    eprintln!("auroval-greet: font {}", gl.atlas.source);
     // C10, asserted rather than assumed: the greeter runs as its own user and
     // must work when /home/<user> is mode 700.
     if !crate::store::is_outside_homes(&cfg.state_path) {
         eprintln!(
-            "greet: refusing {} — C10 forbids any greeter path inside a home directory",
+            "auroval-greet: refusing {} — C10 forbids any greeter path inside a home directory",
             cfg.state_path.display()
         );
         return Err("state path is inside a home directory".into());
     }
-    if let Some(bg) = &cfg.background {
-        // Piece #34 loads this; until it lands, say so rather than silently
-        // showing the fallback and letting it look like the file was broken.
-        eprintln!("greet: background {} (not loaded yet)", bg.display());
+    // R9. The decode runs on its own thread; the solid colour shows until it
+    // lands, and every fallback says which file and why.
+    let background = Background::start(cfg.background.as_deref());
+    for p in background.problems() {
+        eprintln!("auroval-greet: {p}");
     }
     if cfg.ambient_sound.is_some() {
         // R23 is gated on C16: the greeter cannot open a sound device at all.
-        eprintln!("greet: a theme asked for ambient sound; blocked by C16, ignoring");
+        eprintln!("auroval-greet: a theme asked for ambient sound; blocked by C16, ignoring");
     }
     let session_cmd = ui.session().map(|s| s.command.clone()).unwrap_or_default();
 
@@ -134,6 +137,7 @@ pub fn run(cfg: Config, ui: UiState, preview: bool) -> Result<(), String> {
         keyboard: None,
         screens: HashMap::new(),
         gl: Some(gl),
+        background,
         style: Style {
             geometry: cfg.geometry,
             palette: cfg.palette,
@@ -241,7 +245,7 @@ impl Shell {
                         session: self.ui.session().map(|s| s.id.clone()),
                     };
                     if let Err(e) = self.store.save(&last) {
-                        eprintln!("greet: could not remember this login: {e}");
+                        eprintln!("auroval-greet: could not remember this login: {e}");
                     }
                     self.done = true;
                 }
@@ -319,7 +323,10 @@ impl Shell {
             if gl.make_current(target).is_err() {
                 continue;
             }
-            view::draw(gl, &self.ui, &self.style, None);
+            // The poll has to happen with the context current, which is why
+            // it is here and not before the loop over outputs.
+            let bg = self.background.ready(gl);
+            view::draw(gl, &self.ui, &self.style, bg);
             gl.present(target);
             if self.first_frame.is_none() {
                 self.first_frame = Some(Instant::now());
@@ -327,7 +334,7 @@ impl Shell {
                 // assumed. P0's 243 ms was measured at 1255x674 in a nested
                 // cage; this is the figure that replaces it.
                 eprintln!(
-                    "greet: first frame after {} ms",
+                    "auroval-greet: first frame after {} ms",
                     (Instant::now() - self.started).as_millis()
                 );
             }
@@ -413,7 +420,7 @@ impl WindowHandler for Shell {
                 Some(t) => t.resize(pw, ph, screen.scale),
                 None => match unsafe { gl.target(window.wl_surface(), pw, ph, screen.scale) } {
                     Ok(t) => screen.target = Some(t),
-                    Err(e) => eprintln!("greet: no EGL surface for this output: {e}"),
+                    Err(e) => eprintln!("auroval-greet: no EGL surface for this output: {e}"),
                 },
             }
             screen.configured = true;
@@ -466,7 +473,7 @@ impl SeatHandler for Shell {
             );
             match r {
                 Ok(k) => self.keyboard = Some(k),
-                Err(e) => eprintln!("greet: no keyboard: {e}"),
+                Err(e) => eprintln!("auroval-greet: no keyboard: {e}"),
             }
         }
     }
