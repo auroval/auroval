@@ -107,6 +107,9 @@ const fn rgba(r: u8, g: u8, b: u8, a: u8) -> Rgba {
 }
 
 impl Palette {
+    // Written here because a palette is a theme concern, used by the Lua
+    // loader in #33. Until that lands nothing in the binary calls it.
+    #[allow(dead_code)]
     /// Read a palette table: one `role = rrggbb` per line, bare six-digit hex
     /// with no leading `#`, which is the shape nightshade's §4 commits to so
     /// that callers can append their own alpha byte.
@@ -140,6 +143,7 @@ impl Palette {
         p
     }
 
+    #[allow(dead_code)]
     pub fn load(path: &std::path::Path) -> Palette {
         std::fs::read_to_string(path)
             .map(|t| Palette::parse(&t))
