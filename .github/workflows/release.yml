@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Ref to build (for a dry run without publishing)
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and attest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # upload release assets
+      id-token: write        # Sigstore OIDC token for provenance
+      attestations: write    # record the attestation
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - uses: ./.github/actions/rust-build-deps
+      - run: rustup show
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Build release binaries
+        run: cargo build --workspace --release --locked
+
+      - name: Collect artifacts
+        id: collect
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          # Only real binaries, and only if they exist: the workspace currently
+          # holds a spike, so this must not fail the release when it is removed.
+          found=0
+          for b in target/release/*; do
+            [ -f "$b" ] || continue
+            [ -x "$b" ] || continue
+            case "$b" in *.d|*.so|*.rlib) continue ;; esac
+            cp "$b" dist/
+            found=1
+          done
+          if [ "$found" = 0 ]; then echo "no binaries built"; exit 1; fi
+          ls -la dist
+          ( cd dist && sha256sum * > SHA256SUMS )
+
+      # Build provenance: a signed statement of which workflow, at which commit,
+      # produced these exact bytes. Verified with:
+      #   gh attestation verify <file> --repo auroval/auroval
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: 'dist/*'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: auroval-${{ github.sha }}
+          path: dist/
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" dist/* --clobber

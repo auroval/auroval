@@ -1,0 +1,34 @@
+version: 2
+updates:
+  # Rust dependencies. Grouped so a week of patch bumps is one pull request
+  # rather than nine: tenet 4 means review time is the scarce resource here.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      patch-and-minor:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "deps"
+
+  # Action versions, which are also a supply-chain surface: a mutable tag on a
+  # third-party action is arbitrary code in a workflow that can publish.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
+
+  - package-ecosystem: devcontainers
+    directory: /
+    schedule:
+      interval: monthly

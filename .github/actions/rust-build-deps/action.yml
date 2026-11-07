@@ -1,0 +1,14 @@
+name: Rust build dependencies
+description: System libraries this workspace links against (GStreamer, Wayland).
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          pkg-config \
+          libgstreamer1.0-dev \
+          libgstreamer-plugins-base1.0-dev \
+          libwayland-dev \
+          libxkbcommon-dev
