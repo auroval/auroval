@@ -5,5 +5,20 @@
 line-length = 100
 target-version = "py311"
 
+# Pinned so a local run and CI cannot disagree. This is not hypothetical: the
+# same files produced "All checks passed" under ruff 0.14.2 and four findings
+# under 0.17.4, because ruff's DEFAULT rule set is broad (407 rules isolated at
+# 0.17.4) and grows with releases. `extend-select` below adds only 14 on top of
+# that, so the version decides far more than the config does. Ruff errors out
+# when the running version does not match, rather than quietly reporting
+# something different. Raise it deliberately; Dependabot can propose it.
+required-version = "==0.17.4"
+
 [lint]
+# Deliberately `extend-select` rather than `select`. Narrowing to these three
+# families would read as self-documenting but would LOSE rules from ruff's
+# default set that have already earned their keep here — ISC004 caught an
+# implicit string concatenation inside an ffprobe argv list, one missing comma
+# from becoming two arguments, which would have failed only on video
+# candidates and only when a scene was being packaged.
 extend-select = ["I", "UP", "B"]

@@ -34,7 +34,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import colourmath as C  # noqa: E402
+import colourmath as C
 
 # --------------------------------------------------------------------------
 # Contract constants (docs/themes/nightshade.md §2, §4.3)
@@ -140,8 +140,10 @@ def probe_video(path: Path) -> dict:
             "-select_streams",
             "v:0",
             "-show_entries",
-            "stream=codec_name,profile,width,height,pix_fmt,color_range,"
-            "color_primaries,nb_frames,avg_frame_rate:format=duration",
+            (
+                "stream=codec_name,profile,width,height,pix_fmt,color_range,"
+                "color_primaries,nb_frames,avg_frame_rate:format=duration"
+            ),
             "-of",
             "json",
             str(path),
