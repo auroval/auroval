@@ -2,6 +2,20 @@ version: 2
 updates:
   # Rust dependencies. Grouped so a week of patch bumps is one pull request
   # rather than nine: tenet 4 means review time is the scarce resource here.
+  #
+  # Two things learned the hard way, on the first Dependabot run:
+  #
+  # 1. The gstreamer crates must move in lockstep. Ungrouped, Dependabot
+  #    opened separate PRs for `gstreamer-app`, `gstreamer-video` and
+  #    `gstreamer`, which put two incompatible versions of the `gstreamer`
+  #    crate in one graph — `gstreamer_app::gstreamer::FlowError` and
+  #    `gstreamer::FlowError` became different types and nothing compiled.
+  #    None of those PRs could have passed alone.
+  #
+  # 2. For a 0.x crate, Dependabot's "minor" is a breaking change. Grouping
+  #    minor bumps as routine meant 0.24 -> 0.25 arrived looking like
+  #    housekeeping. The catch-all group is therefore patch-only, so a
+  #    breaking 0.x bump shows up as its own PR and gets read.
   - package-ecosystem: cargo
     directory: /
     schedule:
@@ -9,9 +23,13 @@ updates:
       day: monday
     open-pull-requests-limit: 5
     groups:
-      patch-and-minor:
+      gstreamer:
         applies-to: version-updates
-        update-types: ["minor", "patch"]
+        patterns: ["gstreamer", "gstreamer-*"]
+        update-types: ["major", "minor", "patch"]
+      patch:
+        applies-to: version-updates
+        update-types: ["patch"]
     commit-message:
       prefix: "deps"
 
