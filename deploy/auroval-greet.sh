@@ -34,4 +34,9 @@ export XDG_CACHE_HOME GST_REGISTRY
 XDG_STATE_HOME=/var/lib/auroval
 export XDG_STATE_HOME
 
-exec cage -- /usr/local/lib/auroval/auroval-greet "$@"
+# `greet` is named here rather than left to a default, and it is the whole
+# contract between greetd and this binary: greetd's config passes no
+# arguments, so without a mode the greeter printed its usage and exited 2 on
+# every single start. It was invisible while the binary had no shell to run,
+# because every run exited 2 for that reason instead.
+exec cage -- /usr/local/lib/auroval/auroval-greet greet "$@"
