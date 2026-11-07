@@ -1,0 +1,12 @@
+[workspace]
+members = ["crates/greetd-proto", "crates/spike-p0"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.90"
+repository = "https://github.com/auroval/auroval"
+
+[profile.release]
+opt-level = 3
+debug = 1
