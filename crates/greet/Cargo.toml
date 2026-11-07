@@ -21,3 +21,6 @@ khronos-egl = { version = "6", features = ["dynamic"] }
 glow = "0.16"
 fontdue = "0.9"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# Q4: Lua in a restricted interpreter. `vendored` builds Lua 5.4 from source so
+# the sandbox is not at the mercy of whatever liblua the host happens to ship.
+mlua = { version = "0.12", features = ["lua54", "vendored"] }
