@@ -457,15 +457,25 @@ theme whose desktop is explicitly meant not to move, that cap is close to free �
 but it is a real limit and would be the wrong choice for a theme that wanted
 spectacle.
 
-**One residual risk, and it is the encoder's.** The seam is exact in the frames
-and only *nearly* exact in the file: inter-frame compression means the last
-encoded frame and the first are not reconstructed identically, and a keyframe at
-the loop point can differ in quality from the predicted frames before it. That
-is a subtle pop rather than a visible cut, and it is exactly what R8's fit
-criterion measures — frame-to-frame difference across the boundary no larger
-than between two ordinary consecutive frames. Worth measuring on the first
-scene rather than assuming, since it is the one part of the seam that
-mathematics does not hand us for free.
+**One residual risk, and it is the encoder's — now measured.** The seam is
+exact in the frames and only *nearly* exact in the file: inter-frame
+compression means the last encoded frame and the first are not reconstructed
+identically, and a keyframe at the loop point can differ in quality from the
+predicted frames before it. That is a subtle pop rather than a visible cut, and
+it is what R8's fit criterion measures.
+
+On scene-01's 10 s HEVC loop at CRF 16: last→first **0.00394**, an ordinary
+consecutive step **0.00394**. Identical, so the boundary is not merely within
+tolerance but indistinguishable from any other frame step. The risk is real and
+on this encode it did not bite.
+
+**R8's criterion should not be read alone, however**, and that is the more
+durable finding. It is a *ratio*, and a ratio improves when its denominator
+gets worse: an all-intra encode "passes" by making every frame noisier, which
+is a worse file scoring better. An earlier attempt did exactly that. The
+criterion needs an absolute floor as a second term, the same shape of fault A8
+records for the scrim threshold. Until it has one, a pass on R8 is evidence and
+not a verdict. See §10.4.
 
 ### 7.1 The render stage: draw what has to answer to the light
 
