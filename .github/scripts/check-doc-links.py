@@ -22,7 +22,7 @@ SKIP_DIRS = {"target", ".git", "node_modules"}
 
 
 def main() -> int:
-    root = Path(".").resolve()
+    root = Path.cwd()
     problems: list[str] = []
     checked = 0
 
