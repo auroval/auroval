@@ -1,0 +1,379 @@
+# greet — Product Requirements
+
+Status: **draft for review** · Org: `auroval` · 2026-11-07
+
+## Summary
+
+`greet` is auroval's login and lock screen for Hyprland, showing an animated
+background in the way macOS and tvOS do. It is one component of the suite; the
+suite's [vision](../vision.md) and [tenets](../tenets.md) are upstream of this
+document and win where the two disagree. It renders as a Wayland client, speaks
+the greetd IPC protocol to authenticate, and is configured in hyprlang — the
+same language Hyprland and hyprlock already use.
+
+It is also meant to support logging in with a cloud identity — an OIDC provider
+such as Google Workspace or Microsoft Entra ID — and to show the profile picture
+that comes with it, without implementing any of that authentication itself.
+See C11.
+
+Two surfaces today look nothing like the desktop they guard: SDDM's unthemed Qt
+greeter, and hyprlock, which is themed but can only show a still image.
+`greet` replaces the first and is intended to replace the second.
+
+## The decision this document should enable
+
+1. **Is the two-mode design right?** One binary that is both a greeter (greetd)
+   and a locker (ext-session-lock), or a greeter only, leaving the lock screen
+   to a patched hyprlock?
+2. **Is the remaining gap worth a project?** Prior art does not cover the goals
+   as a set, but it is not empty either: an animated login background is
+   available off the shelf today (C7). What is unserved is the lock screen, the
+   visual identity and multi-monitor. The decision is whether those three are
+   worth writing a greeter for — not whether animation is possible.
+3. **Does cloud identity belong in v1?** It costs nothing in `greet` itself
+   (C11) but everything in the PAM layer underneath, which this project does not
+   control.
+
+Everything else here follows from those two answers.
+
+## Goals
+
+- The login screen and lock screen are visually continuous with the desktop —
+  same palette, same font, same geometry — so that no surface looks borrowed.
+- A background can move: a looping video, hardware-decoded, at the monitor's
+  native resolution and refresh rate, without the login taking noticeably
+  longer to appear.
+- Authentication is never the thing that breaks. A failure in theming,
+  decoding or config parsing degrades the appearance, never the ability to log
+  in.
+- Logging in with a cloud identity is possible and looks native — including the
+  profile picture that comes with it — without `greet` ever handling a token,
+  a secret or a network connection.
+- Someone running Hyprland on another distro can install it, point it at a
+  video and have it work, from the README alone.
+
+## Non-goals
+
+These are refusals, not "later". Each would arrive disguised as an obvious
+extension.
+
+- **Not a display manager.** greetd owns PAM, seats, TTYs and session launching.
+  `greet` is a client. If a requirement needs privileged seat management, it
+  belongs upstream in greetd, not here.
+- **Not an X11 greeter.** Wayland only. No Xorg code path, no `xsessions`
+  rendering path beyond listing such sessions for greetd to start.
+- **No autologin.** That is greetd configuration, and a login screen that can
+  skip itself is a security surface with no owner.
+- **No OIDC, OAuth or SSO implementation.** `greet` holds no client secret,
+  makes no network request, and validates no token. Cloud identity is a PAM
+  concern (C11). `greet`'s job is to render the prompts that arrive and to
+  send back the answers. A design in which the greeter talks to
+  `accounts.google.com` is wrong and must be refused: the greeter is an
+  unauthenticated process on a locked machine.
+- **No user management** — no account creation, password changes, or
+  "add user" flows.
+- **No remote login.** No XDMCP, no VNC, no network protocol of any kind.
+- **No general-purpose wallpaper daemon.** It draws its own background on its
+  own surfaces; `awww` keeps the desktop.
+- **No theme marketplace, no scripting language in the config.** hyprlang
+  describes a look; it does not run.
+
+## Constraints, with receipts
+
+Each of these was checked on the target machine or in a primary source on
+2026-11-07. Unverified items are marked as such and must not be treated as
+settled.
+
+**C1 — greetd IPC is small and fully specified.** From `greetd-ipc(7)`: *"The
+path to the socket is stored in the environment variable GREETD_SOCK"*,
+`<payload-length> <payload>` where *"<payload-length> is a 32-bit integer in
+native byte order"* and *"<payload> is a UTF-8-encoded JSON string."* Four
+requests (`create_session`, `post_auth_message_response`, `start_session`,
+`cancel_session`), three responses (`success`, `error`, `auth_message`).
+
+**C2 — the auth flow is a loop, not two fields.** Same source: *"There are no
+limits on the number and type of messages that may be required for
+authentication to succeed"* and *"a greeter should not make any assumptions
+about the messages."* A greeter hard-wired to username+password is wrong, and
+breaks the moment a PAM stack asks anything else — a second factor, a password
+expiry notice, or a provider's device code (C13).
+
+**C3 — hyprlang has no C ABI, so Rust cannot bind it.** The package ships one
+header, `/usr/include/hyprlang.hpp`, and `grep 'extern "C"'` over it returns
+nothing. Choosing Rust therefore means reimplementing the parser or bridging
+C++. A third-party crate exists — `hyprlang` on crates.io, pest-based, from
+`spinualexandru/hyprlang-rs`, self-described as *"not endorsed by or affiliated
+with the Hyprland project"*. **Unverified:** its licence, maintenance and parity
+with current hyprlang. Must be checked before it becomes a dependency.
+
+**C4 — hyprlock cannot show video, and this is not a configuration gap.**
+`strings /usr/bin/hyprlock` yields no match for gstreamer, ffmpeg, libav, mp4 or
+video. Its image loader, hyprgraphics, advertises only still formats
+(png, jpeg, bmp, svg, jxl, webp, avif). Animated lock-screen backgrounds are
+unreachable without new decoding code somewhere.
+
+**C5 — a self-written locker fails closed, by protocol design.**
+`ext-session-lock-v1.xml`, installed locally: *"If the client dies while the
+session is locked the session remains locked, possibly permanently depending on
+compositor policy."* A crash cannot expose the desktop. The cost is in that
+clause — a crash can lock you out until a VT switch or reboot.
+
+**C6 — hardware video decode is available on the target machine.** `vainfo`
+reports *"VA-API NVDEC driver [direct backend]"* with `VAProfileH264High` and
+`VAProfileHEVCMain/Main10/Main12` at `VAEntrypointVLD`. GStreamer with its
+base/good/bad plugin sets, and ffmpeg, are installed. **Unverified:** whether
+decode works in the greeter's context, where there is no user session, no
+`XDG_RUNTIME_DIR` of the logging-in user, and the process runs as greetd's own
+unprivileged user. This is the single largest technical risk and P0 exists to
+retire it.
+
+**C7 — prior art already solves the animated login background; it does not
+solve the rest.** This matters more than it is comfortable to admit, so the
+quotes are verbatim from ReGreet's README:
+
+- Animation is covered: its requirements list *"GStreamer (for background
+  animated images & video; supported formats depend on installed plugins)"*.
+  So `greetd` + ReGreet + a video file is an animated login screen **today**,
+  with no code written. Animation alone does not justify this project.
+- One output only: *"which is useful since ReGreet is a single-monitor
+  application"*.
+- Blur is not mentioned anywhere in the README, and its theming model is GTK
+  CSS, which will not reproduce hyprlock's geometry without fighting it.
+- It is a greeter only. Nothing in the README concerns session locking, and
+  greetd has no part in locking an already-running session.
+- GPL-3.0-or-later, so code cannot flow from it into a permissively licensed
+  project — though that constrains reuse, not evaluation.
+
+The honest residue: `greet` is justified by the **lock screen**, the **shared
+visual identity** across both surfaces, and **multi-monitor** — not by moving
+pixels on the login screen.
+
+**C8 — the current greeter runs on Xorg.** `/usr/lib/sddm/sddm.conf.d/default.conf`
+sets `DisplayServer=x11` and the journal confirms *"Starting X11 session:
+/usr/bin/sddm-greeter-qt6"*. `xorg-server` is installed for this and
+essentially nothing else; `/usr/share/xsessions/` does not exist.
+
+**C9 — "like Apple" covers two different things.** tvOS aerials are HEVC video
+loops; macOS dynamic desktops are HEIC containers holding several stills keyed
+to time of day or light/dark. **Unverified** which is meant; see Q1. The
+requirements below assume video loops and treat time-of-day variants as Should.
+
+**C10 — the greeter runs as a different user than the desktop.** A greeter runs
+as its own unprivileged system user, which cannot traverse a home directory at
+mode `0700` — the default on many distributions. Verified by attempting the read
+as the greeter's own user, which fails. Any media the greeter shows must
+therefore live outside the user's home, or be copied out when it changes. This
+is a property of greeters in general, not of any one display manager.
+
+**C11 — cloud login happens in PAM, below `greet`.** greetd ships its own
+stack at `/etc/pam.d/greetd` (`pacman -Fl greetd`), and greetd authenticates
+through it. An OIDC provider is therefore added by installing a PAM module and
+editing that file — not by writing code here. This is what makes R1 load-bearing
+rather than theoretical: whatever that module prompts for arrives as
+`auth_message` and must be rendered without the greeter understanding it.
+
+**C12 — a working OIDC path exists, but not as a native package.**
+Canonical's authd supports both Microsoft Entra ID and Google IAM. For Google
+it uses the OAuth 2.0 device authorisation grant, the issuer is
+`https://accounts.google.com`, and the OAuth client must be of the type intended
+for *televisions and limited-input devices*, since that is the type permitted to
+use the device code flow. Entra ID additionally supports automatic device
+registration; Google IAM does not. authd's brokers ship as snaps (for example
+`snap install authd-google`), and `snapd` is **not** in the Arch repositories
+(`pacman -Si snapd` finds nothing), so an Arch-based target needs another
+route. **Unverified and important:**
+whether authd's PAM module works under greetd at all — its documented desktop
+path is GDM, which has purpose-built support including broker selection on the
+login screen. The alternatives are the several unrelated `pam_oauth2_device`
+projects, whose maturity, licences and suitability for local (rather than SSH)
+login are **unverified**.
+
+**C13 — the device code flow is a conversation, not a password field.** The
+provider returns a URL and a short code which the person must open on another
+device. In PAM terms that is an `info` message, possibly followed by a long
+wait. Canonical notes the default 60-second login timeout usually has to be
+raised. A greeter that renders `info` messages small, or that times out on its
+own, makes this flow unusable.
+
+**C14 — the profile picture can only ever be shown from the second login
+onwards.** The `picture` claim lives in the ID token, which exists only after
+authentication succeeds. Before that the greeter does not know who is at the
+keyboard and must not be able to ask the provider. So the picture has to be
+written to local disk by whatever completes the login, and read back next time.
+A world-readable location already exists and is the convention:
+`/var/lib/AccountsService/icons/<user>`, present and `drwxrwxr-x` with
+accountsservice installed. SDDM's own default config uses the same
+pattern — *"The files should be named <username>.face.icon"*. This also sidesteps
+C10, since nothing is read out of the user's home.
+
+### Ruled out
+
+- **Forking hyprlock** (BSD-3-Clause, so permitted). Rejected: it would inherit
+  the look for free, but commits the project to C++ and to tracking an upstream
+  whose config semantics assume an unlocked session to screenshot.
+- **Patching video support into hyprlock upstream.** Rejected as the primary
+  route: it fixes the lock screen and does nothing for login, and it puts the
+  schedule in someone else's review queue. Still worth doing afterwards as a
+  contribution.
+- **An SDDM QML theme.** Rejected: keeps the greeter on Xorg (C8), and SDDM
+  themes cannot be a lock screen, so the two surfaces would diverge again.
+- **Baseline: greetd + ReGreet with a video background, and keep hyprlock.**
+  This is the "do nothing new" option and it is genuinely viable for part of the
+  goals: an animated, Wayland login screen this week. Rejected because it leaves
+  the lock screen a still image (C4), caps the machine at one monitor, and keeps
+  two surfaces that do not match each other or the desktop. Anyone evaluating
+  this PRD should price the project against this baseline, not against SDDM.
+  If the lock screen stops mattering, this baseline wins and `greet` should
+  not be built.
+- **Implementing OIDC inside the greeter.** Rejected on security grounds, not
+  effort: it would put a client secret and an outbound network connection in an
+  unauthenticated process that renders on a locked screen, and it would
+  duplicate PAM badly. Non-negotiable.
+- **Writing a display manager.** Rejected: PAM, seat and TTY handling is the
+  part where mistakes lock people out of their machines, and greetd already
+  does it.
+
+## Requirements
+
+Priority is MoSCoW: **MUST** is release-blocking; **SHOULD** is expected but can
+slip a release; **COULD** ships if cheap; **WON'T** is out of scope for v1.
+Every requirement carries a fit criterion — a check that settles whether it is
+met.
+
+### Authentication and session
+
+| # | Priority | Requirement | Fit criterion |
+|---|---|---|---|
+| R1 | MUST | Authenticate by driving the greetd auth loop, making no assumption about the number, order or type of messages (C2). | A PAM stack carrying an extra `pam_exec` prompt completes login with no code change. A fixed two-field implementation fails this. |
+| R2 | MUST | Offer the sessions found in the configured session directories and start the one chosen. | Both `hyprland.desktop` and `hyprland-uwsm.desktop` are listed, and each starts the session it names. |
+| R3 | MUST | Surface `auth_message` of type `info` and `error`, and treat `auth_error` as non-fatal. | A wrong password shows the message and returns to the prompt; the process does not exit and the session is cancelled cleanly. |
+| R4 | MUST | Remember the last user and the last session, per machine, outside any user's home. | After a login as user A to session X, both are preselected on the next boot. |
+| R5 | SHOULD | Offer suspend, reboot and power off. | Each action is reachable by keyboard alone and takes effect. |
+| R6 | SHOULD | Show keyboard layout and warn on caps lock. | With caps lock on, a warning is visible before submitting. |
+
+### Identity providers
+
+`greet` implements none of these protocols. Each requirement below is about
+rendering and plumbing only.
+
+| # | Priority | Requirement | Fit criterion |
+|---|---|---|---|
+| R17 | MUST | Render `info` messages as first-class content, not a status line: large enough to read a URL and a code from a seated distance, and a QR code when the message contains a URL. | A device-code prompt is readable and scannable from a phone at arm's length, without selecting or scrolling text. |
+| R18 | MUST | Impose no timeout of its own on an in-progress auth conversation; let PAM and greetd own the deadline (C13). | A conversation left idle for five minutes still completes when answered; nothing in `greet` cancels it. |
+| R19 | SHOULD | Display a user's avatar from a system path, defaulting to `/var/lib/AccountsService/icons/<user>` (C14), with a graceful placeholder when absent. | With a PNG placed there, it renders; with the file removed, the placeholder renders and nothing is logged as an error. |
+| R20 | SHOULD | Let the person choose between several configured authentication mechanisms when the PAM stack offers more than one. | With two mechanisms available, both are selectable by keyboard and each reaches its own prompt. |
+| R21 | COULD | Ship a documented hook that writes the `picture` claim to the avatar path after a successful cloud login. | Second login after a first cloud login shows the provider's picture. Deliberately a hook, not a built-in: whoever holds the token writes the file. |
+
+### Appearance
+
+| # | Priority | Requirement | Fit criterion |
+|---|---|---|---|
+| R7 | MUST | Play a looping video background, hardware-decoded, at the output's native resolution and refresh rate. | A 1440p H.264 loop holds the output's refresh rate with no dropped frames over 60s, measured; CPU use is a budget to be set after P0, not asserted here. |
+| R8 | MUST | Loop without a visible seam. | Frame-to-frame diff across the loop boundary is no larger than between two ordinary consecutive frames. |
+| R9 | MUST | Fall back, in order, to still image then solid colour, when decode is unavailable. | With GStreamer plugins made unavailable, the greeter still renders and still logs in; the fallback is logged, not silent. |
+| R10 | MUST | Render one surface per output at that output's scale. | On two outputs of differing scale, text is sharp on both and neither is letterboxed or cropped. |
+| R11 | MUST | Reproduce hyprlock's visual language: Catppuccin Mocha, MesloLGS Nerd Font, the large clock, and the rounded input field. | Side-by-side with hyprlock at the same resolution, palette values, font and the input field's size and rounding are identical. |
+| R12 | SHOULD | Support time-of-day or light/dark background variants (C9). | A config naming two sources renders the one matching the current time, verified by faking the clock. |
+
+### Robustness
+
+| # | Priority | Requirement | Fit criterion |
+|---|---|---|---|
+| R13 | MUST | A config that fails to parse must not prevent login. The error is reported with file and line, and the greeter starts with defaults. | A deliberately broken config still yields a usable login, and the error names the line. |
+| R14 | MUST | In lock mode, fail closed. | `SIGKILL` while locked leaves the session locked, per C5. Verified deliberately, with a second TTY open. |
+| R15 | MUST | No media path reads from a user's home directory (C10). | With `/home/<user>` at mode 700, the configured background still renders. |
+| R16 | SHOULD | Appear within a budget of first frame after launch, to be set from the P0 measurement. | Measured from process start to first presented frame. |
+
+### WON'T (v1)
+
+X11 rendering; autologin; user creation or password changes; remote login;
+fingerprint or smartcard; per-user backgrounds; a theme repository; replacing
+`awww` on the desktop.
+
+## Success metrics
+
+Distinct from the budgets above: those say the code is fast enough, these say
+the project worked. Deliberately none of them counts users or contributors —
+tenet 4 says an absent audience is information, not failure, so a metric that
+measured it would be measuring the wrong thing.
+
+The first one is the suite's own proof, restated for this component: *"dat ik
+echt het gevoel heb dat ik gewoon in één consistent logisch plaatje zit."*
+
+- Logging in and unlocking feel like the same machine as the desktop — no
+  surface that announces itself as belonging to a different program.
+
+- SDDM is uninstalled from the author's own workstation and not reinstated
+  within a month.
+- hyprlock is removed from the autostart path, with `greet`'s lock mode used
+  daily for two weeks and no lockout incident.
+- A cloud identity login completes at least once, end to end, with the device
+  code read off the login screen — proving C11's premise rather than assuming
+  it.
+
+## Phasing
+
+Each phase is independently useful and answers the question the next one needs.
+
+- **P0 — spike (days).** A Rust client that talks greetd under `cage`, shows a
+  solid colour, and logs in. Answers C6's open half: can this process decode
+  video at all in greetd's context? Decides whether P2 is cheap or hard.
+- **P1 — daily driver (weeks).** Still background, hyprlock's look, multi-output
+  surfaces, session list, last-user memory. At the end of P1, SDDM comes off the
+  machine. Everything MUST except R7, R8 and R14.
+- **P2 — animation.** Video background, loop seam, decode fallback. R7–R9.
+- **P3 — lock mode.** ext-session-lock surface, shared renderer and config, the
+  fail-closed test with a second TTY open. R14. hyprlock stays installed as the
+  fallback throughout.
+- **P4 — other people.** AUR package, README that stands alone, config
+  reference, and a second machine with two monitors to prove R10.
+- **P5 — cloud identity.** Gated on Q7, and deliberately last: R17, R18 and R20
+  are cheap and can land earlier, but the PAM side is outside this project's
+  control, so no earlier phase may depend on it. The avatar hook (R21) comes
+  after, since it needs a working cloud login to have a picture at all.
+
+## A note on secrets, for later
+
+Nothing in this repository should ever hold an OAuth client id, client secret,
+issuer configuration or device registration. Those belong in the PAM layer's own
+configuration on the machine being set up (C11), outside version control, and
+the device-code client type Google requires for this flow is still not something
+to publish. The README may describe how to create one; it must not contain one.
+
+## Open questions
+
+| # | Question | What would settle it | Owner |
+|---|---|---|---|
+| Q1 | Video loops, or Apple-style time-of-day stills, or both? | Picking a reference the maintainer actually wants to look at daily. Changes whether R12 is Should or Must. | Maintainer |
+| Q2 | Is `greetd_ipc` usable, and under what licence? docs.rs shows no licence field; one secondary source says GPL-3.0-only — unverified, and it determines whether `greet` can be permissively licensed. | Reading the crate's own `Cargo.toml` and `LICENSE`. If GPL-3.0-only, implement the codec in-house: C1 is roughly 150 lines with serde. | Maintainer |
+| Q3 | Which licence for `greet`? | Follows Q2. Permissive invites reuse by other greeters; GPL matches the ecosystem it sits in. | Maintainer |
+| Q4 | Which configuration format at all? The stated reason for hyprlang was consistency with Hyprland — but **Hyprland deprecated hyprlang in 0.55 and moves to Lua**, so that argument now points the other way. hyprlock still uses hyprlang. | Deciding what consistency is worth being consistent *with*: the compositor's new direction (Lua), the lock screen's current one (hyprlang), or neither. Only then does C3's reimplement/adopt/bridge question matter. See also [parked ideas](../ideas.md) on executable themes. | Maintainer |
+| Q5 | Which Wayland stack: smithay-client-toolkit with wgpu, or a toolkit? | The P0 spike. Multi-output surfaces at per-output scale (R10) and video-frame-to-texture (R7) are the deciding constraints. | Maintainer |
+| Q6 | Does the two-mode design hold, or does lock mode become its own binary? | P3. If the renderer shares cleanly through P1 and P2, one binary; if the lock path needs materially different plumbing, split. | Maintainer |
+
+| Q7 | Does authd's PAM module function under greetd, or only under GDM (C12)? | A spike: greetd plus authd on one machine, with a device-code client, driven by `agreety` first so the greeter is not a variable. This is the question that decides whether cloud login is weeks or months. | Maintainer |
+| Q8 | Is a snap dependency acceptable on an Arch-based distribution for the broker, or does this need a native PAM module (C12)? | Follows Q7. If snapd is unacceptable, the `pam_oauth2_device` forks need evaluating, or a broker needs writing — a separate project, not part of `greet`. | Maintainer |
+| Q9 | Who writes the avatar file, and is the `picture` claim even available to that component? | Reading what authd stores after a successful login. If it keeps nothing, R21's hook has to be driven by a PAM session module. | Maintainer |
+
+## What would change this plan
+
+- **Decode does not work in greetd's context** and cannot be made to. Then the
+  animated background is a lock-screen feature only, and the login screen is a
+  still — which changes the whole premise and makes "patch hyprlock" the better
+  project.
+- **hyprlock gains video support upstream** before P3. Then lock mode is not
+  worth writing; `greet` stays a greeter and contributes a config bridge
+  instead.
+- **A deployment adds a second authentication factor.** R1 stops being a design
+  nicety and becomes the feature that decides whether this is usable at all.
+- **The maintainer's own setup gains a second monitor.** R10 moves from a
+  correctness claim verified on someone else's hardware to something exercised
+  every day — which
+  is where ReGreet's single-monitor limitation came from in the first place.
+- **authd turns out not to work under greetd** (Q7). Then cloud login is not a
+  rendering problem but a missing PAM module, which is a second project of its
+  own size. `greet` would ship with R17, R18 and R20 ready and unused, and
+  the cloud identity goal would move out of v1 entirely.
+- **greetd is deprecated or its IPC changes incompatibly.** The whole
+  authentication path is built on a protocol whose own man page describes the
+  project as small and stable; that is an assumption, not a guarantee.
