@@ -448,37 +448,21 @@ accident and it is now a rule.
 Three items that are **not** this document's to decide, recorded so they are not
 discovered later.
 
-### R11 must be rewritten
+### R11 has been rewritten
 
-[R11](../prd/greet.md#appearance) currently reads:
+[R11](../prd/greet.md#appearance) used to read:
 
 > Reproduce hyprlock's visual language: **Catppuccin Mocha**, MesloLGS Nerd
 > Font, the large clock, and the rounded input field.
 
-§4.1 contradicts the first item directly. nightshade derives the palette from
-the media on all three surfaces; hyprlock's Catppuccin Mocha is the pin that
-makes the lock screen inconsistent in the first place. Keeping R11 as written
-would mean shipping the fault the project was started to fix.
+§4.1 contradicts the first item directly, and keeping it would have shipped the
+very fault the project was started over — `hyprlock.conf` is the one surface on
+this machine that does not follow the others. The pin is gone; the geometry and
+typography are kept, with the corner radius and rounding power now named, and
+colour comes from the active theme. The PRD carries a dated note saying why.
 
-The rest of R11 survives intact — the font, the large clock, and the rounded
-input field are all kept, and §6 adds the squircle radius and the border
-treatment that R11 did not name.
-
-**Proposed replacement, for the maintainer to accept or reject:**
-
-> **R11 (MUST)** — Reproduce hyprlock's geometry and typography: MesloLGS Nerd
-> Font, the large clock, and the rounded input field at the desktop's own
-> corner radius and rounding power. Colour comes from the active theme's
-> derived palette (§4), not from a fixed scheme.
->
-> **Fit criterion:** side-by-side with hyprlock at the same resolution, the
-> font, clock size and the input field's size and rounding are identical;
-> palette values match the active theme's table on all three surfaces and are
-> byte-identical between greeter, lock and desktop.
-
-Also affected, more mildly: **R12** (time-of-day variants) is currently SHOULD.
-§3.1 makes it part of what a theme *is*, which argues for MUST — but that is a
-PRD decision and is left open here.
+R12's priority is **still open**. §3.1 makes time-of-day variants part of what a
+theme *is*, which argues for MUST, but that follows Q1 and is not settled here.
 
 ### Q1 is effectively answered — confirm it
 
