@@ -75,8 +75,27 @@ extension.
 - **No remote login.** No XDMCP, no VNC, no network protocol of any kind.
 - **No general-purpose wallpaper daemon.** It draws its own background on its
   own surfaces; `awww` keeps the desktop.
-- **No theme marketplace, no scripting language in the config.** hyprlang
-  describes a look; it does not run.
+- **No theme marketplace.** Themes are not discovered, downloaded, rated or
+  installed by `greet`. A theme is a path in a root-owned config file.
+- **No unrestricted scripting in the config.** This non-goal used to read *"no
+  scripting language in the config — hyprlang describes a look; it does not
+  run"*, and Q4's answer contradicts it, so it is rewritten here rather than
+  bent. Themes are Lua, and Lua runs. What remains refused is the part that
+  mattered: a theme never gets the host's capabilities. The interpreter is
+  created without `io`, `os`, `package`, `require`, `debug`, `load`, `dofile`
+  or any means of opening a file, a socket or a process, and it runs under an
+  instruction and memory ceiling. A theme computes values and returns them; it
+  cannot reach the machine it is drawing on.
+
+  **The threat model this accepts.** The greeter is an unauthenticated process
+  on a locked screen, so theme code executes before anyone has proved who they
+  are. The mitigation is that a theme has no capabilities to abuse and cannot
+  outlive its ceiling, not that themes are trusted. What is *not* claimed is
+  that a Lua sandbox is as strong a boundary as a separate process or a
+  WebAssembly instance — `docs/ideas.md` makes that argument and it still
+  stands. This is a weaker guarantee than "it does not run", knowingly taken,
+  because the thesis requires a theme to determine *"hoe die switchen"* and no
+  declarative format expresses that.
 
 ## Constraints, with receipts
 
@@ -98,13 +117,20 @@ about the messages."* A greeter hard-wired to username+password is wrong, and
 breaks the moment a PAM stack asks anything else — a second factor, a password
 expiry notice, or a provider's device code (C13).
 
-**C3 — hyprlang has no C ABI, so Rust cannot bind it.** The package ships one
-header, `/usr/include/hyprlang.hpp`, and `grep 'extern "C"'` over it returns
-nothing. Choosing Rust therefore means reimplementing the parser or bridging
-C++. A third-party crate exists — `hyprlang` on crates.io, pest-based, from
-`spinualexandru/hyprlang-rs`, self-described as *"not endorsed by or affiliated
-with the Hyprland project"*. **Unverified:** its licence, maintenance and parity
-with current hyprlang. Must be checked before it becomes a dependency.
+**C3 — hyprlang has no C ABI, so Rust cannot bind it. Moot since Q4.** The
+package ships one header, `/usr/include/hyprlang.hpp`, and `grep 'extern "C"'`
+over it returns nothing, so choosing Rust would have meant reimplementing the
+parser or bridging C++. A third-party crate exists — `hyprlang` on crates.io,
+pest-based, from `spinualexandru/hyprlang-rs`, self-described as *"not endorsed
+by or affiliated with the Hyprland project"* — and its licence, maintenance and
+parity were never verified because they no longer need to be.
+
+Q4 chose Lua, so there is no hyprlang parser to write, adopt or bridge. The
+binding is `mlua`, which is **MIT**, over Lua itself, also MIT — both checked
+against their own manifests, and both compatible with this project's
+`MIT OR Apache-2.0`. This constraint is kept rather than deleted because it is
+most of the reason Q4 was hard: the cheapest-looking option carried a parser
+nobody wanted to own.
 
 **C4 — hyprlock cannot show video, and this is not a configuration gap.**
 `strings /usr/bin/hyprlock` yields no match for gstreamer, ffmpeg, libav, mp4 or
@@ -248,10 +274,14 @@ sets `DisplayServer=x11` and the journal confirms *"Starting X11 session:
 /usr/bin/sddm-greeter-qt6"*. `xorg-server` is installed for this and
 essentially nothing else; `/usr/share/xsessions/` does not exist.
 
-**C9 — "like Apple" covers two different things.** tvOS aerials are HEVC video
-loops; macOS dynamic desktops are HEIC containers holding several stills keyed
-to time of day or light/dark. **Unverified** which is meant; see Q1. The
-requirements below assume video loops and treat time-of-day variants as Should.
+**C9 — "like Apple" covers two different things, and the answer is the video
+one.** tvOS aerials are HEVC video loops; macOS dynamic desktops are HEIC
+containers holding several stills keyed to time of day or light/dark. Q1 is
+settled: **video loops**, decided 2026-11-07. So the tvOS model is the subject
+and the macOS one is the secondary feature — the requirements' existing
+assumption is now a decision, and R12 stays a Should rather than becoming a
+Must. HEVC loops are a measured path rather than an aspiration: C6 found
+`nvh265dec` holding 1440p60 for 2.9% of one core.
 
 **C10 — the greeter runs as a different user than the desktop.** A greeter runs
 as its own unprivileged system user, which cannot traverse a home directory at
@@ -368,7 +398,7 @@ rendering and plumbing only.
 | R9 | MUST | Fall back, in order, to still image then solid colour, when decode is unavailable. | With GStreamer plugins made unavailable, the greeter still renders and still logs in; the fallback is logged, not silent. |
 | R10 | MUST | Render one surface per output at that output's scale. | On two outputs of differing scale, text is sharp on both and neither is letterboxed or cropped. |
 | R11 | MUST | Reproduce hyprlock's geometry and typography — MesloLGS Nerd Font, the large clock, and the rounded input field at the desktop's own corner radius and rounding power. Colour comes from the active theme's palette, not from a fixed scheme. | Side-by-side with hyprlock at the same resolution, the font, the clock size and the input field's size and rounding are identical. Palette values match the active theme's table and are byte-identical across greeter, lock and desktop. |
-| R12 | SHOULD | Support time-of-day or light/dark background variants (C9). | A config naming two sources renders the one matching the current time, verified by faking the clock. |
+| R12 | SHOULD | Support time-of-day or light/dark background variants (C9). | A config naming two sources renders the one matching the current time, verified by faking the clock. **Confirmed as Should by Q1**, which chose video loops as the subject: this is the clock making a moving background stay interesting, not a substitute for motion. A build that shipped only this and no loop would fail tenet 2. |
 
 **R11 dropped its Catppuccin Mocha pin on 2026-11-07.** The original wording
 required reproducing hyprlock exactly, palette included. That is the wrong
@@ -380,15 +410,17 @@ the bug. The geometry and typography were always the valuable half of R11 and
 are kept, with the corner radius and rounding power now named explicitly. See
 [themes/nightshade.md](../themes/nightshade.md) for how a theme supplies colour.
 
-R12's priority is still open. [nightshade](../themes/nightshade.md) treats
-time-of-day variants as part of what a theme *is*, which argues for MUST, but
-that follows Q1 and is not settled here.
+R12's priority was left open here pending Q1 and is **settled**: Q1 chose video
+loops, so time-of-day variants stay a Should. [nightshade](../themes/nightshade.md)
+treats them as part of what a theme *is*, which is consistent with that — a
+theme may require of itself more than the greeter requires of every theme.
 
 ### Robustness
 
 | # | Priority | Requirement | Fit criterion |
 |---|---|---|---|
 | R13 | MUST | A config that fails to parse must not prevent login. The error is reported with file and line, and the greeter starts with defaults. | A deliberately broken config still yields a usable login, and the error names the line. |
+| R22 | MUST | Theme code must not be able to prevent login. A theme that errors, loops forever, allocates without bound, or tries to touch the filesystem, network or a process is stopped and the greeter continues on defaults, with the reason logged. | Four themes, each misbehaving in one of those ways, each yield a usable login. A theme calling `io.open`, `os.execute` or `require` fails at the call rather than succeeding. A theme looping forever is terminated by the instruction ceiling and does not delay the first prompt. |
 | R14 | MUST | In lock mode, fail closed. | `SIGKILL` while locked leaves the session locked, per C5. Verified deliberately, with a second TTY open. |
 | R15 | MUST | No media path reads from a user's home directory (C10). | With `/home/<user>` at mode 700, the configured background still renders. |
 | R16 | SHOULD | Appear within a budget of first frame after launch. | Measured from process start to first presented frame. **Budget, set from P0:** 500 ms with a warm GStreamer registry. P0 measured 243 ms through `wl_shm` at 1255×674, so the budget allows for a full-resolution surface and a real renderer. The registry must be cached (C15) or roughly 0.9 s is added before any of this starts; an uncached greeter cannot meet this budget and the failure is in deployment, not in code. |
@@ -457,10 +489,10 @@ to publish. The README may describe how to create one; it must not contain one.
 
 | # | Question | What would settle it | Owner |
 |---|---|---|---|
-| Q1 | Video loops, or Apple-style time-of-day stills, or both? | Picking a reference the maintainer actually wants to look at daily. Changes whether R12 is Should or Must. | Maintainer |
+| Q1 | ~~Video loops, or Apple-style time-of-day stills, or both?~~ **Answered: video loops.** | Decided by the maintainer, 2026-11-07. Video loops are the subject; time-of-day variants stay a Should (R12) rather than becoming a Must. This is tenet 2 applied rather than overridden — motion you can see comes first, and the clock is how it stays interesting. P0 having shown decode is cheap (C6) means nothing forces the fallback to stills. | Settled |
 | Q2 | ~~Is `greetd_ipc` usable, and under what licence?~~ **Answered: GPL-3.0-only, and not used.** | `greetd_ipc` 0.10.3 declares `license = "GPL-3.0-only"` in its own `Cargo.toml.orig` and bundles the GPLv3 text; docs.rs simply does not render the field, which is why the secondary source looked unreliable. The codec is therefore implemented in-house in `crates/greetd-proto` — the whole protocol, with tests, well under 200 lines — so no GPL code sits in the authentication path and Q3 is free. | Settled |
 | Q3 | ~~Which licence for `greet`?~~ **Answered: MIT OR Apache-2.0.** | Q2 removed the only constraint, and an audit of all 113 crates in the dependency graph found no copyleft whatsoever, so the choice was entirely free. Permissive follows tenet 4: copyleft's worth is enforcement, which this project has said it will not do. Apache-2.0 accompanies MIT for its patent grant, relevant in a project built on hardware video decode — though that grant covers contributions here and not codec patents, which are unrelated. | Settled |
-| Q4 | Which configuration format at all? The stated reason for hyprlang was consistency with Hyprland — but **Hyprland deprecated hyprlang in 0.55 and moves to Lua**, so that argument now points the other way. hyprlock still uses hyprlang. | Deciding what consistency is worth being consistent *with*: the compositor's new direction (Lua), the lock screen's current one (hyprlang), or neither. Only then does C3's reimplement/adopt/bridge question matter. See also [parked ideas](../ideas.md) on executable themes. | Maintainer |
+| Q4 | ~~Which configuration format at all?~~ **Answered: Lua.** | Decided by the maintainer, 2026-11-07. Consistency pointed at Lua on the evidence: Hyprland 0.57.1 ships a Lua config subsystem, the maintainer's own `hyprland.lua` is live with `hyprland.conf` kept only as a rollback artefact, and matugen already emits the palette as a Lua table that a Lua config can consume with no parser in between. It also lets a theme express *how* backgrounds switch, which the thesis requires and no declarative format provides. The cost is that the scripting non-goal had to be rewritten rather than bent, and a new R22 exists because a theme that runs is a theme that can hang. C3 is moot; the binding is `mlua` (MIT). **Recorded as Lua in a restricted interpreter** — see the non-goal for exactly what is denied and what is therefore accepted. | Settled |
 | Q5 | Which Wayland stack: smithay-client-toolkit with wgpu, or a toolkit? | **Still open, but narrowed by P0.** The spike used smithay-client-toolkit with `wl_shm` and it was unproblematic: surface configured 71 ms after start, keyboard and fullscreen straightforward. `wl_shm` itself is not the answer — it forces a GPU-to-CPU readback per frame, which R7's budget now forbids. So what remains is how NVDEC's `memory:CUDAMemory` frames reach a texture without that readback, which is the real deciding constraint and is specific to the `nvcodec` path C6 settled on. `hyprtoolkit` also now exists as a Hyprland-native option and did not when this question was written. **Portability constrains this:** C6 measured VA-API handing frames back in system memory while NVDEC keeps them in CUDA memory, so the renderer must accept several memory types rather than one. A design written against CUDA memory alone runs on this machine and nowhere else. | Maintainer |
 | Q6 | Does the two-mode design hold, or does lock mode become its own binary? | P3. If the renderer shares cleanly through P1 and P2, one binary; if the lock path needs materially different plumbing, split. | Maintainer |
 
