@@ -367,7 +367,7 @@ and it should be recalibrated against the reference or dropped. Left as it
 stands rather than quietly retuned, because what counts as the nightshade look
 is the maintainer's call and not the tool's.
 
-### 5.5 matugen follows the most saturated patch, not the dominant colour
+### 5.5 matugen's hue is not predictable from the image
 
 Measured 2026-11-08 on scene-04, which was generated as a deliberate pair:
 one ruin-and-pond with warm glowing carp, one identical but cold, three seeds
@@ -387,26 +387,54 @@ three returned an orange accent, taken from the small red markings on those
 fish. In `pond-cold-s7` a region covering **0.74% of the frame decides the
 entire desktop palette**, beating a cool mass sixteen times its size.
 
-Area is not ignored — it decides `s1`, where the saturation gap is only
-1.13× — but it loses as soon as the gap widens: 1.39× in `s7` is enough for a
-patch to win at sixteen-to-one against.
+That looks like a rule — chroma beats population — and it was written here as
+one, on the strength of this table. A second round the same afternoon
+disproved it.
 
-**This answers A3**, and it explains the hue instability recorded as A11.
-Those spreads — 110° across scene-02's seeds, 246° across the two wallpapers
-in rotation — are not randomness. They are different small saturated patches
-winning in different frames.
+`pond-warm-b` is the warm pond rebriefed, four seeds. Three returned 21.9°,
+24.9° and 29.8°, which matches the orange fish. The fourth returned **75.2°**,
+a yellow nothing in the picture is, and its hue histogram rules out both
+candidate explanations at once:
 
-Two controls follow, and a scene needs one of them:
+| `pond-warm-b-s1`, bins over 0.5% of frame | area | mean sat |
+|---|---|---|
+| **0–30°** | **6.46%** | **0.599** |
+| 30–60° | 0.82% | 0.678 |
+| **60–90° — what matugen returned** | **0.87%** | **0.307** |
+| 180–210° | 4.59% | 0.250 |
+| 330–360° | 1.77% | 0.487 |
 
-1. **Make the intended colour both the largest and the most saturated thing
-   present.** scene-04's warm variant does, and it is the most hue-stable set
-   measured: 34.4°, 30.7°, 28.8° — a 5.6° spread across three seeds, where
-   its cold twin spans 189°.
-2. **Declare the hue**, which §5.4 already permits.
+The 0–30° orange is simultaneously the **largest** region and among the
+**most saturated**, and it lost to a band that is neither. Checking the top
+0.1% most saturated pixels directly puts their mode at 15° in all four
+candidates, including this one. So the winning hue here is not the dominant
+colour, not the most saturated patch, and not the most saturated pixels.
 
-The first is better where it is achievable, because it means the image and
-its palette agree. It is not always achievable, and this is why: the subject
-was *glowing* carp, and the model does not paint emission.
+**What A3 can honestly be answered with.** matugen's hue is not a simple
+function of area or of chroma, it is not predictable from the image by either,
+and it can return a hue that is neither the largest nor the most saturated
+thing present. matugen runs Material You's quantiser and scoring, which
+cluster a reduced palette and weight population against chroma with its own
+exclusions; the result is deterministic per file and opaque from outside.
+
+**So composing the image is not a control.** It usually works — scene-04's
+warm round A spans 5.6° across three seeds, and round B three of four within
+8° — and it fails without warning, which is the worst property a control can
+have.
+
+That leaves one dependable control: **declare the hue**, which §5.4 already
+permits.
+
+**And it is an argument for §4.4's packaging step**, which does not exist yet.
+If the palette is derived once per scene when the theme is packaged, an
+unpredictable extractor costs nothing: the result is looked at once, and
+declared instead when it is wrong. The unpredictability only bites where
+extraction happens at runtime on a file nobody has inspected — which is
+exactly what `awww-wallpaper.sh` does today, on every rotation.
+
+The second finding below is independent of all this, and it is why the cold
+variant could not be fixed by rewording: the subject was *glowing* carp, and
+the model does not paint emission.
 
 #### 5.5.1 The generator does not paint light sources
 
@@ -723,7 +751,7 @@ re-runs the first of these and fails loudly if matugen's behaviour changes.
 |---|---|---|
 | A1 | Which generator, and is its licence compatible with shipping the output? Not settled, and it gates everything. | Maintainer |
 | A2 | The phase grading recipe (§4.4) — the four parameter sets, fixed once and shared by all scenes. | Maintainer |
-| A3 | **Answered 2026-11-08 (§5.5).** Neither: `--prefer saturation` follows the most saturated *patch*, and area barely counts. On scene-04's cold variant a region covering **0.74% of the frame** set the whole palette, against a cool mass sixteen times its size. Two reliable controls follow, and a scene needs one of them: make the intended colour both the largest and the most saturated thing present (scene-04 warm: three seeds within 5.6°), or declare the hue (§5.4). | Answered |
+| A3 | **Answered 2026-11-08 (§5.5).** Neither, and not predictably either: matugen's hue is not a simple function of area or of chroma. `pond-warm-b-s1` returned 75° while its 0–30° orange was both the largest region (6.46%) and among the most saturated (0.599), and the top 0.1% most saturated pixels sit at 15°. Composing the image usually works and fails without warning, so the only dependable control is declaring the hue (§5.4) — and the real answer is §4.4's packaging step, where an unpredictable extractor costs nothing because its result is inspected once. | Answered |
 | A4 | The reject threshold for scrim depth (§6, gate 1) is a guess at 25%. Needs one real rejection to calibrate. | Maintainer |
 | A5 | Layer separation for §7 — produced by the generator, or cut by hand per master? **Partly relieved 2026-11-07:** §7.1 gets usable parallax from a monocular depth map with no layers at all, so this is no longer blocking. §7.2 proposes the actual answer — render the background and generate only the figure — and names the one thing that could sink it. Needs a prototype on one scene. | Maintainer |
 | A6 | Two weeks per candidate (§6, gate 3) is a guess. It may be one week; it is certainly not one day. | Maintainer |
