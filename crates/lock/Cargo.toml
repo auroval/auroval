@@ -1,0 +1,26 @@
+[package]
+name = "lock"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+description = "auroval's lock screen, protocol skeleton only: no authentication of any kind."
+
+[[bin]]
+name = "auroval-lock"
+path = "src/main.rs"
+
+[dependencies]
+# The whole of what this binary draws with. There is deliberately nothing
+# else: no PAM crate, no password handling, no `libc` for a conversation
+# function. The dependency list is the first place a reader can check that
+# the boundary in `main.rs`'s doc comment is real.
+auroval-ui = { path = "../auroval-ui" }
+smithay-client-toolkit = "0.20"
+wayland-client = "0.31"
+chrono = { version = "0.4", default-features = false, features = [
+    "clock",
+    "unstable-locales",
+] }
