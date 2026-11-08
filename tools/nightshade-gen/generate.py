@@ -16,7 +16,13 @@ Run:
 
 A brief is the per-scene variable part and nothing else:
 
-    {"tag": "shrine", "subject": "a small weathered stone roadside shrine ..."}
+    {"tag": "shrine", "surface": "desktop", "subject": "a small stone shrine ..."}
+
+`surface` is "greeter" or "desktop" and is required. The greeter's background
+is the thing a clock and an input field sit on, so most of §4.1 and all of
+§4.2 are about keeping that rectangle clear. A wallpaper has no UI on it,
+inherits none of those clauses, and wants the opposite: a filled frame rather
+than a mostly empty one.
 
 `style` is not a field. It is a theme constant (§4.1.1), it lives in this
 file, and a brief that tries to set it is refused — "two scenes drawn in
@@ -57,7 +63,13 @@ STYLE = (
 )
 
 # §4.1 — the constant part, as its blockquote has it.
-CONSTANT = [
+#
+# This is the GREETER's constant part, and the distinction matters. §4.1 is
+# written for "the thing a clock, a date, a username and a password field sit
+# on top of" (§1), so most of it is about keeping a rectangle clear rather
+# than about what nightshade looks like. A desktop wallpaper has no clock on
+# it and inherits none of that.
+GREETER_CONSTANT = [
     "one subject, centred, filling the upper-middle of the frame, against darkness",
     "rim light and glow only, sourced from behind or beside the subject, no frontal key light",
     "saturated neon chroma, magenta and cyan and violet",
@@ -75,7 +87,10 @@ CONSTANT = [
 # in the positive prompt, "no glowing lamp" supplies the tokens for a glowing
 # lamp and nothing to oppose them. Each bullet is therefore turned into a
 # statement of what the frame does contain instead.
-NEGATIVE_AS_POSITIVE = [
+#
+# Every one of these exists to protect a UI element, so none of them applies
+# to a wallpaper.
+GREETER_NEGATIVE_AS_POSITIVE = [
     # "No bright element in the centre of the frame" — the fatal one.
     "the centre of the frame is unlit and empty, the brightest areas are confined to the top of the image",
     # "No horizon line through the middle."
@@ -86,11 +101,37 @@ NEGATIVE_AS_POSITIVE = [
     "the darkness is a smooth flat gradient without fine detail",
 ]
 
-# §4.1 — "No text, no logos, no watermark." Kept apart from the list above
+# The desktop wallpaper's constant part.
+#
+# nightshade's identity is the rendering style (§4.1.1) and its light: neon
+# rim and glow in deep darkness. Those carry over unchanged. What does not
+# carry over is every clause that exists to keep a rectangle clear, which is
+# most of the greeter's list -- and on a wallpaper those clauses are actively
+# wrong. A frame that is two-thirds empty black reads as a login screen
+# missing its login form, because that is exactly what it is.
+#
+# So "against darkness" becomes "in darkness": the dark is between the forms
+# rather than instead of them, and the frame is filled.
+DESKTOP_CONSTANT = [
+    "a dark nocturnal scene that fills the entire frame edge to edge, every part of the image occupied",
+    "deep shadow between and behind the forms rather than empty black space",
+    "rim light and glow from behind and between the forms, no frontal key light",
+    "saturated neon chroma, magenta and cyan and violet",
+    "dense detail and texture throughout, foreground as well as background",
+    "visible film grain",
+    "16:9",
+]
+
+# §4.1 — "No text, no logos, no watermark." Kept apart from the lists above
 # because it is not a composition clause and it is the one instruction a
 # generator most reliably ignores, so it goes last, where it is least likely
-# to be truncated away.
+# to be truncated away. It holds for both surfaces.
 NO_MARKS = "no text, no lettering, no signature, no logo, no watermark"
+
+SURFACES = {
+    "greeter": GREETER_CONSTANT + GREETER_NEGATIVE_AS_POSITIVE,
+    "desktop": DESKTOP_CONSTANT,
+}
 
 # §3, §4.4 — settings. Identical to scene-01's, deliberately: a candidate that
 # differs in subject *and* in settings tells you nothing about either.
@@ -101,7 +142,7 @@ GUIDANCE = 1.0
 WIDTH, HEIGHT = 2560, 1440
 
 
-def assemble(subject: str) -> str:
+def assemble(subject: str, surface: str = "greeter") -> str:
     """The full prompt, in the order the clauses are given to the model.
 
     Style first because it is the most visible thing about the image (§4.1.1),
@@ -109,7 +150,7 @@ def assemble(subject: str) -> str:
     record goes; it is recorded here so that the next scene does not have to
     guess at it the way this one did.
     """
-    parts = [STYLE, subject, *CONSTANT, *NEGATIVE_AS_POSITIVE, NO_MARKS]
+    parts = [STYLE, subject, *SURFACES[surface], NO_MARKS]
     return ". ".join(p.rstrip(" .,") for p in parts) + "."
 
 
@@ -129,6 +170,18 @@ def load_brief(path: Path) -> dict:
     for field in ("tag", "subject"):
         if not brief.get(field):
             sys.exit(f"{path}: missing '{field}'")
+    # Required, with no default. The two surfaces want nearly opposite
+    # framings, and a brief that does not say which one it is for was written
+    # without the distinction in mind -- which is the mistake this field was
+    # added after: six candidates generated under the greeter's clauses when
+    # what was wanted was a wallpaper.
+    surface = brief.get("surface")
+    if surface not in SURFACES:
+        sys.exit(
+            f"{path}: 'surface' must be one of {sorted(SURFACES)}; "
+            "a greeter background keeps a rectangle clear for the clock and "
+            "the input field, and a wallpaper fills the frame."
+        )
     return brief
 
 
@@ -142,10 +195,11 @@ def main() -> None:
     args = ap.parse_args()
 
     brief = load_brief(args.brief)
-    prompt = assemble(brief["subject"])
+    prompt = assemble(brief["subject"], brief["surface"])
     seeds = [int(s) for s in args.seeds.split(",") if s.strip()]
 
     print(f"tag     {brief['tag']}")
+    print(f"surface {brief['surface']}")
     print(f"seeds   {seeds}")
     print(f"size    {WIDTH}x{HEIGHT}  steps {args.steps}  guidance {GUIDANCE}")
     print(f"chars   {len(prompt)}")
@@ -218,6 +272,7 @@ def main() -> None:
             json.dumps(
                 {
                     "tag": brief["tag"],
+                    "surface": brief["surface"],
                     "seed": seed,
                     "model": MODEL,
                     "revision": REVISION,

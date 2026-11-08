@@ -82,13 +82,40 @@ That split is tenet 1 at the level of artwork. A theme whose scenes disagree
 about how they are drawn is the *"four programs that have never met"* failure
 the thesis names, arriving through the back door.
 
-### 4.1 The constant part
+### 4.1 The constant part — for the greeter
 
 > One subject, centred, filling the upper-middle of the frame, against
 > darkness. Rim light and glow only, sourced from behind or beside the
 > subject — no frontal key light. Saturated neon chroma: magenta, cyan,
 > violet. Near-black field below and around the subject. Visible film grain.
 > 16:9. No text, no logos, no watermark.
+
+**This paragraph is a greeter brief, and §4.2 entirely so.** §1 says why
+without quite saying the consequence: *"A scene is not a wallpaper; it is the
+thing a clock, a date, a username and a password field sit on top of."* Three
+of the clauses above and all four of §4.2's exist to keep a rectangle clear
+for UI, and §3.1 nonetheless has the same scenes rotating daily as the
+desktop wallpaper, where there is no UI to keep clear.
+
+Applied to a wallpaper they are not merely unnecessary. "Near-black field
+below and around the subject" and §4.2's "nothing important in the lower
+centre" produce a frame that is two-thirds empty, which on a desktop reads as
+a login screen missing its login form — because that is exactly what it is.
+Six scene-02 candidates were generated this way on 2026-11-08 before anyone
+noticed, and nothing in the brief or the tool could have caught it.
+
+So the two surfaces take different constant parts, both recorded in
+`tools/nightshade-gen/generate.py`, and a brief must name its `surface`. What
+is shared is what nightshade *is*: the rendering style of §4.1.1, neon rim
+light and glow, deep darkness, grain, 16:9, no marks. What differs is the
+framing — the greeter's subject sits in cleared darkness, the wallpaper's
+fills the frame and the dark sits between the forms instead of instead of
+them.
+
+**Open, and it belongs to §3.1 rather than here.** If one scene is to serve
+both surfaces, it has to be generated twice, or the daily rotation has to
+draw from a wallpaper set that is not the greeter set. Neither is written
+down.
 
 #### 4.1.1 Rendering style — one theme, one style
 

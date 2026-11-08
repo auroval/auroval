@@ -26,6 +26,32 @@ to prevent.
 The fix is not a better `source.md`. It is that the assembly is code, in the
 repository, and every run writes the string it actually used.
 
+## Two surfaces, and why they are not the same picture
+
+A brief must say `surface`: `greeter` or `desktop`. There is no default,
+because the two want nearly opposite framings and a brief that does not say
+which it is for was written without the distinction in mind.
+
+`nightshade-assets.md` §1 is explicit about what a scene is: *"A scene is not
+a wallpaper; it is the thing a clock, a date, a username and a password field
+sit on top of."* Almost all of §4.1 and the whole of §4.2 follow from that --
+they exist to keep a rectangle clear for UI that a wallpaper does not have.
+
+Applied to a wallpaper those clauses are not merely unnecessary, they are
+wrong. "Near-black field below and around the subject" and "the lower middle
+of the frame is empty near-black space" produce a frame that is two-thirds
+empty, which on a desktop reads as a login screen missing its login form --
+because that is exactly what it is.
+
+So the desktop set keeps what nightshade *is* -- the rendering style, neon rim
+light and glow, deep darkness, grain -- and replaces "against darkness" with
+"in darkness": the dark sits between the forms instead of instead of them, and
+the frame is filled edge to edge.
+
+This field exists because of a mistake. Six scene-02 candidates were generated
+under the greeter's clauses when what was wanted was a wallpaper, and nothing
+in the brief or the tool could have caught it.
+
 ## What is in here rather than in the brief
 
 | in `generate.py` | why |
