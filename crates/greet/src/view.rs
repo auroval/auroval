@@ -208,7 +208,11 @@ fn dots(gl: &mut Gl, n: usize, fx: f32, fy: f32, g: &Geometry, p: &Palette) {
 /// regression. `Gl::headless` is surfaceless EGL, so Mesa's software
 /// rasteriser satisfies it and no GPU is required — but a machine with no EGL
 /// at all fails these loudly rather than skipping them silently, which is the
-/// right way round. This is the constraint to hand to #2 when CI exists.
+/// right way round. CI took it that way round: the first run of these failed
+/// on `eglInitialize`, and the fix was to install Mesa on the runner
+/// (`.github/actions/rust-build-deps`), not to let the tests opt out. The
+/// `test` job pins `llvmpipe` through `EGL_PLATFORM` and friends, because a
+/// pixel assertion wants the same rasteriser every run.
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,5 +1,5 @@
 name: Rust build dependencies
-description: System libraries this workspace links against (GStreamer, Wayland).
+description: System libraries this workspace links against (GStreamer, Wayland, EGL).
 runs:
   using: composite
   steps:
@@ -12,3 +12,16 @@ runs:
           libgstreamer-plugins-base1.0-dev \
           libwayland-dev \
           libxkbcommon-dev
+        # The render tests in crates/greet/src/view.rs draw through a
+        # surfaceless EGL context and read the pixels back. A runner has no
+        # GPU and no display, so what satisfies them is Mesa's software
+        # rasteriser: libegl-mesa0 is the EGL driver, libgl1-mesa-dri carries
+        # llvmpipe, libgbm1 is what the Mesa EGL loader wants present. Without
+        # these, eglInitialize fails and the tests fail loudly rather than
+        # skipping -- which is the intended behaviour, and the reason this
+        # install is here instead of an #[ignore] on the tests.
+        sudo apt-get install -y --no-install-recommends \
+          libegl1 \
+          libegl-mesa0 \
+          libgbm1 \
+          libgl1-mesa-dri
