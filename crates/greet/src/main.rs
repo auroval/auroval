@@ -96,7 +96,7 @@ AUROVAL_FRAME_DUMP=<dir> writes a PNG whenever what is on the screen
   inside a home, and slows the loop by the cost of a PNG per change.
   snapshot <out.png> [stage]
            render one frame off-screen and write it, with no compositor and
-           no greetd. stage is user | password | error | starting.";
+           no greetd. stage is user | password | prompt | error | starting.";
 
 fn main() {
     match std::env::args().nth(1).as_deref() {
@@ -210,6 +210,13 @@ fn snapshot() {
         }
         "starting" => {
             state.stage = ui::Stage::Starting;
+        }
+        // The pose the console sitting had no word for: a secret prompt that
+        // is not the password, with nothing typed into it yet.
+        "prompt" => {
+            state.stage = ui::Stage::Answering;
+            state.prompt = "One-time password (OATH) :".into();
+            state.secret = true;
         }
         _ => {
             state.stage = ui::Stage::Answering;

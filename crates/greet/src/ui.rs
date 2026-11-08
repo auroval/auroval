@@ -94,9 +94,29 @@ impl UiState {
     /// What to show in the field: the text itself, or one dot per character.
     /// Counted in characters rather than bytes, so a non-ASCII password does
     /// not leak its length in UTF-8 bytes.
+    ///
+    /// **An empty field is empty, not zero dots.** It used to return
+    /// `Dots(0)` for a secret field nobody had typed into yet, and `dots`
+    /// draws nothing for zero — so the field rendered completely blank and
+    /// the prompt went with it. For `Password` that is survivable, because
+    /// everybody knows what the box under their name wants. For the one-time
+    /// password a PAM stack asked for on 2026-11-08 it was not: the operator
+    /// sat in front of an empty rectangle for two minutes with no way to know
+    /// what it wanted. R1 is the requirement that the greeter renders
+    /// whatever the conversation asks, and a question drawn as nothing is not
+    /// rendering it.
     pub fn field_display(&self) -> FieldDisplay<'_> {
-        if self.stage != Stage::AskingUser && self.secret {
+        // `secret` can still be set from a previous prompt when the
+        // conversation has gone back to asking who you are, so the stage
+        // decides whether anything is hidden at all. The existing
+        // `the_username_field_is_never_dotted` caught a first version of
+        // this that got the order wrong and blanked the username.
+        let hidden = self.stage != Stage::AskingUser && self.secret;
+        if hidden && !self.typed.is_empty() {
             FieldDisplay::Dots(self.typed.chars().count())
+        } else if hidden {
+            // Nothing to hide yet, and the prompt is what belongs here.
+            FieldDisplay::Text("")
         } else {
             FieldDisplay::Text(self.field())
         }
@@ -192,6 +212,28 @@ mod tests {
         ui.secret = true;
         ui.typed = "wachtwoordé".into();
         assert_eq!(ui.field_display(), FieldDisplay::Dots(11));
+    }
+
+    /// The failure this was written against: an empty secret field drew
+    /// nothing at all, prompt included.
+    #[test]
+    fn an_empty_secret_field_shows_the_prompt_and_not_zero_dots() {
+        let mut ui = UiState::new(vec![session("hyprland")], &LastLogin::default());
+        ui.stage = Stage::Answering;
+        ui.secret = true;
+        ui.prompt = "One-time password (OATH) :".into();
+        assert_eq!(
+            ui.field_display(),
+            FieldDisplay::Text(""),
+            "an empty secret field must reach the placeholder path, or the \
+             prompt is never drawn"
+        );
+        ui.push('1');
+        assert_eq!(
+            ui.field_display(),
+            FieldDisplay::Dots(1),
+            "once there is something to hide, hide it"
+        );
     }
 
     #[test]

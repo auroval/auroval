@@ -98,14 +98,18 @@ pub fn draw(
     match ui.field_display() {
         FieldDisplay::Dots(n) => dots(gl, n, fx, fy, g, p),
         FieldDisplay::Text("") => {
-            // hyprlock's placeholder, in the dimmer role so it reads as a
-            // hint and not as content.
-            let hint = match ui.stage {
-                Stage::AskingUser => "Who are you?",
-                Stage::Answering => ui.prompt.as_str(),
-                Stage::Starting => "starting…",
+            // Two different things share this slot and they are not drawn the
+            // same way. "Who are you?" is auroval's own hint and takes
+            // hyprlock's dim placeholder role. A prompt from the PAM
+            // conversation is a *question*, and the person has to read it to
+            // answer it — on 2026-11-08 one went unread long enough to look
+            // like the greeter had hung. So it gets the text colour.
+            let (hint, colour) = match ui.stage {
+                Stage::AskingUser => ("Who are you?", p.outline),
+                Stage::Answering => (ui.prompt.as_str(), p.on_surface),
+                Stage::Starting => ("starting…", p.outline),
             };
-            gl.draw_centred(hint, text_px, cx, fy + g.field_h * 0.5, p.outline);
+            gl.draw_centred(hint, text_px, cx, fy + g.field_h * 0.5, colour);
         }
         FieldDisplay::Text(t) => {
             gl.draw_centred(t, text_px, cx, fy + g.field_h * 0.5, p.on_surface);
