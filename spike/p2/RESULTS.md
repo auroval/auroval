@@ -156,10 +156,45 @@ greeter useless as a greeter — they are measurement scaffolding:
   on purpose: it is kept so the failure can be reproduced rather than
   rediscovered.
 
+## Drawn
+
+`drawn-2026-11-08.png` is the greeter with the clip behind it, at 2560x1440,
+composited by `view::draw` with no change to the drawing code at all —
+`glsinkbin` hands over RGBA in a `GL_TEXTURE_2D`, which is what `draw_image`
+already took. The two points of CPU that conversion costs buy not writing a
+second shader for NV12.
+
+It moves. Two snapshots from **one** run, at t=0 and t=3 s, differ in 99.6% of
+their pixels. Two snapshots from two runs are identical, which is not a bug
+and is worth saying: every run starts the clip at zero, so comparing across
+processes proves nothing about motion. `AUROVAL_SNAPSHOT_AFTER_MS` exists for
+this.
+
+R9's fallback holds for a video that will not play. A configured file that is
+not there gives:
+
+```
+[background] background /var/lib/auroval/geen-video.mp4 unavailable, falling
+back to the solid colour: the pipeline would not play: Element failed to
+change its state
+```
+
+— logged, not silent, and the greeter draws and logs in.
+
 ## What is not done
 
-The frame is not drawn yet. `Video::frame()` hands back a texture id, size and
-nothing else; `background.rs` does not know about it, and neither does
-`view::draw`. That is the next piece, and it is deliberately after this one:
-there is no point drawing a background whose transport costs six times its
-budget until the budget question has an answer.
+**R9's middle step.** Its order is video, then still, then solid colour. There
+is no still here to fall back to, because the configuration names one
+`background` and that is the video. Giving a video a still companion is a
+second configuration key, which is the maintainer's call and not something a
+fallback path should invent.
+
+**R7's 60-second hold on a real output.** This harness watches for 30, without
+a compositor. The number it produces is the decode and present rate, not the
+output's refresh.
+
+**The first frame.** A video background takes ~220 ms to produce one, against
+R16's 8 ms for the whole screen. That is fine by construction — the greeter
+draws the solid colour until a frame exists and never waits — but it means the
+login screen is briefly plain, and whether that reads as a flaw is a question
+for someone looking at it rather than for a measurement.

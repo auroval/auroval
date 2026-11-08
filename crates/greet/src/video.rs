@@ -63,9 +63,23 @@ pub struct Negotiated {
     pub gl_memory: bool,
 }
 
+/// A frame, and the mapping that keeps it alive.
+///
+/// The texture belongs to GStreamer's pool and is recycled. Holding only the
+/// id would be a use-after-free with extra steps: the buffer returns to the
+/// pool the moment the mapping is dropped, and the next decoded frame
+/// overwrites it — so a renderer drawing "the last frame" would be drawing
+/// whatever is being decoded right now, torn. Keeping the mapping is what
+/// makes the id mean something, and dropping the previous one is what lets
+/// the pool keep turning.
+struct Held {
+    frame: Frame,
+    _mapped: gst_gl::GLVideoFrame<gst_gl::gl_video_frame::Readable>,
+}
+
 pub struct Video {
     pipeline: gst::Pipeline,
-    latest: Arc<Mutex<Option<Frame>>>,
+    latest: Arc<Mutex<Option<Held>>>,
     /// Counted where the frames arrive, not where they are looked at.
     ///
     /// The first version of this counted changes in the texture id from the
@@ -224,7 +238,7 @@ impl Video {
         sink.set_drop(true);
         sink.set_sync(true);
 
-        let latest: Arc<Mutex<Option<Frame>>> = Arc::new(Mutex::new(None));
+        let latest: Arc<Mutex<Option<Held>>> = Arc::new(Mutex::new(None));
         let negotiated: Arc<Mutex<Negotiated>> = Arc::new(Mutex::new(Negotiated::default()));
         let delivered = Arc::new(AtomicU64::new(0));
 
@@ -242,8 +256,10 @@ impl Video {
                     if std::env::var_os("AUROVAL_VIDEO_NO_MAP").is_some() {
                         return Ok(gst::FlowSuccess::Ok);
                     }
-                    if let Some(frame) = read_gl_frame(&sample, &n) {
-                        *l.lock().unwrap_or_else(|e| e.into_inner()) = Some(frame);
+                    if let Some(held) = read_gl_frame(&sample, &n) {
+                        // The previous mapping drops here, inside the
+                        // assignment, which is what returns its buffer.
+                        *l.lock().unwrap_or_else(|e| e.into_inner()) = Some(held);
                     }
                     Ok(gst::FlowSuccess::Ok)
                 })
@@ -318,7 +334,11 @@ impl Video {
 
     /// The newest frame decoded so far, or `None` before the first one.
     pub fn frame(&self) -> Option<Frame> {
-        *self.latest.lock().unwrap_or_else(|e| e.into_inner())
+        self.latest
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .map(|h| h.frame)
     }
 
     /// How many frames the sink has taken since the pipeline started.
@@ -374,7 +394,7 @@ impl Drop for Video {
 /// A sample whose memory is not GL memory is not an error here — it is the
 /// software path, which plays and costs 36% of a core instead of 2.5%. The
 /// caps are recorded either way so the caller can say which it got.
-fn read_gl_frame(sample: &gst::Sample, negotiated: &Mutex<Negotiated>) -> Option<Frame> {
+fn read_gl_frame(sample: &gst::Sample, negotiated: &Mutex<Negotiated>) -> Option<Held> {
     let caps = sample.caps()?;
     let info = gstreamer_video::VideoInfo::from_caps(caps).ok()?;
 
@@ -389,9 +409,12 @@ fn read_gl_frame(sample: &gst::Sample, negotiated: &Mutex<Negotiated>) -> Option
     let buffer = sample.buffer()?;
     let frame = gstreamer_gl::GLVideoFrame::from_buffer_readable(buffer.copy(), &info).ok()?;
     let texture = frame.texture_id(0).ok()?;
-    Some(Frame {
-        texture,
-        width: info.width(),
-        height: info.height(),
+    Some(Held {
+        frame: Frame {
+            texture,
+            width: info.width(),
+            height: info.height(),
+        },
+        _mapped: frame,
     })
 }

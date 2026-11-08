@@ -412,6 +412,20 @@ fn snapshot() {
         while !bg.settled(&gl) && std::time::Instant::now() < deadline {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
+        // A video background is a different thing to photograph than a
+        // still: every run starts the clip at zero, so two snapshots of the
+        // same file are the same picture and prove nothing about motion.
+        // This waits a moment first, which is the difference between
+        // "it drew a frame" and "it is playing".
+        if let Some(ms) = std::env::var_os("AUROVAL_SNAPSHOT_AFTER_MS")
+            .and_then(|v| v.to_string_lossy().parse::<u64>().ok())
+        {
+            let until = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+            while std::time::Instant::now() < until {
+                let _ = bg.ready(&gl);
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
         ready = bg.ready(&gl);
         if ready.is_none() && bg.problems().is_empty() {
             eprintln!("auroval-greet: background did not arrive within 5 s; drawing the fallback");
