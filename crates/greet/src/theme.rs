@@ -14,6 +14,20 @@
 //! hyprlock places from the centre with y upward; this places from the centre
 //! with y downward, because that is how a framebuffer is addressed. The signs
 //! flip and nothing else does.
+//!
+//! **`font_size` is in points, and everything else in that block is in
+//! pixels.** hyprlock hands `font_size` to Pango, which takes points and
+//! renders them at cairo's 96 dpi, so `110` is a 146.67 px em and not a 110 px
+//! one. Taking those three numbers at face value made every piece of text here
+//! exactly 3/4 of hyprlock's, which is invisible until the two are put side by
+//! side -- measured 2026-11-08 on one screen capture of each at 2560x1440: the
+//! first clock glyph is 68 px wide under hyprlock and was 51 under this,
+//! a ratio of 1.3333. The input field was right all along, because `size`,
+//! `rounding` and `position` really are pixels.
+//!
+//! So the point values are written as `pt(...)` below, to keep this file
+//! readable next to the config it is copied from. Everything this struct
+//! stores is pixels.
 
 /// Where each element sits, relative to the centre of the output, in logical
 /// pixels at scale 1. Sizes scale; the layout does not move.
@@ -37,14 +51,21 @@ pub struct Geometry {
     pub dots_spacing: f32,
 }
 
+/// A Pango point size as the pixel em height it actually renders at, at
+/// cairo's default 96 dpi. The one conversion between hyprlock's config and
+/// this one; see the module docs for what it cost to discover.
+fn pt(points: f32) -> f32 {
+    points * 96.0 / 72.0
+}
+
 impl Default for Geometry {
     fn default() -> Self {
         Geometry {
-            clock_px: 110.0,
+            clock_px: pt(110.0),
             clock_dy: -220.0,
-            date_px: 22.0,
+            date_px: pt(22.0),
             date_dy: -130.0,
-            user_px: 16.0,
+            user_px: pt(16.0),
             user_dy: -40.0,
             field_w: 340.0,
             field_h: 56.0,
@@ -172,9 +193,13 @@ mod tests {
     #[test]
     fn geometry_matches_the_live_hyprlock_config() {
         let g = Geometry::default();
-        assert_eq!((g.clock_px, g.clock_dy), (110.0, -220.0));
-        assert_eq!((g.date_px, g.date_dy), (22.0, -130.0));
-        assert_eq!((g.user_px, g.user_dy), (16.0, -40.0));
+        // The font sizes are hyprlock's points converted to pixels; the
+        // positions are pixels in both. A regression that drops the
+        // conversion lands back on 110/22/16 and fails here.
+        assert_eq!((g.clock_px, g.clock_dy), (pt(110.0), -220.0));
+        assert_eq!((g.date_px, g.date_dy), (pt(22.0), -130.0));
+        assert_eq!((g.user_px, g.user_dy), (pt(16.0), -40.0));
+        assert_eq!(g.clock_px, 146.66667, "110 pt at 96 dpi, to the pixel");
         assert_eq!((g.field_w, g.field_h, g.field_dy), (340.0, 56.0, 40.0));
         assert_eq!((g.field_rounding, g.rounding_power), (12.0, 4.0));
     }

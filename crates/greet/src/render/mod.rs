@@ -525,7 +525,7 @@ impl Gl {
     /// Centre a line horizontally on `cx`, placing its visual middle on `cy`.
     pub fn draw_centred(&mut self, s: &str, px: f32, cx: f32, cy: f32, colour: Rgba) {
         let w = self.atlas.width(s, px);
-        let ascent = self.atlas.ascent(px);
-        self.draw_text(s, px, cx - w * 0.5, cy + ascent * 0.5, colour);
+        let baseline = self.atlas.baseline_from_centre(px);
+        self.draw_text(s, px, cx - w * 0.5, cy + baseline, colour);
     }
 }

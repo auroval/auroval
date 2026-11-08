@@ -11,6 +11,7 @@
 
 mod auth;
 mod background;
+mod clock;
 mod config;
 mod render;
 mod sessions;
@@ -38,6 +39,42 @@ fn config_path() -> std::path::PathBuf {
         .unwrap_or_else(|| std::path::PathBuf::from(CONFIG))
 }
 
+/// Load the configuration with R15 applied to both paths it decides.
+///
+/// Every mode goes through here, because an audit on 2026-11-08 found that
+/// only one of them was guarded and the guard it had ran after the read it
+/// was supposed to prevent.
+///
+/// `strict` separates the two halves of C10, which are not the same rule.
+/// **The state file is never allowed in a home, in any mode**: it belongs to
+/// the greeter, nobody wants their last-login record in `~`, and refusing it
+/// costs nothing. **The config path is only refused in `greet`**, because
+/// `AUROVAL_CONFIG` exists precisely so a theme can be tried without root
+/// (see `CONFIG` above), and refusing a developer their own file would
+/// remove the reason the override is there. The other modes say what the
+/// deployed greeter would have done, so the difference is never a surprise.
+fn load_config(strict: bool) -> Config {
+    let path = config_path();
+    match store::refuse_a_home(&path, "the configuration") {
+        Ok(()) => {}
+        Err(e) if strict => {
+            eprintln!("auroval-greet: {e}");
+            std::process::exit(1);
+        }
+        Err(e) => eprintln!(
+            "auroval-greet: {e}
+  allowed in this mode; `greet` would refuse it"
+        ),
+    }
+
+    let cfg = Config::load(&path);
+    if let Err(e) = store::refuse_a_home(&cfg.state_path, "the state file") {
+        eprintln!("auroval-greet: {e}");
+        std::process::exit(1);
+    }
+    cfg
+}
+
 const USAGE: &str = "usage: auroval-greet <greet|preview|probe>
 
   greet    drive greetd and log in. Needs GREETD_SOCK.
@@ -49,6 +86,9 @@ AUROVAL_CONFIG overrides /etc/auroval/greet.lua.
 AUROVAL_EXIT_AFTER_FIRST_FRAME makes greet and preview exit as soon as
   they have drawn once and printed the R16 line. For the measurement
   harness; a login screen that does this is no login screen.
+AUROVAL_LOG_KEYS logs one line per keyboard event to stderr: press or
+  repeat, the keysym, and how many characters the field holds. Never the
+  character itself. For the R6 round, which needs a real seat.
   snapshot <out.png> [stage]
            render one frame off-screen and write it, with no compositor and
            no greetd. stage is user | password | error | starting.";
@@ -74,7 +114,7 @@ fn main() {
 /// had the same mode and it earned its keep: nearly everything surprising
 /// about a greeter is about what it can and cannot reach.
 fn probe() {
-    let cfg = Config::load(&config_path());
+    let cfg = load_config(false);
     for p in &cfg.problems {
         println!("problem      {p}");
     }
@@ -133,7 +173,7 @@ fn snapshot() {
     let pose = std::env::args().nth(3).unwrap_or_else(|| "password".into());
     let (w, h) = (2560u32, 1440u32);
 
-    let cfg = Config::load(&config_path());
+    let cfg = load_config(false);
     let mut state = ui::UiState::new(
         sessions::discover(),
         &store::LastLogin {
@@ -141,9 +181,9 @@ fn snapshot() {
             session: None,
         },
     );
-    let now = chrono::Local::now();
-    state.clock = now.format("%H:%M").to_string();
-    state.date = now.format("%A, %-d %B").to_string();
+    let (c, d) = clock::lines(chrono::Local::now(), clock::locale_from_env());
+    state.clock = c;
+    state.date = d;
     match pose.as_str() {
         "user" => {}
         "error" => {
@@ -228,7 +268,7 @@ fn greet(preview: bool) {
     // R13: the loader reports its own problems as it finds them, so they are
     // not reported a second time here. They stay on `cfg` so the screen can
     // show them too.
-    let cfg = Config::load(&config_path());
+    let cfg = load_config(!preview);
     let found = sessions::discover();
     if found.is_empty() {
         eprintln!(
