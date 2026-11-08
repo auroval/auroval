@@ -21,6 +21,13 @@ pub const FONT_CANDIDATES: &[&str] = &[
     "/usr/share/fonts/TTF/MesloLGSDZNerdFont-Regular.ttf",
     "/usr/share/fonts/TTF/DejaVuSans.ttf",
     "/usr/share/fonts/noto/NotoSans-Regular.ttf",
+    // Debian and Ubuntu lay fonts out differently, and the render tests have
+    // to be able to find *a* font wherever the workspace is built: a CI runner
+    // is the one machine that will never have MesloLGS installed. These two
+    // are last on purpose -- on the machine this greeter actually runs on,
+    // they are never reached.
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
 ];
 
 const ATLAS: u32 = 2048;

@@ -85,7 +85,16 @@ jobs:
       # The greetd codec is pure logic and fully testable here. The spike is
       # only built: its measurements need a GPU and greetd's own user, so a
       # green CI run deliberately claims nothing about hardware decode.
+      #
+      # The render tests do run here, on llvmpipe. They assert pixels, so the
+      # rasteriser has to be the same one every time: these three variables
+      # pin it to software surfaceless EGL rather than leaving Mesa to pick
+      # whatever the runner image happens to offer.
       - run: cargo test --workspace --all-targets
+        env:
+          EGL_PLATFORM: surfaceless
+          GALLIUM_DRIVER: llvmpipe
+          LIBGL_ALWAYS_SOFTWARE: '1'
       - run: cargo build --workspace --all-targets
 
   docs:
