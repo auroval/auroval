@@ -136,6 +136,7 @@ class Result:
     scrim_alpha: float = 0.0
     regions: dict = field(default_factory=dict)
     safe_field: SafeField | None = None
+    surface: str = "greeter"
     notes: list[str] = field(default_factory=list)
 
 
@@ -539,9 +540,22 @@ def measure_seam(path: Path, info: dict, tmp: Path) -> tuple[float, float, float
 # --------------------------------------------------------------------------
 
 
-def evaluate(path: Path, tmp: Path, hue_override: float | None = None) -> Result:
+def evaluate(
+    path: Path, tmp: Path, hue_override: float | None = None, surface: str = "greeter"
+) -> Result:
+    """Measure one candidate.
+
+    `surface` decides which clauses apply, and it is not a convenience. The
+    composition and legibility clauses exist to protect a clock, a date, a
+    username and an input field (§1), and a desktop wallpaper has none of
+    them. Reporting those clauses against a wallpaper is not a harmless extra
+    number: it reports a failure that does not exist, and the numbers get
+    quoted. Geometry and the palette apply to both, the palette especially --
+    matugen derives the desktop's colours from whatever is on the desktop.
+    """
     kind = "video" if is_video(path) else "still"
     res = Result(path=str(path), kind=kind)
+    res.surface = surface
     frame = canonical_frame(path, tmp)
     w, h = frame.size
 
@@ -628,33 +642,37 @@ def evaluate(path: Path, tmp: Path, hue_override: float | None = None) -> Result
     )
 
     sf = measure_safe_field(frame)
+    res.safe_field = sf
     mean_lum, bright = sf.surround
     comp_ok = mean_lum <= SAFE_MEAN_LUM_MAX and bright <= SAFE_BRIGHT_FRAC_MAX
-    res.clauses.append(
-        Clause(
-            "§2.2",
-            "composition (around subject)",
-            comp_ok,
-            f"mean luminance {mean_lum:.4f} (≤ {SAFE_MEAN_LUM_MAX}), "
-            f"{bright * 100:.2f}% above {SAFE_BRIGHT_LEVEL} (≤ {SAFE_BRIGHT_FRAC_MAX * 100:.0f}%)",
-            "" if comp_ok else "no scrim on its own: this is a look clause, not a legibility one",
+    if surface == "greeter":
+        res.clauses.append(
+            Clause(
+                "§2.2",
+                "composition (around subject)",
+                comp_ok,
+                f"mean luminance {mean_lum:.4f} (≤ {SAFE_MEAN_LUM_MAX}), "
+                f"{bright * 100:.2f}% above {SAFE_BRIGHT_LEVEL} (≤ {SAFE_BRIGHT_FRAC_MAX * 100:.0f}%)",
+                ""
+                if comp_ok
+                else "no scrim on its own: this is a look clause, not a legibility one",
+            )
         )
-    )
-    # Reported, never gated: the subject is supposed to be the lit thing, so a
-    # number here is context for the one above rather than a verdict. It earns
-    # its place by catching the opposite failure -- a subject that has gone so
-    # bright the surround stays dark only because everything else is.
-    res.clauses.append(
-        Clause(
-            "§4.1",
-            "subject column (not gated)",
-            True,
-            f"mean {sf.column[0]:.4f}, {sf.column[1] * 100:.2f}% above {SAFE_BRIGHT_LEVEL}"
-            f"   ·   whole field {sf.whole[0]:.4f}, {sf.whole[1] * 100:.2f}%",
-            "",
+        # Reported, never gated: the subject is supposed to be the lit thing,
+        # so a number here is context for the one above rather than a verdict.
+        # It earns its place by catching the opposite failure -- a subject
+        # that has gone so bright the surround stays dark only because
+        # everything else is.
+        res.clauses.append(
+            Clause(
+                "§4.1",
+                "subject column (not gated)",
+                True,
+                f"mean {sf.column[0]:.4f}, {sf.column[1] * 100:.2f}% above {SAFE_BRIGHT_LEVEL}"
+                f"   ·   whole field {sf.whole[0]:.4f}, {sf.whole[1] * 100:.2f}%",
+                "",
+            )
         )
-    )
-    res.safe_field = sf
 
     got = None if hue_override is not None else hue_via_matugen(path, frame, tmp)
     if hue_override is not None:
@@ -672,7 +690,10 @@ def evaluate(path: Path, tmp: Path, hue_override: float | None = None) -> Result
     res.palette = build_palette(res.hue)
     res.assertions = palette_assertions(res.palette)
 
-    # Legibility, measured where the UI actually lands.
+    # Legibility, measured where the UI actually lands. A wallpaper has no UI
+    # on it, so there is nothing to be legible against and no scrim to need.
+    if surface != "greeter":
+        return res
     measured = measure_regions(frame)
     worst = 0.0
     for name, lum in measured.items():
@@ -1029,6 +1050,29 @@ def self_test() -> int:
             not comp(ro),
             f"surround mean {ro.safe_field.surround[0]:.4f}",
         )
+        # A wallpaper has no clock on it. Reporting a composition miss and a
+        # 90% scrim against one is not an extra number, it is a failure that
+        # does not exist -- and those numbers get quoted.
+        # `hard` is the frame from the top of this self-test: a bright disc
+        # sitting exactly on the date line. As a greeter background it demands
+        # a scrim. The same pixels as a wallpaper demand nothing, because
+        # there is no date line on a desktop.
+        rw = evaluate(hard, tmp, hue_override=320.0, surface="desktop")
+        check(
+            "a wallpaper is not measured against UI that is not there",
+            not any(
+                c.name.startswith(("composition", "legibility", "subject column"))
+                for c in rw.clauses
+            ),
+            f"{len(rw.clauses)} clauses, none of them about UI",
+        )
+        check("and needs no scrim", rw.scrim_alpha == 0.0)
+        check(
+            "while the same pixels as a greeter background do",
+            res.scrim_alpha > 0.0,
+            f"scrim {res.scrim_alpha * 100:.0f}%",
+        )
+
         check(
             "the whole-field measure cannot tell them apart",
             abs(rc.safe_field.whole[0] - ro.safe_field.whole[0]) < 0.005,
@@ -1075,6 +1119,13 @@ def main() -> int:
     ap.add_argument("--preview", type=Path, help="render the greeter UI over it, for judging")
     ap.add_argument("--debug-overlay", action="store_true", help="draw the safe field box")
     ap.add_argument(
+        "--surface",
+        choices=sorted(("greeter", "desktop")),
+        default="greeter",
+        help="which surface the candidate is for; a wallpaper has no UI on it, "
+        "so the composition and legibility clauses do not apply to one",
+    )
+    ap.add_argument(
         "--hue", type=float, help="declare the scene's hue in degrees instead of extracting it"
     )
     ap.add_argument("--json", action="store_true", dest="as_json")
@@ -1102,7 +1153,7 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
-        res = evaluate(a.path, tmp, hue_override=a.hue)
+        res = evaluate(a.path, tmp, hue_override=a.hue, surface=a.surface)
         if a.preview:
             render_preview(a.path, res, a.preview, tmp, debug=a.debug_overlay)
         if a.as_json:
@@ -1111,6 +1162,7 @@ def main() -> int:
                     {
                         "path": res.path,
                         "kind": res.kind,
+                        "surface": res.surface,
                         "hue": res.hue,
                         "hue_source": res.hue_source,
                         "scrim_alpha": res.scrim_alpha,

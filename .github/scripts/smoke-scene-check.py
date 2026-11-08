@@ -51,6 +51,7 @@ TOOL = Path(__file__).resolve().parents[2] / "tools" / "scene-check" / "scene_ch
 REQUIRED_KEYS = {
     "path",
     "kind",
+    "surface",
     "hue",
     "hue_source",
     "scrim_alpha",
