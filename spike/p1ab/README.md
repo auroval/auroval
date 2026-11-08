@@ -25,8 +25,15 @@ nu deploy/install.nu
 sudo sh target/auroval-install-root.sh
 ```
 
-Then, if you want R1 in this sitting rather than the next one, read `PAM.md`
-and run its §3 before you start. Doing it afterwards costs a second sitting.
+Then read `PAM.md` and run **§3 and §3b** before you start. Doing either
+afterwards costs a second sitting, and the two together are what make R1 worth
+testing at all: §3's `pam_exec` gives a message with no response, §3b's
+`pam_oath` gives a second prompt. One login covers both branches of
+`auth.rs`.
+
+§3b installs `oath-toolkit` and writes a secret you generate yourself. It is
+the only part of this sitting that adds a package to the machine, and `PAM.md`
+removes it as prominently as it adds it.
 
 ## Order, and why
 
@@ -43,13 +50,13 @@ Both refuse to run inside a compositor, and say how to reach a free console.
 
 ## What this sitting cannot settle
 
-- **R1 as its fit criterion words it.** `pam_exec` cannot ask a question: its
-  `stdout` option relays output to the application as `PAM_TEXT_INFO`, and
-  `expose_authtok` only reads the cached token back. What the sitting
-  exercises is the `wants_response() == false` branch — a message drawn and
-  answered with `response: None`, which a fixed two-field greeter still has
-  nowhere to put. A real extra *prompt* needs `pam_oath` or similar. `PAM.md`
-  §6 has the detail.
+- **R1 with `pam_exec` alone.** It cannot ask a question: its `stdout` option
+  relays output to the application as `PAM_TEXT_INFO`, and `expose_authtok`
+  only reads the cached token back. With §3 alone the sitting exercises the
+  `wants_response() == false` branch and nothing about message *count*, which
+  is what a fixed two-field greeter actually fails on. §3b is the fix, and the
+  fit criterion in `docs/prd/greet.md` should probably say "an extra prompt"
+  rather than naming `pam_exec`, since the module it names cannot produce one.
 - **R10**, which needs a second monitor. P4.
 - **C15 in the greeter's own context.** `spike/p1e/RESULTS.md` already says
   why: nothing on the still path starts GStreamer, so cold and warm both

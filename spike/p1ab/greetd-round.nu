@@ -206,13 +206,48 @@ def main [
     )
     if ($pam_line | is-empty) {
         print $"         absent  no pam_exec line in ($PAM_FILE)"
-        print "                 R1 will NOT be exercised this sitting. R3 still will."
+        print "                 R1's message half will NOT be exercised. R3 still will."
         print "                 To add it: read spike/p1ab/PAM.md and run §3 as root."
-        $lines = ($lines | append $"measured: NO pam_exec line in ($PAM_FILE) — R1 not exercised this sitting")
+        $lines = ($lines | append $"measured: NO pam_exec line in ($PAM_FILE) — R1's message half not exercised")
     } else {
         print $"         ok      pam_exec line present:"
         for l in $pam_line { print $"                   ($l | str trim)" }
         $lines = ($lines | append $"measured: pam_exec line present — ($pam_line | str join ' / ')")
+    }
+
+    # pam_oath is the half that makes R1 what its fit criterion says: an extra
+    # *prompt*, not an extra message. pam_exec cannot ask a question (PAM.md
+    # §6), so without this line the sitting proves the message branch and
+    # nothing about message count -- which is the thing a fixed two-field
+    # greeter actually fails on.
+    let oath_line = (
+        if ($PAM_FILE | path exists) {
+            open --raw $PAM_FILE | lines | where { |l| ($l | str contains "pam_oath") and not ($l | str starts-with "#") }
+        } else { [] }
+    )
+    if ($oath_line | is-empty) {
+        print $"         absent  no pam_oath line in ($PAM_FILE)"
+        print "                 R1 will be exercised for a MESSAGE but not for an"
+        print "                 extra PROMPT. To add it: PAM.md §3b, as root."
+        $lines = ($lines | append "measured: NO pam_oath line — R1's extra-prompt half not exercised")
+    } else {
+        print $"         ok      pam_oath line present:"
+        for l in $oath_line { print $"                   ($l | str trim)" }
+        $lines = ($lines | append $"measured: pam_oath line present — ($oath_line | str join ' / ')")
+        let users_oath = "/etc/users.oath"
+        if ($users_oath | path exists) {
+            print $"         ok      ($users_oath) exists"
+            $lines = ($lines | append $"measured: ($users_oath) exists")
+        } else {
+            print $"         MISSING ($users_oath) — pam_oath is `required`, so greetd"
+            print "                 will refuse every login until it exists. PAM.md §3b."
+            $lines = ($lines | append $"measured: ($users_oath) MISSING while pam_oath is required")
+        }
+        if ((which oathtool | length) > 0) {
+            print "         ok      oathtool, for computing the code on another VT"
+        } else {
+            print "         MISSING oathtool — you will have no way to read the code"
+        }
     }
     $lines | str join "\n" | save -f $out
 
@@ -289,6 +324,17 @@ def main [
     } else {
         print ""
         print "  5.  \(no pam_exec line installed, so nothing extra to look for)"
+    }
+    if not ($oath_line | is-empty) {
+        print ""
+        print "  5b. THE ONE-TIME PASSWORD. The greeter will ask a SECOND"
+        print "      question, with echo off, something like"
+        print "        \"One-time password (OATH) :\""
+        print "      Have `oathtool --totp <your secret>` ready on another VT;"
+        print "      the code changes every thirty seconds. THIS is R1's real"
+        print "      criterion: a greeter with two fixed fields has nowhere to"
+        print "      put a second question. Note whether the first prompt's"
+        print "      text was replaced rather than appended to."
     }
     print ""
     print "  6.  TYPE THE WRONG PASSWORD. Deliberately. Something you will not"

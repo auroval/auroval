@@ -116,6 +116,106 @@ The `diff` must show exactly one added line and nothing else.
 
 ---
 
+## 3b. The variant that actually tests R1: `pam_oath`
+
+§6 explains why `pam_exec` produces a message and not a question. This section
+is the other half, and **running both together is what makes the sitting worth
+sitting**: `pam_exec` exercises `auth.rs`'s `wants_response() == false` branch
+and `pam_oath` exercises an extra *prompt*, so the one login covers both.
+
+What R1 actually discriminates on is the **count**: a greeter with a fixed
+username field and a fixed password field has nowhere to put a second
+question. `pam_oath` asks one, with echo off, which greetd reports as a
+`secret` message — the same shape as the password prompt and therefore not a
+new drawing problem, which is the point. The greeter should ask twice and
+assume nothing.
+
+**Nothing in this section has been run on this machine.** `oath-toolkit` is
+not installed. It is in `cachyos-extra-v4` as 2.6.15-1.1 and ships
+`/usr/lib/security/pam_oath.so` and `/usr/bin/oathtool`; both of those were
+checked with `pacman -Si` and `pacman -Fl`, and nothing else here was. Treat
+the commands as read-then-run, not as a transcript of something that worked.
+
+Its licence is GPL-3.0-or-later. That is not the licence problem this project
+avoided with `greetd_ipc`: nothing links against it. PAM loads the module in
+greetd's process and `oathtool` is a separate program you run by hand.
+
+### The secret is yours, and this file will not generate it
+
+Generate it in your own root shell. It must not pass through a chat
+transcript, a scrollback or a repository, and that is the only reason this is
+four commands instead of one.
+
+```sh
+# 1. The package.
+pacman -S oath-toolkit
+
+# 2. A 20-byte secret, as hex. Keep this output visible; step 4 needs it.
+head -c 20 /dev/urandom | xxd -p -c 40
+
+# 3. The usersfile. Replace SECRET with what step 2 printed. The `-` is the
+#    PIN field, and means no PIN. HOTP/T30/6 is TOTP, 30-second steps, six
+#    digits — the thing any authenticator app would show you.
+#    pam_oath records the last-used step in this file, so it must stay
+#    writable by root; 0600 root:root is what it wants and what it checks.
+install -m 0600 -o root -g root /dev/null /etc/users.oath
+printf 'HOTP/T30/6 dirk - SECRET\n' >> /etc/users.oath
+
+# 4. Check it before PAM depends on it: this must print a six-digit number,
+#    and it is the number you will type on the VT.
+oathtool --totp SECRET
+```
+
+### The combined stack
+
+This is §3's file with one more line. Everything §3 says about writing it out
+in full rather than patching it applies here too, and `auth include
+system-local-login` — the line that checks your password — is still in it.
+
+```sh
+cp -a /etc/pam.d/greetd /etc/pam.d/greetd.auroval-backup
+
+cat > /etc/pam.d/greetd <<'EOF'
+#%PAM-1.0
+
+auth       required     pam_securetty.so
+auth       requisite    pam_nologin.so
+auth       optional     pam_exec.so type=auth stdout quiet /usr/local/lib/auroval/pam-extra-prompt.sh
+auth       required     pam_oath.so usersfile=/etc/users.oath window=30 digits=6
+auth       include      system-local-login
+account    include      system-local-login
+session    include      system-local-login
+EOF
+
+diff /etc/pam.d/greetd.auroval-backup /etc/pam.d/greetd
+```
+
+`required`, not `optional`: an `optional` one-time password that nobody checks
+would let the sitting pass while proving nothing. The cost of `required` is
+that a wrong or missing code means greetd will not log you in — **and that is
+survivable precisely because of §1: SDDM, console login and sudo do not read
+this file.** You cannot lock yourself out of the machine with it. You can lock
+yourself out of greetd, which is the thing you are testing.
+
+### On the VT
+
+Have a second console with `oathtool --totp SECRET` ready, because the code
+changes every thirty seconds and you cannot run it on the console greetd owns.
+The order you will be asked in follows the stack: the `pam_exec` message, then
+the OATH code, then your password.
+
+### Removing it
+
+§4 removes `pam_exec`. For this variant, also:
+
+```sh
+rm -f /etc/users.oath
+pacman -Rs oath-toolkit        # only if you installed it for this
+grep -cE 'pam_exec|pam_oath' /etc/pam.d/greetd   # must print 0
+```
+
+---
+
 ## 4. The exact command to remove it
 
 **Do this at the end of the sitting.** The helper holds every greetd login for
@@ -193,6 +293,8 @@ Three further things worth knowing while the line is in place:
 ---
 
 ## 6. Honest note: `pam_exec` cannot produce a prompt
+
+*(§3b is the variant that can. Read this section first — it is why §3b exists.)*
 
 The requirement says "an extra `pam_exec` prompt". `pam_exec` cannot produce
 one, and a plausible-looking recipe that silently produces nothing is worse
