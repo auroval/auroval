@@ -111,7 +111,16 @@ def main [
         exit 2
     }
     let started = (date now | format date "%Y-%m-%dT%H:%M:%S%:z")
+    # Whether there is anybody to ask. `tty` prints "not a tty" when stdin is
+    # not one, and `input` cannot be made to fail gracefully in that case on
+    # every nu build, so the question is settled once, here, rather than
+    # discovered by an aborted run with the receipt half written.
+    let can_ask = ((not $no_pause) and ($my_tty | str starts-with "/dev/"))
     print $"         ($my_tty), not a compositor. greetd will take tty($vt)."
+    if not $can_ask {
+        print "         no terminal on stdin (or --no-pause): this run will not pause"
+        print "         and will not ask the eye-witness questions in step 8."
+    }
 
     $lines = [
         "auroval P1/A + P1/B — greetd round: R3 (wrong password is not fatal)"
@@ -326,8 +335,8 @@ def main [
         return
     }
 
-    if not $no_pause {
-            input "  Press Enter when you have read all nine steps. " | ignore
+    if $can_ask {
+        ask "  Press Enter when you have read all nine steps. " | ignore
     }
 
     # ── 5/8 the baseline, then wait for greetd ──────────────────────────────
@@ -478,7 +487,10 @@ def main [
     } else {
         let envfile = $"/proc/($gp)/environ"
         let r = (do { ^cat $envfile } | complete)
-        if $r.exit_code == 0 and ($r.stdout | is-not-empty) {
+        # Exit code only, deliberately: an environ that READS but is EMPTY is
+        # a real and important outcome — a process started with a cleared
+        # environment — and it must not be reported as a permission problem.
+        if $r.exit_code == 0 {
             let got = (
                 $r.stdout | split row (char nul)
                 | where { |l| $l =~ '^(LANG|LC_ALL|LC_TIME)=' }
@@ -499,13 +511,13 @@ def main [
             print "                       number this script cannot get. Run this from your"
             print "                       root shell on VT 2 WHILE greetd is still up:"
             print ""
-            print $"                         tr '\\0' '\\n' < /proc/($gp)/environ | grep -E '^\(LANG|LC_\)'"
+            print $"                         tr '\\0' '\\n' < /proc/($gp)/environ | grep -E '^LANG|^LC_'"
             print ""
             print "                       An empty result means the greeter sees no locale at"
             print "                       all, and clock.rs falls back to POSIX, i.e. English."
             $lines = ($lines | append [
-                $"measured: greeter pid ($gp) environ NOT readable as you (owned by `greeter`, 0400)"
-                $"operator-todo: as root, while greetd runs: tr '\\0' '\\n' < /proc/($gp)/environ | grep -E '^(LANG|LC_)'"
+                $"measured: greeter pid ($gp) environ NOT readable as you \(owned by `greeter`, 0400)"
+                $"operator-todo: as root, while greetd runs: tr '\\0' '\\n' < /proc/($gp)/environ | grep -E '^LANG|^LC_'"
             ])
         }
     }
@@ -570,12 +582,30 @@ def main [
         $lines = ($lines | append [
             $"R3 measured: first greeter pid ($first_greeter); ($changes) change\(s) over ($t) s"
         ] | append ($timeline | each { |r| $"  t=($r.t)s greeter=($r.greeter)" }))
-        if $survived and $same_pid {
+        if $survived and $same_pid and $attempts > 0 {
+            # The only branch that may say HOLDS, and it needs both halves:
+            # the pid never changed AND the pam log proves authentication
+            # attempts happened inside that window. A greeter that quietly
+            # survived a window in which nobody typed anything has survived
+            # nothing, and R3 is about surviving something.
             print "      The greeter process NEVER went away and never changed pid."
+            print $"      measured: ($attempts) authentication attempt\(s) are logged above,"
+            print "      so attempts really did happen inside that window."
             print "      That is R3's real criterion, and it HOLDS: a wrong password did"
-            print $"      not exit the process. \(($attempts) PAM attempt\(s\) are logged above,"
-            print "      so attempts really happened inside that window.)"
-            $lines = ($lines | append $"R3 HOLDS \(measured): greeter pid ($first_greeter) unchanged and alive throughout; ($attempts) PAM attempt\(s) logged in the window")
+            print "      not exit the process."
+            $lines = ($lines | append $"R3 HOLDS \(measured): greeter pid ($first_greeter) unchanged and alive throughout; ($attempts) PAM attempt\(s) logged inside the window")
+        } else if $survived and $same_pid {
+            # Survived, but the script cannot prove anything was typed. This
+            # is the state of a sitting held without the pam_exec line
+            # installed: the pid evidence is real and the "survived WHAT?"
+            # half rests entirely on the operator's answers below.
+            print "      The greeter process never went away and never changed pid —"
+            print "      but NO authentication attempt is logged for this window, so"
+            print "      this script cannot show that anything was typed at it. Without"
+            print "      the PAM helper installed there is no log to read; with it"
+            print "      installed, an empty log means PAM never ran it."
+            print "      R3 therefore rests on your answers below, not on a measurement."
+            $lines = ($lines | append $"R3 PARTIAL: greeter pid ($first_greeter) unchanged and alive for ($t) s, but no authentication attempt is logged in that window — the script cannot show anything was typed. R3 rests on the operator's answers below.")
         } else {
             print "      The greeter process set CHANGED. Read the timeline above against"
             print "      the pam log timestamps:"
@@ -591,6 +621,10 @@ def main [
     # ── the eye-witness half, asked and recorded as such ───────────────────
     print ""
     print "  ── now the half no script can see ──"
+    if not $can_ask {
+        print "  (not asked this run: there is no terminal to ask from. Every answer"
+        print "   below is recorded as unasked, which is the honest value for it.)"
+    }
     print "  Answer from what you actually watched. `?` is a fine answer and a"
     print "  better one than a guess: a receipt with a guess in it is worse than"
     print "  one with a gap."
@@ -607,7 +641,7 @@ def main [
     ]
     $lines = ($lines | append ["" "── operator, by eye. Not measurements. ──"])
     for item in $qs {
-        let a = if $no_pause { "(--no-pause: not asked)" } else { (input $"    ($item.q)\n    > ") }
+        let a = if $can_ask { (ask $"    ($item.q)\n    > ") } else { "(not asked — no terminal, or --no-pause)" }
         let a = (if ($a | str trim | is-empty) { "?" } else { $a | str trim })
         $lines = ($lines | append $"operator: ($item.k): ($a)")
         $lines | str join "\n" | save -f $out
@@ -663,6 +697,15 @@ def pam-log-lines []: nothing -> list<string> {
     } catch {
         []
     }
+}
+
+# Ask the operator something. `input` needs a terminal, and on a real console
+# it has one — but piped into a non-tty, which is how this script gets smoke-
+# tested before a sitting, reedline raises rather than returning EOF. Every
+# prompt goes through here so that a missing terminal costs an unanswered
+# question and not an aborted run with the receipt half written.
+def ask [prompt: string]: nothing -> string {
+    try { input $prompt } catch { "" }
 }
 
 # The repository root, for the `cd` in the printed instructions. The script
