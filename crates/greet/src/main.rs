@@ -405,9 +405,9 @@ fn snapshot() {
     // wrong for a snapshot: one frame rendered immediately would always show
     // the fallback colour and the background would look broken. So this waits
     // for it, briefly and with a stated limit, rather than pretending.
-    let mut bg = background::Background::start(cfg.background.as_deref());
+    let mut bg = background::Background::start(&cfg.background);
     let mut ready = None;
-    if cfg.background.is_some() {
+    if !cfg.background.is_empty() {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while !bg.settled(&gl) && std::time::Instant::now() < deadline {
             std::thread::sleep(std::time::Duration::from_millis(10));
