@@ -102,6 +102,20 @@ impl Video {
     ///
     /// `egl` is `(display, context)` as `Gl::egl_handles` returns them.
     pub fn start(path: &std::path::Path, egl: (usize, usize)) -> Result<Video, Problem> {
+        // R15 and C10, before anything is opened. The still path has refused
+        // a home since it was written; this one did not, for a day, because
+        // it was built as a transport experiment and inherited none of
+        // `decode`'s care. The gap showed itself the first time somebody
+        // pointed a real background at it -- theirs was in `~/Pictures`,
+        // which is exactly where artwork lives and exactly where the greeter
+        // may not look.
+        //
+        // `refuse_a_home` rather than the lexical predicate, so `..` and a
+        // symlink are caught too, and because one place to change is the
+        // whole argument for it existing.
+        crate::store::refuse_a_home(path, "the video background")
+            .map_err(|e| Problem::new(path, e))?;
+
         gst::init().map_err(|e| Problem::new(path, format!("GStreamer would not start: {e}")))?;
 
         let (display_handle, context_handle) = egl;
