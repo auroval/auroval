@@ -50,7 +50,7 @@ pub struct Style {
 /// `surface` is in it because a resize is a different picture of the same
 /// state, and `background` because R9's decode lands some time after start
 /// and arrives as a new picture with no state change behind it.
-pub fn signature(ui: &UiState, surface: (u32, u32), background: bool) -> String {
+pub fn signature(ui: &UiState, surface: (u32, u32), background: u64) -> String {
     let (w, h) = surface;
     let field = match ui.field_display() {
         FieldDisplay::Text(t) => format!("t{t}"),
@@ -71,7 +71,7 @@ pub fn signature(ui: &UiState, surface: (u32, u32), background: bool) -> String 
     };
     format!(
         "{w}x{h}|bg{}|{:?}|{}|{}|{}|{}|{}|{}|{}|{}",
-        background as u8,
+        background,
         ui.stage,
         ui.username,
         field,
@@ -737,12 +737,34 @@ mod tests {
     }
 
     fn sig(ui: &UiState) -> String {
-        signature(ui, SURFACE, false)
+        signature(ui, SURFACE, 0)
     }
 
-    /// The claim the whole change rests on: a login screen nobody is touching
-    /// is the same picture one turn of the loop later, so there is nothing to
-    /// draw.
+    /// The bug #49 could not have seen, because video did not exist yet: a
+    /// boolean for the background flips once when the first frame arrives
+    /// and never again, so a video plays and the screen does not move.
+    #[test]
+    fn a_background_that_is_still_moving_keeps_changing_the_signature() {
+        let ui = state();
+        // A still: one picture, one signature, forever.
+        assert_eq!(
+            signature(&ui, SURFACE, 1),
+            signature(&ui, SURFACE, 1),
+            "a still must not make the greeter redraw"
+        );
+        // A video: each delivered frame is a different picture.
+        assert_ne!(
+            signature(&ui, SURFACE, 2),
+            signature(&ui, SURFACE, 3),
+            "a frame that arrived has to reach the screen"
+        );
+        // And neither collides with having no background at all.
+        assert_ne!(signature(&ui, SURFACE, 0), signature(&ui, SURFACE, 1));
+        assert_ne!(signature(&ui, SURFACE, 0), signature(&ui, SURFACE, 2));
+    }
+
+    /// The claim #49 rests on: a login screen nobody is touching is the same
+    /// picture one turn of the loop later, so there is nothing to draw.
     #[test]
     fn a_screen_on_which_nothing_moved_has_the_same_signature() {
         let ui = state();
@@ -888,10 +910,7 @@ mod tests {
     #[test]
     fn the_background_arriving_is_a_frame() {
         let ui = state();
-        assert_ne!(
-            signature(&ui, SURFACE, false),
-            signature(&ui, SURFACE, true)
-        );
+        assert_ne!(signature(&ui, SURFACE, 0), signature(&ui, SURFACE, 1));
     }
 
     /// A resize is a different picture of the same state, which is also how a
@@ -899,10 +918,7 @@ mod tests {
     #[test]
     fn a_resize_is_a_frame() {
         let ui = state();
-        assert_ne!(
-            signature(&ui, (W, H), false),
-            signature(&ui, (1920, 1080), false)
-        );
+        assert_ne!(signature(&ui, (W, H), 0), signature(&ui, (1920, 1080), 0));
     }
 
     /// The notice is drawn in the error colour or the text colour, and the

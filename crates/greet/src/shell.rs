@@ -414,7 +414,7 @@ impl Shell {
             // background gets on screen at all, and nobody else asks.
             let bg = self.background.ready(gl);
             let (w, h) = (target.width, target.height);
-            let sig = view::signature(&self.ui, (w, h), bg.is_some());
+            let sig = view::signature(&self.ui, (w, h), self.background.generation());
             if last.as_deref() == Some(sig.as_str()) {
                 // Nothing has moved. This is the normal case on an idle login
                 // screen, and R6's repeat rate is the reason it matters: SCTK

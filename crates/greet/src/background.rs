@@ -478,6 +478,30 @@ impl Background {
         }
     }
 
+    /// A number that changes exactly when the background's picture changes.
+    ///
+    /// This is what lets the draw loop stay on one mechanism. #49 made the
+    /// greeter draw only when `view::signature` changes, which was right for
+    /// a still screen and silently wrong for a video: the signature carried
+    /// a *boolean* for the background, so it flipped once when the first
+    /// frame arrived and never again. The video played and the screen did
+    /// not move.
+    ///
+    /// A still is 1 forever, so it still draws once. A video counts the
+    /// frames the sink has taken, so the greeter redraws per delivered
+    /// frame — at the clip's rate rather than the loop's, which is better
+    /// than the unconditional draw #49 replaced.
+    ///
+    /// The `+2` keeps a video that has delivered nothing yet from colliding
+    /// with "no background" or "a still".
+    pub fn generation(&self) -> u64 {
+        match &self.state {
+            State::Solid | State::Pending(_) | State::VideoPending(_) => 0,
+            State::Ready { .. } => 1,
+            State::Video(v) => v.delivered() + 2,
+        }
+    }
+
     #[allow(dead_code)]
     pub fn has_image(&self) -> bool {
         matches!(self.state, State::Ready { .. })
