@@ -332,9 +332,34 @@ impl Video {
             None
         });
 
-        pipeline
-            .set_state(gst::State::Playing)
-            .map_err(|e| Problem::new(path, format!("the pipeline would not play: {e}")))?;
+        if let Err(e) = pipeline.set_state(gst::State::Playing) {
+            // `e` is `gst::StateChangeError`, which says only that a state
+            // change failed -- not which element, and not why. The reason is
+            // on the bus, and without it the message for an unreadable file
+            // is "Element failed to change its state", which sent somebody
+            // looking in the wrong place for twenty minutes. So the bus gets
+            // a moment to produce the real cause before this gives up.
+            let reason = bus
+                .timed_pop_filtered(
+                    gst::ClockTime::from_mseconds(500),
+                    &[gst::MessageType::Error],
+                )
+                .and_then(|msg| match msg.view() {
+                    // `error()` and not `debug()`: the first is a sentence
+                    // for a person -- "Could not open file ... for reading."
+                    // -- and the second is a C file and line number inside
+                    // GStreamer, which belongs in a bug report about
+                    // GStreamer and not in a greeter's log.
+                    gst::MessageView::Error(err) => Some(err.error().to_string()),
+                    _ => None,
+                })
+                .unwrap_or_else(|| format!("{e}"));
+            let _ = pipeline.set_state(gst::State::Null);
+            return Err(Problem::new(
+                path,
+                format!("the pipeline would not play: {reason}"),
+            ));
+        }
 
         Ok(Video {
             pipeline,
