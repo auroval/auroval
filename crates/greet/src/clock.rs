@@ -56,6 +56,28 @@ fn parse_locale(raw: &str) -> Locale {
     }
 }
 
+/// One line saying which locale was resolved and what it was resolved from.
+///
+/// Printed at startup rather than left to be read out of
+/// `/proc/<pid>/environ`, which is 0400 and owned by `greeter`. The console
+/// sitting on 2026-11-08 could not answer "does the greeter see LC_TIME" for
+/// exactly that reason: by the time anyone could become root, greetd had
+/// stopped. The greeter is the only process in a position to answer it
+/// cheaply, and greetd's log keeps what it says.
+pub fn describe(locale: Locale) -> String {
+    let v = |k: &str| {
+        std::env::var_os(k)
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "—".into())
+    };
+    format!(
+        "locale {locale:?} from LC_ALL={} LC_TIME={} LANG={}",
+        v("LC_ALL"),
+        v("LC_TIME"),
+        v("LANG")
+    )
+}
+
 /// The two strings the view draws, in one call so they cannot drift apart.
 pub fn lines(now: DateTime<Local>, locale: Locale) -> (String, String) {
     (

@@ -118,6 +118,11 @@ pub fn run(cfg: Config, ui: UiState, preview: bool) -> Result<(), String> {
     // R11 names MesloLGS. Saying which font was actually loaded makes the
     // wrong one a visible failure rather than a silent substitution.
     eprintln!("auroval-greet: font {}", gl.atlas.source);
+    // R11's typography is half the look and the language is the other half.
+    // greetd clears the environment, so what the greeter ends up with is
+    // whatever systemd exported, and that is not something to assume.
+    let locale = crate::clock::locale_from_env();
+    eprintln!("auroval-greet: {}", crate::clock::describe(locale));
     // C10, asserted rather than assumed: the greeter runs as its own user and
     // must work when /home/<user> is mode 700.
     if !crate::store::is_outside_homes(&cfg.state_path) {
@@ -161,7 +166,7 @@ pub fn run(cfg: Config, ui: UiState, preview: bool) -> Result<(), String> {
         to_auth: None,
         from_auth: None,
         session_cmd,
-        locale: crate::clock::locale_from_env(),
+        locale,
         log_keys: std::env::var_os("AUROVAL_LOG_KEYS").is_some(),
         dump: crate::dump::Dump::from_env(),
         started: Instant::now(),

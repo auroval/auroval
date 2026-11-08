@@ -162,6 +162,12 @@ fn probe() {
             .filter(|p| std::path::Path::new(p).is_file())
             .count()
     );
+    // The same line the greeter prints at startup, so `probe` run as the
+    // greeter answers the same question without a running greetd.
+    println!(
+        "{}",
+        clock::describe(clock::locale_from_env()).replace("locale ", "locale       ")
+    );
 }
 
 /// Render one frame off-screen, so the layout can be looked at and compared

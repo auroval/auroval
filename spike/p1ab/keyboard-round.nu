@@ -257,7 +257,11 @@ def brief [timeout: int] {
 def run-once [bin: string, timeout: int, out: string]: nothing -> string {
     let r = (do {
         with-env { AUROVAL_LOG_KEYS: "1" } {
-            ^timeout $"($timeout)s" cage -- $bin preview
+            # -s: let the operator leave. cage blocks VT switching by
+            # default, so without it the timeout below is the ONLY way out
+            # of this run, which is a cruel thing to do to someone who is
+            # only here to hold a key down.
+            ^timeout $"($timeout)s" cage -s -- $bin preview
         }
     } | complete)
     let text = ($"($r.stderr)\n($r.stdout)" | str trim)
