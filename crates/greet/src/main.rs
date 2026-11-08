@@ -320,8 +320,12 @@ fn videoprobe() {
         100.0 * cpu / wall,
         cpu
     );
-    for p in video.problems() {
+    let said = video.drain();
+    for p in said.warnings {
         println!("problem      {p}");
+    }
+    if let Some(e) = said.fatal {
+        println!("error        {e}");
     }
     println!();
     println!(
