@@ -97,7 +97,10 @@ impl std::fmt::Display for Problem {
 }
 
 impl Problem {
-    fn new(path: &Path, reason: impl Into<String>) -> Problem {
+    /// `pub(crate)` rather than private: `video` reports its failures in the
+    /// same shape, because R9 makes them the same kind of thing — a reason
+    /// the background is not what was configured, carrying the path.
+    pub(crate) fn new(path: &Path, reason: impl Into<String>) -> Problem {
         Problem {
             path: path.to_path_buf(),
             reason: reason.into(),

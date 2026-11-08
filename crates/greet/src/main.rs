@@ -20,6 +20,7 @@ mod shell;
 mod store;
 mod theme;
 mod ui;
+mod video;
 mod view;
 
 use config::Config;
@@ -100,12 +101,16 @@ AUROVAL_FRAME_DUMP=<dir> writes a PNG whenever what is on the screen
   inside a home, and slows the loop by the cost of a PNG per change.
   snapshot <out.png> [stage]
            render one frame off-screen and write it, with no compositor and
-           no greetd. stage is user | password | prompt | error | starting.";
+           no greetd. stage is user | password | prompt | error | starting.
+  videoprobe <file> [seconds]
+           decode a video into this renderer's own GL textures and say what
+           was negotiated. R7's question, asked without a compositor.";
 
 fn main() {
     match std::env::args().nth(1).as_deref() {
         Some("probe") => probe(),
         Some("snapshot") => snapshot(),
+        Some("videoprobe") => videoprobe(),
         Some(mode @ ("greet" | "preview")) => greet(mode == "preview"),
         // Belt and braces for the one caller that matters. The startup
         // script names the mode, but a greeter that exits 2 on a missing
@@ -177,6 +182,159 @@ fn probe() {
 /// Render one frame off-screen, so the layout can be looked at and compared
 /// without a compositor, without greetd, and in CI. This is the seam paying
 /// off: the view is a pure function of `UiState`, so it can be posed.
+/// This process's own CPU time so far, user plus system, in seconds.
+///
+/// From `/proc/self/stat` rather than from a child `ps`: the question is what
+/// this process costs, and spawning something to ask would add its own.
+fn own_cpu_seconds() -> f64 {
+    let Ok(stat) = std::fs::read_to_string("/proc/self/stat") else {
+        return 0.0;
+    };
+    // The comm field can contain spaces and parentheses, so the fields are
+    // counted from after the last ')' rather than from the start.
+    let Some(rest) = stat.rsplit_once(')').map(|(_, r)| r) else {
+        return 0.0;
+    };
+    let f: Vec<&str> = rest.split_whitespace().collect();
+    // After the ')' the fields are state, ppid, ... so utime and stime are
+    // the 12th and 13th here (fields 14 and 15 of the whole line).
+    let ticks = |i: usize| f.get(i).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+    let hz = 100.0; // USER_HZ, fixed at 100 on Linux for this purpose.
+    (ticks(11) + ticks(12)) / hz
+}
+
+/// R7's first question, asked without a compositor: does a decoded frame
+/// reach *this renderer's* textures, and by which path?
+///
+/// `docs/decisions/q5-renderer.md` settled that `nvh264dec` negotiates
+/// `memory:GLMemory` against a shared context, measured with `glimagesink`.
+/// That is GStreamer talking to itself. This asks the same question with the
+/// greeter's own EGL context on the other end, which is the arrangement the
+/// greeter will actually use, and prints what was negotiated rather than
+/// whether it played — a software decoder plays too, at fourteen times the
+/// CPU.
+fn videoprobe() {
+    let path = match std::env::args().nth(2) {
+        Some(p) => std::path::PathBuf::from(p),
+        None => {
+            eprintln!("{USAGE}");
+            std::process::exit(2);
+        }
+    };
+    let seconds: u64 = std::env::args()
+        .nth(3)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10);
+
+    // Surfaceless, so this runs over ssh, in a container, or on a desktop,
+    // and measures the decode rather than a compositor.
+    let (gl, _target) = match unsafe { render::Gl::headless(640, 360) } {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("auroval-greet: no off-screen GL context: {e}");
+            std::process::exit(1);
+        }
+    };
+    println!("file         {}", path.display());
+    println!("watching     {seconds} s");
+
+    let video = match video::Video::start(&path, gl.egl_handles()) {
+        Ok(v) => v,
+        Err(e) => {
+            println!("result       FAILED — {e}");
+            std::process::exit(1);
+        }
+    };
+
+    // CPU is read from this process rather than from `top`, because R7's
+    // budget is about this process: "no more than 5% of one core", against
+    // P0's measured 2.5% hardware and 36% software. The difference between
+    // those two is the whole requirement, and it is not subtle enough to
+    // need a careful instrument -- but it does need to be *this* process.
+    let cpu_before = own_cpu_seconds();
+    let started = std::time::Instant::now();
+    let deadline = started + std::time::Duration::from_secs(seconds);
+    let mut first: Option<std::time::Duration> = None;
+    let mut seen_textures: Vec<u32> = Vec::new();
+    while std::time::Instant::now() < deadline {
+        if let Some(f) = video.frame() {
+            if first.is_none() {
+                first = Some(started.elapsed());
+            }
+            if !seen_textures.contains(&f.texture) && seen_textures.len() < 16 {
+                seen_textures.push(f.texture);
+            }
+        }
+        // 16 ms, because that is what the greeter's own loop does. A
+        // tighter poll measures this probe rather than the decoder.
+        std::thread::sleep(std::time::Duration::from_millis(16));
+    }
+    let wall = started.elapsed().as_secs_f64();
+    let cpu = own_cpu_seconds() - cpu_before;
+    let frames = video.delivered();
+
+    let n = video.negotiated();
+    println!();
+    println!(
+        "caps         {}",
+        if n.caps.is_empty() {
+            "—".into()
+        } else {
+            n.caps
+        }
+    );
+    println!(
+        "memory       {}",
+        if n.gl_memory {
+            "GLMemory — the frame is already a texture in this context"
+        } else {
+            "NOT GLMemory — the frame was copied through system memory"
+        }
+    );
+    match video.frame() {
+        Some(f) => println!("size         {}x{}", f.width, f.height),
+        None => println!("size         — (no frame arrived)"),
+    }
+    println!(
+        "first frame  {}",
+        match first {
+            Some(d) => format!("{} ms", d.as_millis()),
+            None => "never".into(),
+        }
+    );
+    println!(
+        "textures     {} distinct{}",
+        seen_textures.len(),
+        if seen_textures.len() > 1 {
+            " (a pool, as expected)"
+        } else {
+            ""
+        }
+    );
+    println!(
+        "rate         {frames} frames in {wall:.1} s = {:.1}/s",
+        frames as f64 / wall
+    );
+    println!(
+        "cpu          {:.1}% of one core ({:.2} s of cpu in {wall:.1} s wall)",
+        100.0 * cpu / wall,
+        cpu
+    );
+    for p in video.problems() {
+        println!("problem      {p}");
+    }
+    println!();
+    println!(
+        "result       {}",
+        match (n.gl_memory, frames) {
+            (true, f) if f > 0 => "the zero-copy path works from this renderer's context",
+            (false, f) if f > 0 =>
+                "frames arrive, but through system memory — R7's budget is at risk",
+            _ => "NO FRAMES — see `problem` above, and R9 is what the greeter does about it",
+        }
+    );
+}
+
 fn snapshot() {
     let out = match std::env::args().nth(2) {
         Some(p) => p,
