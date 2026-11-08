@@ -94,12 +94,61 @@ impl UiState {
     /// What to show in the field: the text itself, or one dot per character.
     /// Counted in characters rather than bytes, so a non-ASCII password does
     /// not leak its length in UTF-8 bytes.
+    ///
+    /// **An empty field is empty, not zero dots.** It used to return
+    /// `Dots(0)` for a secret field nobody had typed into yet, and `dots`
+    /// draws nothing for zero — so the field rendered completely blank and
+    /// the prompt went with it. For `Password` that is survivable, because
+    /// everybody knows what the box under their name wants. For the one-time
+    /// password a PAM stack asked for on 2026-11-08 it was not: the operator
+    /// sat in front of an empty rectangle for two minutes with no way to know
+    /// what it wanted. R1 is the requirement that the greeter renders
+    /// whatever the conversation asks, and a question drawn as nothing is not
+    /// rendering it.
     pub fn field_display(&self) -> FieldDisplay<'_> {
-        if self.stage != Stage::AskingUser && self.secret {
+        // `secret` can still be set from a previous prompt when the
+        // conversation has gone back to asking who you are, so the stage
+        // decides whether anything is hidden at all. The existing
+        // `the_username_field_is_never_dotted` caught a first version of
+        // this that got the order wrong and blanked the username.
+        let hidden = self.stage != Stage::AskingUser && self.secret;
+        if hidden && !self.typed.is_empty() {
             FieldDisplay::Dots(self.typed.chars().count())
+        } else if hidden {
+            // Nothing to hide yet, and the prompt is what belongs here.
+            FieldDisplay::Text("")
         } else {
             FieldDisplay::Text(self.field())
         }
+    }
+
+    /// Put a notice on the screen, keeping an error that has not been
+    /// answered yet.
+    ///
+    /// **An error must outlive the messages that follow it.** The shell
+    /// drains everything the conversation has said since the last frame, and
+    /// after a wrong password greetd sends the error and then immediately
+    /// re-opens the conversation — whose first PAM module spoke again within
+    /// milliseconds. Last-one-wins meant the error was replaced before a
+    /// single frame was drawn. Forty-eight captured frames of a real login
+    /// on 2026-11-08 contain no error at all for exactly this reason, and
+    /// the person who typed the wrong password was never told.
+    ///
+    /// So an error stays until the person does something about it, which is
+    /// `submit` clearing it. Another error still replaces it: the newest
+    /// thing that went wrong is the useful one.
+    pub fn notify(&mut self, n: Notice) {
+        let holding_an_error = matches!(
+            &self.notice,
+            Some(Notice {
+                kind: NoticeKind::Error,
+                ..
+            })
+        );
+        if holding_an_error && n.kind != NoticeKind::Error {
+            return;
+        }
+        self.notice = Some(n);
     }
 
     pub fn session(&self) -> Option<&Session> {
@@ -192,6 +241,70 @@ mod tests {
         ui.secret = true;
         ui.typed = "wachtwoordé".into();
         assert_eq!(ui.field_display(), FieldDisplay::Dots(11));
+    }
+
+    /// The failure this was written against: an empty secret field drew
+    /// nothing at all, prompt included.
+    fn notice(text: &str, kind: NoticeKind) -> Notice {
+        Notice {
+            text: text.into(),
+            kind,
+        }
+    }
+
+    /// The console sitting's finding, as a unit test. After a wrong password
+    /// greetd sends the error and then re-opens the conversation, whose
+    /// first PAM module spoke again milliseconds later — and the shell drains
+    /// both before it draws. Last-one-wins made the error invisible.
+    #[test]
+    fn an_error_is_not_replaced_by_the_chatter_that_follows_it() {
+        let mut ui = UiState::new(vec![], &LastLogin::default());
+        ui.notify(notice("Authentication failure", NoticeKind::Error));
+        ui.notify(notice(
+            "an extra PAM step is in this stack",
+            NoticeKind::Info,
+        ));
+        assert_eq!(
+            ui.notice.as_ref().map(|n| n.text.as_str()),
+            Some("Authentication failure"),
+            "the error has to survive long enough to be read"
+        );
+    }
+
+    #[test]
+    fn a_newer_error_does_replace_an_older_one() {
+        let mut ui = UiState::new(vec![], &LastLogin::default());
+        ui.notify(notice("first", NoticeKind::Error));
+        ui.notify(notice("second", NoticeKind::Error));
+        assert_eq!(ui.notice.as_ref().map(|n| n.text.as_str()), Some("second"));
+    }
+
+    #[test]
+    fn an_info_replaces_an_info() {
+        let mut ui = UiState::new(vec![], &LastLogin::default());
+        ui.notify(notice("first", NoticeKind::Info));
+        ui.notify(notice("second", NoticeKind::Info));
+        assert_eq!(ui.notice.as_ref().map(|n| n.text.as_str()), Some("second"));
+    }
+
+    #[test]
+    fn an_empty_secret_field_shows_the_prompt_and_not_zero_dots() {
+        let mut ui = UiState::new(vec![session("hyprland")], &LastLogin::default());
+        ui.stage = Stage::Answering;
+        ui.secret = true;
+        ui.prompt = "One-time password (OATH) :".into();
+        assert_eq!(
+            ui.field_display(),
+            FieldDisplay::Text(""),
+            "an empty secret field must reach the placeholder path, or the \
+             prompt is never drawn"
+        );
+        ui.push('1');
+        assert_eq!(
+            ui.field_display(),
+            FieldDisplay::Dots(1),
+            "once there is something to hide, hide it"
+        );
     }
 
     #[test]

@@ -91,6 +91,8 @@ pub struct Shell {
     /// timestamps can be checked against the repeat rate the compositor
     /// announced.
     log_keys: bool,
+    /// `AUROVAL_FRAME_DUMP`. `None` unless it is set; see `dump`.
+    dump: Option<crate::dump::Dump>,
 
     started: Instant,
     pub first_frame: Option<Instant>,
@@ -116,6 +118,11 @@ pub fn run(cfg: Config, ui: UiState, preview: bool) -> Result<(), String> {
     // R11 names MesloLGS. Saying which font was actually loaded makes the
     // wrong one a visible failure rather than a silent substitution.
     eprintln!("auroval-greet: font {}", gl.atlas.source);
+    // R11's typography is half the look and the language is the other half.
+    // greetd clears the environment, so what the greeter ends up with is
+    // whatever systemd exported, and that is not something to assume.
+    let locale = crate::clock::locale_from_env();
+    eprintln!("auroval-greet: {}", crate::clock::describe(locale));
     // C10, asserted rather than assumed: the greeter runs as its own user and
     // must work when /home/<user> is mode 700.
     if !crate::store::is_outside_homes(&cfg.state_path) {
@@ -159,8 +166,9 @@ pub fn run(cfg: Config, ui: UiState, preview: bool) -> Result<(), String> {
         to_auth: None,
         from_auth: None,
         session_cmd,
-        locale: crate::clock::locale_from_env(),
+        locale,
         log_keys: std::env::var_os("AUROVAL_LOG_KEYS").is_some(),
+        dump: crate::dump::Dump::from_env(),
         started: Instant::now(),
         first_frame: None,
         done: false,
@@ -241,7 +249,7 @@ impl Shell {
                     self.ui.typed.clear();
                 }
                 auth::Ui::Message { text, is_error } => {
-                    self.ui.notice = Some(crate::ui::Notice {
+                    self.ui.notify(crate::ui::Notice {
                         text,
                         kind: if is_error {
                             crate::ui::NoticeKind::Error
@@ -308,6 +316,11 @@ impl Shell {
                 if let Some(tx) = &self.to_auth {
                     let _ = tx.send(Answer::Text(std::mem::take(&mut self.ui.typed)));
                     self.ui.prompt = "…".into();
+                    // The answer is the person acting on whatever the last
+                    // message said, so it stops being news here. Without
+                    // this an error from the previous attempt would sit
+                    // under the new prompt looking like it describes it.
+                    self.ui.notice = None;
                 }
             }
             Stage::Starting => {}
@@ -328,6 +341,7 @@ impl Shell {
     fn draw_all(&mut self) {
         let Some(gl) = self.gl.as_mut() else { return };
         let ids: Vec<u32> = self.screens.keys().copied().collect();
+        let first = ids.first().copied().unwrap_or_default();
         for id in ids {
             let Some(screen) = self.screens.get(&id) else {
                 continue;
@@ -342,6 +356,16 @@ impl Shell {
             // it is here and not before the loop over outputs.
             let bg = self.background.ready(gl);
             view::draw(gl, &self.ui, &self.style, bg);
+            // Before `present`, not after: the buffer this reads is the one
+            // just drawn, and a swapped buffer's contents are undefined.
+            // Only the first output, because a dump is a record of what was
+            // said and not of how many screens said it.
+            if id == first {
+                if let Some(d) = self.dump.as_mut() {
+                    let (w, h) = (target.width, target.height);
+                    d.maybe(&self.ui, w, h, || gl.read_pixels());
+                }
+            }
             gl.present(target);
             if self.first_frame.is_none() {
                 self.first_frame = Some(Instant::now());
@@ -500,7 +524,16 @@ impl SeatHandler for Shell {
                 &seat,
                 None,
                 self.loop_handle.clone(),
-                Box::new(|shell: &mut Shell, _kbd, event| shell.on_key(event)),
+                // Repeats arrive HERE and nowhere else. SCTK's calloop timer
+                // calls this closure directly; `KeyboardHandler::repeat_key`
+                // only fires for a server-sent `KeyState::Repeated`, which
+                // most compositors never send. The first R6 sitting logged
+                // zero repeats for that reason and read as a failure of the
+                // greeter, which it was not.
+                Box::new(|shell: &mut Shell, _kbd, event| {
+                    shell.log_key("repeat", &event);
+                    shell.on_key(event)
+                }),
             );
             match r {
                 Ok(k) => self.keyboard = Some(k),
@@ -558,6 +591,9 @@ impl KeyboardHandler for Shell {
         self.on_key(event);
     }
 
+    /// Only for a repeat the *compositor* sends as `KeyState::Repeated`.
+    /// Local repeat does not come through here; see the closure in
+    /// `new_capability`.
     fn repeat_key(
         &mut self,
         _: &Connection,
@@ -566,7 +602,7 @@ impl KeyboardHandler for Shell {
         _: u32,
         event: KeyEvent,
     ) {
-        self.log_key("repeat", &event);
+        self.log_key("repeat-from-compositor", &event);
         self.on_key(event);
     }
 
@@ -638,15 +674,20 @@ impl Shell {
     /// log is a worse bug than the one it was added to find. The keysym is
     /// enough to tell a repeat from a press, and the count is enough to tell
     /// whether the field agreed.
+    ///
+    /// The count is `ui.field()`, not `ui.typed`: at the username stage
+    /// `push` fills `username` and `typed` stays empty, so the first R6
+    /// sitting logged `typed 0 chars` for every keystroke and read as "no
+    /// character ever reached the field" when every character had.
     fn log_key(&self, how: &str, event: &KeyEvent) {
         if !self.log_keys {
             return;
         }
         eprintln!(
-            "keys {:>7.3}  {how:<6}  keysym {:?}  typed {} chars",
+            "keys {:>7.3}  {how:<6}  keysym {:?}  field {} chars",
             self.started.elapsed().as_secs_f32(),
             event.keysym.name().unwrap_or("?"),
-            self.ui.typed.chars().count()
+            self.ui.field().chars().count()
         );
     }
 

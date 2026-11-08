@@ -146,7 +146,7 @@ def main [
     # rather than inside a timing loop.
     $step = $step + 1
     print $"  ($step)/($steps)  probe, under cage"
-    let p2 = (do { ^cage -- $bin probe } | complete)
+    let p2 = (do { ^cage -s -- $bin probe } | complete)
     if $p2.exit_code != 0 {
         print $"         cage exited ($p2.exit_code):"
         print ($p2.stderr | lines | last 10 | each { |l| $"         ($l)" } | str join "\n")
@@ -287,7 +287,7 @@ def run-once [bin: string, cache: string, timeout: int] {
             # five and a half minutes of black screen on a VT you have to stay
             # on, and switching away costs you every remaining run.
             AUROVAL_EXIT_AFTER_FIRST_FRAME: "1"
-        } { ^timeout $"($timeout)s" cage -- $bin preview }
+        } { ^timeout $"($timeout)s" cage -s -- $bin preview }
     } | complete)
     let wall = ((date now) - $t0 | into int) / 1000000
     let text = $"($r.stdout)\n($r.stderr)"

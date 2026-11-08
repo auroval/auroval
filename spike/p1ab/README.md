@@ -37,11 +37,16 @@ removes it as prominently as it adds it.
 
 ## Order, and why
 
-1. **`keyboard-round.nu` first.** It needs no root and no greetd, it is capped
+On the VT, type the one-word wrapper rather than the path — `deploy/install.nu`
+writes one for each harness, because the clipboard does not survive a VT switch
+and a long path is a path you will mistype on a console with no scrollback:
+`auroval-keys`, `auroval-greetd`, `auroval-vt`.
+
+1. **`keyboard-round.nu` first**, as `auroval-keys`. It needs no root and no greetd, it is capped
    at 45 s, and it is the one that tells you the VT plumbing works at all. If
    cage cannot take DRM master, you want to know that before greetd is
    involved.
-2. **`greetd-round.nu` second.** It is an observer: it cannot start greetd, so
+2. **`greetd-round.nu` second**, as `auroval-greetd`. It is an observer: it cannot start greetd, so
    it prints the one root command and watches from another VT. Read its
    step 4 before leaving the console you are on — there is no scrollback on
    the next one.

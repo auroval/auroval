@@ -1,0 +1,53 @@
+auroval P1/A + P1/B — greetd round: R3 (wrong password is not fatal)
+                      and R1 (an extra PAM step needs no code change)
+2026-11-08T10:31:23+01:00
+
+host        games-werkkamer  kernel 7.3.1-1-cachyos
+this tty    /dev/tty4
+greetd vt   3
+watching    180 s
+pam file    /etc/pam.d/greetd
+pam helper  /usr/local/lib/auroval/pam-extra-prompt.sh
+pam log     /var/log/auroval-pam-extra.log
+
+Lines marked `measured:` were observed by this script. Lines marked
+`operator:` were typed in by the human who watched the screen and are
+NOT measurements. Nothing in this file claims to have seen a pixel.
+
+── preflight ──
+measured: ok      greetd binary — greetd
+measured: ok      cage — cage
+measured: ok      greetd config — /etc/greetd/auroval.toml
+measured: ok      pam service file — /etc/pam.d/greetd
+measured: ok      pam_exec module — /usr/lib/security/pam_exec.so
+measured: ok      R4 state dir — /var/lib/auroval
+measured: ok      C15 cache dir — /var/cache/auroval
+measured: ok      pam helper — /usr/local/lib/auroval/pam-extra-prompt.sh
+measured: greeter groups greeter, video
+measured: pam_exec line present — auth       optional     pam_exec.so type=auth stdout quiet /usr/local/lib/auroval/pam-extra-prompt.sh
+measured: pam_oath line present — auth       required     pam_oath.so usersfile=/etc/users.oath window=30 digits=6
+measured: /etc/users.oath exists
+measured: greetd.service is-enabled = disabled
+measured: sddm.service   is-enabled = enabled
+
+── the script given to the operator ──
+username to type: dirk
+wrong password first, then the real one; R1 line expected: true
+root command printed, not run: sudo nu spike/p1e/greetd-session.nu --vt 3 --seconds 180
+measured: pam log baseline 0 lines
+measured: greetd appeared after 156 s, pid 844185
+measured: t=0s greeter appeared, pid 844301
+measured: t=0s greetd=844185 greeter=844301,844383
+measured: t=102s greetd=844185 greeter=none
+measured: t=173s greetd gone; watch ends early
+measured: watch ended at t=173s with 2 greeter-set change(s)
+
+── locale (clock.rs, LC_ALL > LC_TIME > LANG) ──
+measured: /etc/locale.conf LANG=en_US.UTF-8
+measured: /etc/locale.conf LC_TIME=nl_NL.UTF-8
+measured: systemd manager env LANG=en_US.UTF-8
+measured: systemd manager env LC_TIME=nl_NL.UTF-8
+measured: this login shell LC_ALL=—  LC_TIME=nl_NL.UTF-8  LANG=en_US.UTF-8
+measured: greeter pid 844301 environ NOT readable as you (owned by `greeter`, 0400)
+operator-todo: as root, while greetd runs: tr '\0' '\n' < /proc/844301/environ | grep -E '^LANG|^LC_'
+note: `sudo -u greeter env` is NOT this answer — greetd clears the environment and passes only the PAM env list plus its own XDG vars.

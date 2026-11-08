@@ -29,6 +29,7 @@
 def main [
     --no-build            # skip cargo, use whatever is in target/release
     --vt: int = 3         # VT the staged greetd config points at
+    --frame-dump: string = ""   # bake AUROVAL_FRAME_DUMP=<dir> into the startup script
 ] {
     let repo = ($env.FILE_PWD | path dirname)
     let deploy = $"($repo)/deploy"
@@ -58,6 +59,17 @@ def main [
     mkdir $stage
     cp $bin $"($stage)/auroval-greet"
     cp $"($deploy)/auroval-greet.sh" $"($stage)/auroval-greet.sh"
+    # greetd clears the environment, so a debug variable exported in the
+    # shell that starts greetd never reaches the greeter. The only place it
+    # can be set is the script greetd itself runs, which is why this is a
+    # flag here rather than something to remember on the console.
+    if $frame_dump != "" {
+        let line = $"\n# --frame-dump: staged for one sitting. Not for a deployed greeter.\nAUROVAL_FRAME_DUMP=($frame_dump)\nexport AUROVAL_FRAME_DUMP\n"
+        let body = (open --raw $"($stage)/auroval-greet.sh")
+        $body
+        | str replace "exec cage" $"($line)\nexec cage"
+        | save -f $"($stage)/auroval-greet.sh"
+    }
     cp $"($deploy)/auroval.tmpfiles.conf" $"($stage)/auroval.tmpfiles.conf"
     # The checked-in greetd config says vt = 3. Substitute rather than ask the
     # maintainer to edit a file he is about to copy with root privileges.
@@ -66,6 +78,10 @@ def main [
     | save -f $"($stage)/greetd-auroval.toml"
     ^chmod 0755 $"($stage)/auroval-greet" $"($stage)/auroval-greet.sh"
     print $"         ($stage)"
+    if $frame_dump != "" {
+        print $"         AUROVAL_FRAME_DUMP=($frame_dump) is baked in — re-run"
+        print "         without --frame-dump to take it out again."
+    }
 
     print $"  3/($total)  check the greeter user"
     let has_greeter = ((^id -u greeter | complete).exit_code == 0)
@@ -84,26 +100,40 @@ def main [
         }
     }
 
-    print $"  4/($total)  wrapper"
-    let wrapper = ($"~/.local/bin/auroval-vt" | path expand)
-    mkdir ($wrapper | path dirname)
-    # /bin/sh, and it cds to the repo first: nushell resolves a script's
+    print $"  4/($total)  wrappers"
+    # One word each, because the clipboard does not survive a VT switch and a
+    # long path is a path you will mistype on a console with no scrollback.
+    # That was not a hypothetical: the first console sitting stopped at
+    # "how do I get that line onto the other VT".
+    #
+    # /bin/sh, and each cds to the repo first: nushell resolves a script's
     # siblings relative to the script, but cargo and target/ need the repo.
-    [
-        "#!/bin/sh"
-        "# auroval — run the VT harness from anywhere. Written by deploy/install.nu."
-        "# One word, because the clipboard does not survive a VT switch."
-        $"cd ($repo) || exit 1"
-        $"exec nu spike/p1e/cage-measure.nu \"$@\""
-    ] | append "" | str join "\n" | save -f $wrapper
-    ^chmod 0755 $wrapper
-    print $"         ($wrapper)"
-    let on_path = (($env.PATH | path expand) | any { |p| $p == ($wrapper | path dirname) })
+    let wrappers = [
+        [name                 script                          what];
+        ["auroval-vt"         "spike/p1e/cage-measure.nu"     "R16, the first-frame measurement"]
+        ["auroval-keys"       "spike/p1ab/keyboard-round.nu"  "R6, key repeat and caps lock"]
+        ["auroval-greetd"     "spike/p1ab/greetd-round.nu"    "R3 and R1, with greetd"]
+    ]
+    let bindir = ($"~/.local/bin" | path expand)
+    for w in $wrappers {
+        let wrapper = ($"~/.local/bin/($w.name)" | path expand)
+        mkdir ($wrapper | path dirname)
+        [
+            "#!/bin/sh"
+            $"# auroval — ($w.what). Written by deploy/install.nu."
+            "# One word, because the clipboard does not survive a VT switch."
+            $"cd ($repo) || exit 1"
+            $"exec nu ($w.script) \"$@\""
+        ] | append "" | str join "\n" | save -f $wrapper
+        ^chmod 0755 $wrapper
+        print $"         ($w.name)  — ($w.what)"
+    }
+    let on_path = (($env.PATH | path expand) | any { |p| $p == $bindir })
     if $on_path {
-        print "         ~/.local/bin is on PATH — type:  auroval-vt"
+        print "         ~/.local/bin is on PATH — type the name on any VT."
     } else {
         print "         ~/.local/bin is NOT on PATH — type the full path instead:"
-        print $"           ($wrapper)"
+        print $"           ($bindir)/<name>"
     }
 
     print $"  5/($total)  root script"

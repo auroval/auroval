@@ -138,6 +138,20 @@ video. Its image loader, hyprgraphics, advertises only still formats
 (png, jpeg, bmp, svg, jxl, webp, avif). Animated lock-screen backgrounds are
 unreachable without new decoding code somewhere.
 
+**C4b — cage blocks VT switching unless asked not to. Found on the console,
+2026-11-08.** `cage -s` is documented as *"Allow VT switching"* and it is off
+by default, so a greeter started as `cage -- auroval-greet greet` owns the
+keyboard completely: Ctrl+Alt+F1 does nothing, and the only way off that
+console is the greeter exiting or someone reaching the machine over the
+network. An operator discovered this by being unable to leave.
+
+That is the wrong default for a login screen, and `deploy/auroval-greet.sh`
+now passes `-s`. It gives nothing away: the VT a person reaches is a getty,
+which asks for a password like anything else. It is also not in tension with
+C5 — that is about the ext-session-lock locker, which is a different surface
+and does not run under cage. **A lock screen you cannot escape is the
+requirement; a login screen you cannot escape is a way to lose a machine.**
+
 **C5 — a self-written locker fails closed, by protocol design.**
 `ext-session-lock-v1.xml`, installed locally: *"If the client dies while the
 session is locked the session remains locked, possibly permanently depending on

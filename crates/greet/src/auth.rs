@@ -141,3 +141,140 @@ pub fn spawn(
         }
     })
 }
+
+/// The tests `auth.rs` went without until a console sitting proved it needed
+/// them.
+///
+/// This module had neither a test nor a real run behind it through all of P1,
+/// on the reasoning that it only makes sense against a real greetd. That was
+/// wrong twice over. greetd's half of the conversation is a few JSON frames
+/// over a Unix socket, so a scripted server is a dozen lines — and the thing
+/// the sitting found, an `auth_error` that never reaches the screen, is
+/// exactly what a scripted server can reproduce in milliseconds and a console
+/// takes an afternoon to show once.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::os::unix::net::UnixListener;
+    use std::sync::mpsc::{channel, RecvTimeoutError};
+    use std::sync::Mutex;
+    use std::time::Duration;
+
+    /// `Connection::from_env` reads `GREETD_SOCK`, and an environment is one
+    /// per process however many threads are looking at it.
+    static ENV: Mutex<()> = Mutex::new(());
+
+    /// A greetd that says what it is told to, in order.
+    ///
+    /// It does not parse the requests. What is being tested is what the
+    /// greeter does with the *replies*, and a server that only counts frames
+    /// cannot accidentally become the thing under test.
+    fn fake_greetd(
+        replies: Vec<&'static str>,
+    ) -> (std::path::PathBuf, std::thread::JoinHandle<usize>) {
+        let path = std::env::temp_dir().join(format!(
+            "auroval-fake-greetd-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).expect("bind the fake greetd");
+        let handle = std::thread::spawn(move || {
+            let (mut sock, _) = listener.accept().expect("the greeter connects");
+            let mut served = 0usize;
+            for reply in replies {
+                let mut len = [0u8; 4];
+                if sock.read_exact(&mut len).is_err() {
+                    break;
+                }
+                let mut payload = vec![0u8; u32::from_ne_bytes(len) as usize];
+                if sock.read_exact(&mut payload).is_err() {
+                    break;
+                }
+                let body = reply.as_bytes();
+                let mut frame = (body.len() as u32).to_ne_bytes().to_vec();
+                frame.extend_from_slice(body);
+                if sock.write_all(&frame).is_err() {
+                    break;
+                }
+                let _ = sock.flush();
+                served += 1;
+            }
+            served
+        });
+        (path, handle)
+    }
+
+    const PASSWORD_PROMPT: &str =
+        r#"{"type":"auth_message","auth_message_type":"secret","auth_message":"Password:"}"#;
+    const AUTH_ERROR: &str =
+        r#"{"type":"error","error_type":"auth_error","description":"Authentication failure"}"#;
+    const OK: &str = r#"{"type":"success"}"#;
+
+    fn next(rx: &Receiver<Ui>) -> Ui {
+        match rx.recv_timeout(Duration::from_secs(5)) {
+            Ok(u) => u,
+            Err(RecvTimeoutError::Timeout) => panic!("the conversation said nothing for 5 s"),
+            Err(e) => panic!("the conversation ended: {e}"),
+        }
+    }
+
+    /// The finding from the console sitting of 2026-11-08, as a test.
+    ///
+    /// Forty-eight captured frames of a real login contained no error at all:
+    /// a wrong password threw the one-time password away and asked again with
+    /// nothing said. R3's fit criterion is three clauses and this is the one
+    /// that was failing.
+    #[test]
+    fn a_wrong_password_produces_a_message_before_the_conversation_restarts() {
+        let _guard = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let (path, server) = fake_greetd(vec![
+            PASSWORD_PROMPT, // reply to create_session
+            AUTH_ERROR,      // reply to the answer: wrong
+            OK,              // reply to cancel_session
+            PASSWORD_PROMPT, // reply to the second create_session
+        ]);
+        std::env::set_var("GREETD_SOCK", &path);
+
+        let (to_ui, from_auth) = channel();
+        let (to_auth, from_ui) = channel();
+        let joined = spawn("dirk".into(), vec!["/bin/true".into()], to_ui, from_ui);
+
+        match next(&from_auth) {
+            Ui::Prompt { text, secret } => {
+                assert_eq!(text, "Password:");
+                assert!(secret, "a password prompt is a secret one");
+            }
+            other => panic!("expected the first prompt, got {other:?}"),
+        }
+        to_auth
+            .send(Answer::Text("wrong-on-purpose".into()))
+            .unwrap();
+
+        match next(&from_auth) {
+            Ui::Message { text, is_error } => {
+                assert!(is_error, "a wrong password is an error, not a notice");
+                assert_eq!(text, "Authentication failure");
+            }
+            other => {
+                panic!("a wrong password must say so before anything else happens; got {other:?}")
+            }
+        }
+
+        match next(&from_auth) {
+            Ui::Prompt { text, .. } => assert_eq!(text, "Password:", "and then ask again"),
+            other => panic!("expected the conversation to restart, got {other:?}"),
+        }
+
+        drop(to_auth);
+        let _ = joined.join();
+        assert_eq!(
+            server.join().unwrap(),
+            4,
+            "the server served its whole script"
+        );
+        let _ = std::fs::remove_file(&path);
+        std::env::remove_var("GREETD_SOCK");
+    }
+}

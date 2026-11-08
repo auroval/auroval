@@ -39,4 +39,15 @@ export XDG_STATE_HOME
 # arguments, so without a mode the greeter printed its usage and exited 2 on
 # every single start. It was invisible while the binary had no shell to run,
 # because every run exited 2 for that reason instead.
-exec cage -- /usr/local/lib/auroval/auroval-greet greet "$@"
+# -s allows VT switching, and it is OFF in cage by default. Without it the
+# greeter's console is a room with no door: Ctrl+Alt+F1 does nothing, and a
+# greeter that hangs takes the whole machine with it until someone reaches it
+# over the network or holds the power button. Found on 2026-11-08, by an
+# operator who could not leave.
+#
+# It costs nothing that matters. The VT a person switches to is a getty, which
+# asks for a password like anything else, so this is not a way past
+# authentication. And it is the greeter only: C5's fail-closed argument is
+# about the ext-session-lock locker, which is a different surface and does not
+# run under cage.
+exec cage -s -- /usr/local/lib/auroval/auroval-greet greet "$@"
