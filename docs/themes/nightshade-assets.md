@@ -367,6 +367,66 @@ and it should be recalibrated against the reference or dropped. Left as it
 stands rather than quietly retuned, because what counts as the nightshade look
 is the maintainer's call and not the tool's.
 
+### 5.5 matugen follows the most saturated patch, not the dominant colour
+
+Measured 2026-11-08 on scene-04, which was generated as a deliberate pair:
+one ruin-and-pond with warm glowing carp, one identical but cold, three seeds
+each. The point was to see whether two glow colours of the same scene read as
+one theme. They do not, but the reason turned out to be a different one than
+the question assumed.
+
+| | cool 150–260° | warm 300–60° | matugen returned |
+|---|---|---|---|
+| `pond-cold-s1` | 11.85% of frame, p99 sat 0.571 | 0.63%, p99 **0.643** | 199.9° — cool |
+| `pond-cold-s3` | 8.13%, p99 0.480 | 1.12%, p99 **0.589** | 43.8° — warm |
+| `pond-cold-s7` | 11.66%, p99 0.435 | 0.74%, p99 **0.606** | 11.0° — warm |
+| `pond-warm-s1` | 9.06%, p99 0.491 | 10.54%, p99 **0.813** | 34.4° — warm |
+
+Every one of the cold images is visibly a pond full of teal fish. Two of the
+three returned an orange accent, taken from the small red markings on those
+fish. In `pond-cold-s7` a region covering **0.74% of the frame decides the
+entire desktop palette**, beating a cool mass sixteen times its size.
+
+Area is not ignored — it decides `s1`, where the saturation gap is only
+1.13× — but it loses as soon as the gap widens: 1.39× in `s7` is enough for a
+patch to win at sixteen-to-one against.
+
+**This answers A3**, and it explains the hue instability recorded as A11.
+Those spreads — 110° across scene-02's seeds, 246° across the two wallpapers
+in rotation — are not randomness. They are different small saturated patches
+winning in different frames.
+
+Two controls follow, and a scene needs one of them:
+
+1. **Make the intended colour both the largest and the most saturated thing
+   present.** scene-04's warm variant does, and it is the most hue-stable set
+   measured: 34.4°, 30.7°, 28.8° — a 5.6° spread across three seeds, where
+   its cold twin spans 189°.
+2. **Declare the hue**, which §5.4 already permits.
+
+The first is better where it is achievable, because it means the image and
+its palette agree. It is not always achievable, and this is why: the subject
+was *glowing* carp, and the model does not paint emission.
+
+#### 5.5.1 The generator does not paint light sources
+
+Not one of the six scene-04 candidates has a glowing fish. The carp are
+ordinary koi in ambient light, the water is not lit from below, and nothing
+is silhouetted by it. The colour instruction landed perfectly — warm fish are
+warm, cold fish are cold — and the **emission** instruction did not land at
+all.
+
+This is **A9** on a new axis: the generator obeys instruction about style and
+subject, and ignores instruction about structure. Lighting is structure.
+
+It matters beyond one scene, because §4.1's constant part is almost entirely
+a lighting instruction — *"rim light and glow only, sourced from behind or
+beside the subject, no frontal key light"*. If emission is not reachable by
+prompting, that clause is decoration, and the glow in scene-01 and scene-03
+was luck or composition rather than instruction. It is also why control 1
+above failed for the cold variant: an object that does not glow stays
+desaturated, and a desaturated colour cannot win a saturation contest.
+
 ### 5.4 The palette, and a trap worth knowing
 
 The tool extracts hue the way the shipped palette does — matugen, always with
@@ -663,7 +723,7 @@ re-runs the first of these and fails loudly if matugen's behaviour changes.
 |---|---|---|
 | A1 | Which generator, and is its licence compatible with shipping the output? Not settled, and it gates everything. | Maintainer |
 | A2 | The phase grading recipe (§4.4) — the four parameter sets, fixed once and shared by all scenes. | Maintainer |
-| A3 | Does `--prefer saturation` pick the subject's colour or the background's? On the measured example it picked the background until the file was passed untouched. If it keeps missing, scenes declare their hue (§5.4). | Maintainer |
+| A3 | **Answered 2026-11-08 (§5.5).** Neither: `--prefer saturation` follows the most saturated *patch*, and area barely counts. On scene-04's cold variant a region covering **0.74% of the frame** set the whole palette, against a cool mass sixteen times its size. Two reliable controls follow, and a scene needs one of them: make the intended colour both the largest and the most saturated thing present (scene-04 warm: three seeds within 5.6°), or declare the hue (§5.4). | Answered |
 | A4 | The reject threshold for scrim depth (§6, gate 1) is a guess at 25%. Needs one real rejection to calibrate. | Maintainer |
 | A5 | Layer separation for §7 — produced by the generator, or cut by hand per master? **Partly relieved 2026-11-07:** §7.1 gets usable parallax from a monocular depth map with no layers at all, so this is no longer blocking. §7.2 proposes the actual answer — render the background and generate only the figure — and names the one thing that could sink it. Needs a prototype on one scene. | Maintainer |
 | A6 | Two weeks per candidate (§6, gate 3) is a guess. It may be one week; it is certainly not one day. | Maintainer |
