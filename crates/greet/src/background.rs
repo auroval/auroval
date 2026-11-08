@@ -734,6 +734,29 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// The same refusal, for the video path, which did not have it for a
+    /// day. `decode` has refused a home since it was written; `Video::start`
+    /// was built as a transport experiment and inherited none of that care.
+    /// A test here rather than in `video` because this is where the rule
+    /// lives and where the next source will be added.
+    #[test]
+    fn a_video_in_a_home_is_refused_before_the_pipeline_is_built() {
+        let home = std::env::var("HOME").expect("a home to point into");
+        let path = std::path::PathBuf::from(home).join("whatever.mp4");
+        assert!(
+            looks_like_video(&path),
+            "the extension decides, and .mp4 is one"
+        );
+        // No GL context is needed to be refused, which is the point: the
+        // check runs before anything is opened or negotiated.
+        let err = crate::video::Video::start(&path, (0, 0))
+            .err()
+            .expect("a video in a home is refused");
+        let said = err.to_string();
+        assert!(said.contains("R15"), "{said}");
+        assert!(said.contains("home directory"), "{said}");
+    }
+
     #[test]
     fn a_background_in_a_home_is_refused_before_it_is_opened() {
         // R15, C10. The file does not need to exist: the point is that the
