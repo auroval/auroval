@@ -176,7 +176,7 @@ pub fn draw(
             // like the greeter had hung. So it gets the text colour.
             let (hint, colour) = match ui.stage {
                 Stage::AskingUser => ("Who are you?", p.outline),
-                Stage::Answering => (ui.prompt.as_str(), p.on_surface),
+                Stage::Answering => (prompt_label(&ui.prompt), p.on_surface),
                 Stage::Starting => ("starting…", p.outline),
             };
             // A prompt the greeter did not write can be any length. PAM sent
@@ -232,6 +232,23 @@ pub fn draw(
         };
         gl.draw_centred(&label, g.user_px, cx, h - 64.0, p.outline);
     }
+}
+
+/// A PAM prompt as a label, rather than as a line of terminal output.
+///
+/// PAM writes its prompts for a terminal, where the text sits on the line in
+/// front of what you type: `Password: `. In a box that you type *into*, the
+/// colon is punctuation with nothing after it. It reads as a mistake, and on
+/// 2026-11-08 it was read as one.
+///
+/// This is typography, not redaction, and the distinction is what R1 turns
+/// on. The requirement is that the greeter assumes nothing about the
+/// conversation's message count, order or type — not that it reproduce
+/// terminal punctuation. `UiState::prompt` still holds exactly what PAM said,
+/// which is what the frame dump records and what any future log would show.
+fn prompt_label(s: &str) -> &str {
+    let s = s.trim_end();
+    s.strip_suffix(':').unwrap_or(s).trim_end()
 }
 
 fn shadowed(
@@ -481,6 +498,24 @@ mod tests {
         // the outline and the fill but clear of any centred text.
         let (y0, h) = f.run_y(ex + 3, ey + eh / 2);
         assert_eq!((y0, h), (ey, eh), "field height and top edge");
+    }
+
+    #[test]
+    fn a_prompt_is_a_label_and_not_a_line_of_terminal_output() {
+        // PAM's own wording, both of them, exactly as they arrived on
+        // 2026-11-08.
+        assert_eq!(prompt_label("Password: "), "Password");
+        assert_eq!(
+            prompt_label("One-time password (OATH) for `dirk`:"),
+            "One-time password (OATH) for `dirk`"
+        );
+        // A prompt that is already a label is left alone, and so is one that
+        // ends in something else. Only the trailing colon goes.
+        assert_eq!(prompt_label("Password"), "Password");
+        assert_eq!(prompt_label("Who are you?"), "Who are you?");
+        assert_eq!(prompt_label(""), "");
+        // Not every colon: the one at the end.
+        assert_eq!(prompt_label("Code: 1:2:"), "Code: 1:2");
     }
 
     /// A prompt the greeter did not write can be any length, and R1 says it
