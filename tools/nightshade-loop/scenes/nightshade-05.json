@@ -1,0 +1,27 @@
+{
+  "_": "scene-05, the lantern. No charm: this scene's moving part is the light inside the painting, not an object hung in front of it. Assets live outside the repository; these are absolute.",
+  "master": "/home/dirk/Pictures/auroval-nightshade/scene-05/lantern-s1-master16.png",
+  "depth": "/home/dirk/Pictures/auroval-nightshade/scene-05/lantern-s1-depth.npy",
+  "shader": "flame.frag",
+  "grain": 0.012,
+  "depth_grow": 25,
+  "emissive": {
+    "mode": "warm",
+    "floor": 0.08,
+    "span": 0.20
+  },
+  "uniforms": {
+    "flameScale": 16.0,
+    "flameRise": 2.5,
+    "flameAmp": 0.55
+  },
+  "loop": {
+    "seconds": 10,
+    "fps": 30,
+    "crf": 16,
+    "pan_x": 0.014,
+    "pan_y": 0.008,
+    "glow_mean": 0.45,
+    "glow_swing": 0.40
+  }
+}

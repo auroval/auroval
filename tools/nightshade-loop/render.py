@@ -77,13 +77,30 @@ def load_scene(cfg: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     depth = cv2.dilate(depth, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (grow * 2 + 1,) * 2))
     depth = cv2.GaussianBlur(depth, (0, 0), 10.0)
 
-    # The disc alone, for the bloom. Cyan is the separable thing here: the halo
-    # is the only saturated cyan in the frame while her kimono is white and her
-    # skin is pink, so min(G,B)-R isolates it without cutting anything out. A
-    # luminance threshold would not: it has already cost this project its
-    # near-black hair, obi and beak three separate times.
-    cy = np.clip(np.minimum(scene[..., 1], scene[..., 2]) - scene[..., 0], 0.0, 1.0)
-    emissive = scene * np.clip((cy - 0.05) / 0.20, 0.0, 1.0)[..., None]
+    # The lit thing alone, for the bloom.
+    #
+    # What is separable differs per scene and there is no general answer, so
+    # this is configured rather than guessed. A LUMINANCE threshold is never
+    # the answer: it has already cost this project its near-black hair, obi
+    # and beak three separate times.
+    #
+    #   "cool"  min(G,B) - R. scene-01's halo is the only saturated cyan in
+    #           the frame while the kimono is white and the skin is pink.
+    #   "warm"  R - min(G,B). scene-05's lantern panels are the only saturated
+    #           orange against wet grey stone and green cedar, and the same
+    #           subtraction run the other way isolates them as cleanly.
+    em = cfg.get("emissive", {})
+    mode = em.get("mode", "cool")
+    if mode == "cool":
+        sep = np.minimum(scene[..., 1], scene[..., 2]) - scene[..., 0]
+    elif mode == "warm":
+        sep = scene[..., 0] - np.minimum(scene[..., 1], scene[..., 2])
+    else:
+        raise SystemExit(f"emissive.mode must be cool or warm, not {mode!r}")
+    sep = np.clip(sep, 0.0, 1.0)
+    lo, span = float(em.get("floor", 0.05)), float(em.get("span", 0.20))
+    emissive = scene * np.clip((sep - lo) / span, 0.0, 1.0)[..., None]
+    print(f"emissive {mode}: {(sep > lo).mean() * 100:.2f}% of the frame above {lo}")
     return scene, depth, emissive
 
 
@@ -191,50 +208,90 @@ def settle(chain: Chain, frames: int, sub: int, periods: int) -> tuple[list[np.n
 class Renderer:
     def __init__(self, cfg: dict):
         self.scene, self.depth, self.emissive = load_scene(cfg)
-        self.charm = load_charm(cfg["charm"])
+        # A scene need not have a charm. scene-01 hangs one; scene-05's moving
+        # part is the light inside its lantern, which is a modulation of the
+        # painting rather than an object in front of it, so there is nothing
+        # to simulate and nothing to place.
+        self.charm = load_charm(cfg["charm"]) if "charm" in cfg else None
         self.h, self.w = self.scene.shape[:2]
         self.cfg = cfg
 
         self.ctx = moderngl.create_context(standalone=True, backend="egl")
+        shader = cfg.get("shader", "nacre.frag")
         self.prog = self.ctx.program(
-            vertex_shader=VERTEX, fragment_shader=(HERE / "nacre.frag").read_text()
+            vertex_shader=VERTEX, fragment_shader=(HERE / shader).read_text()
         )
         quad = self.ctx.buffer(np.array([-1, -1, 1, -1, -1, 1, 1, 1], "f4"))
         self.vao = self.ctx.vertex_array(self.prog, [(quad, "2f", "in_pos")])
 
-        c = self.charm
-        textures = [
-            self.ctx.texture((self.w, self.h), 3, self.scene[::-1].copy().tobytes(), dtype="f4"),
-            self.ctx.texture((c["w"], c["h"]), 3, c["rgb"][::-1].copy().tobytes(), dtype="f4"),
-            self.ctx.texture((c["w"], c["h"]), 1, c["alpha"][::-1].copy().tobytes(), dtype="f4"),
-            self.ctx.texture(
-                (c["w"], c["h"]), 3, c["nrm"].astype("f4")[::-1].copy().tobytes(), dtype="f4"
+        # Bound by name rather than by position, so a shader that wants three
+        # textures and one that wants six can share this code without either
+        # knowing the other's unit numbers.
+        named = [
+            (
+                "scene",
+                self.ctx.texture(
+                    (self.w, self.h), 3, self.scene[::-1].copy().tobytes(), dtype="f4"
+                ),
             ),
-            self.ctx.texture((self.w, self.h), 1, self.depth[::-1].copy().tobytes(), dtype="f4"),
-            self.ctx.texture((self.w, self.h), 3, self.emissive[::-1].copy().tobytes(), dtype="f4"),
+            (
+                "dep",
+                self.ctx.texture(
+                    (self.w, self.h), 1, self.depth[::-1].copy().tobytes(), dtype="f4"
+                ),
+            ),
+            (
+                "emis",
+                self.ctx.texture(
+                    (self.w, self.h), 3, self.emissive[::-1].copy().tobytes(), dtype="f4"
+                ),
+            ),
         ]
-        for i, tex in enumerate(textures):
+        c = self.charm
+        if c is not None:
+            named += [
+                (
+                    "alb",
+                    self.ctx.texture(
+                        (c["w"], c["h"]), 3, c["rgb"][::-1].copy().tobytes(), dtype="f4"
+                    ),
+                ),
+                (
+                    "salpha",
+                    self.ctx.texture(
+                        (c["w"], c["h"]), 1, c["alpha"][::-1].copy().tobytes(), dtype="f4"
+                    ),
+                ),
+                (
+                    "snrm",
+                    self.ctx.texture(
+                        (c["w"], c["h"]),
+                        3,
+                        c["nrm"].astype("f4")[::-1].copy().tobytes(),
+                        dtype="f4",
+                    ),
+                ),
+            ]
+        for i, (name, tex) in enumerate(named):
             tex.filter = (moderngl.LINEAR, moderngl.LINEAR)
             tex.repeat_x = tex.repeat_y = False
             tex.use(i)
-        self.textures = textures
+            self.set(name, i)
+        self.textures = [tex for _, tex in named]
 
-        ch = cfg["charm"]
-        for key, value in (
-            ("scene", 0),
-            ("alb", 1),
-            ("salpha", 2),
-            ("snrm", 3),
-            ("dep", 4),
-            ("emis", 5),
-            ("res", (float(self.w), float(self.h))),
-            ("halo", tuple(float(v) for v in ch["halo"])),
-            ("brad", float(ch["bead_radius"])),
-            ("nbead", int(ch["beads"])),
-            ("skullHalf", (c["w"] * 0.5, c["h"] * 0.5)),
-            ("grain", float(cfg.get("grain", 0.012))),
-        ):
-            self.set(key, value)
+        self.set("res", (float(self.w), float(self.h)))
+        self.set("grain", float(cfg.get("grain", 0.012)))
+        for key, value in cfg.get("uniforms", {}).items():
+            self.set(key, float(value))
+        if c is not None:
+            ch = cfg["charm"]
+            for key, value in (
+                ("halo", tuple(float(v) for v in ch["halo"])),
+                ("brad", float(ch["bead_radius"])),
+                ("nbead", int(ch["beads"])),
+                ("skullHalf", (c["w"] * 0.5, c["h"] * 0.5)),
+            ):
+                self.set(key, value)
 
     def set(self, key, value):
         # Unused uniforms are optimised out of the linked program, so setting
@@ -299,14 +356,16 @@ def main() -> None:
     cfg = json.loads(Path(args.scene).read_text())
     for key in ("master", "depth"):
         cfg[key] = str((Path(args.scene).parent / cfg[key]).resolve())
-    cfg["charm"]["sprite"] = str((Path(args.scene).parent / cfg["charm"]["sprite"]).resolve())
+    if "charm" in cfg:
+        cfg["charm"]["sprite"] = str((Path(args.scene).parent / cfg["charm"]["sprite"]).resolve())
 
     r = Renderer(cfg)
-    ch = cfg["charm"]
+    ch = cfg.get("charm")
 
     if args.still:
-        beads, tip = rest_pose(ch, r.charm, args.tilt)
-        r.place(beads, tip, args.tilt)
+        if ch is not None:
+            beads, tip = rest_pose(ch, r.charm, args.tilt)
+            r.place(beads, tip, args.tilt)
         r.set("shift", (0.0, 0.0))
         r.set("glow", float(cfg["loop"]["glow_mean"]))
         r.set("time", 0.0)
@@ -318,17 +377,21 @@ def main() -> None:
     loop = cfg["loop"]
     fps, seconds = int(loop["fps"]), float(loop["seconds"])
     frames, sub = int(seconds * fps), int(loop.get("substeps", 8))
-    chain = Chain(ch, loop)
-    states, closure = settle(chain, frames, sub, args.spinup)
-    sway = float(np.ptp([s[-1][0] for s in states]))
-    print(f"closure {closure:.4f} px over one period   pendant sway {sway:.1f} px")
+    if ch is not None:
+        chain = Chain(ch, loop)
+        states, closure = settle(chain, frames, sub, args.spinup)
+        sway = float(np.ptp([s[-1][0] for s in states]))
+        print(f"closure {closure:.4f} px over one period   pendant sway {sway:.1f} px")
+    else:
+        states = None
 
     # The charm hangs in front of the painting, so it takes the camera's
     # parallax too. Two things have to be right: the depth is read AT the pin
     # rather than guessed, and the sign is the shader's inverse, because the
     # shader moves the SAMPLE and therefore moves the image the other way.
-    anchor = np.asarray(ch["anchor"], int)
-    d_anchor = float(r.depth[anchor[1], anchor[0]])
+    if ch is not None:
+        anchor = np.asarray(ch["anchor"], int)
+        d_anchor = float(r.depth[anchor[1], anchor[0]])
 
     fbo = r.ctx.framebuffer(color_attachments=[r.ctx.texture((r.w, r.h), 3, dtype="f1")])
     ff = subprocess.Popen(
@@ -356,13 +419,37 @@ def main() -> None:
             str(loop.get("crf", 16)),
             "-pix_fmt",
             "yuv420p",
+            # Tag the colour. §2.1 asks for primaries and range to be
+            # DECLARED, and scene_check reports "unset / unset" otherwise --
+            # which it has done for every loop this project has made,
+            # including the one currently deployed as the greeter background.
+            # Undeclared is not neutral: §2 says the import assumes limited
+            # range, the safer guess, so an untagged full-range file is
+            # silently crushed. These three are what the pixels already are;
+            # the tag only stops the reader having to guess.
+            "-color_primaries",
+            "bt709",
+            "-color_trc",
+            "bt709",
+            "-colorspace",
+            "bt709",
+            "-color_range",
+            "tv",
+            # And again through x265's own parameters, which is not
+            # belt-and-braces. libx265 writes its own VUI, and ffprobe reads
+            # that rather than ffmpeg's container tags: with the flags above
+            # alone the file came back `color_space=bt709` but
+            # `color_primaries=unknown` and `color_transfer=unknown`, which
+            # is a half-tagged file and still a §2.1 miss.
+            "-x265-params",
+            "colorprim=bt709:transfer=bt709:colormatrix=bt709:range=limited",
             "-tag:v",
             "hvc1",
             args.out,
         ],
         stdin=subprocess.PIPE,
     )
-    n = int(ch["beads"])
+    n = int(ch["beads"]) if ch is not None else 0
     for f in range(frames):
         phase = f / frames
         w = 2 * np.pi * phase
@@ -372,11 +459,16 @@ def main() -> None:
         # invisible; the 2.5D literature puts artefacts above ~80px, so there
         # is room between "nothing" and "broken".
         shift = np.array([loop["pan_x"] * np.sin(w), loop["pan_y"] * np.sin(2 * w)])
-        par = -shift * np.array([r.w, r.h]) * (d_anchor - 0.35) * np.array([1.0, -1.0])
+        par = (
+            -shift * np.array([r.w, r.h]) * (d_anchor - 0.35) * np.array([1.0, -1.0])
+            if ch is not None
+            else None
+        )
 
-        s = states[f]
-        seg = s[n] - s[n - 1]
-        r.place(s[0:n] + par, s[n] + par, float(np.arctan2(seg[0], max(seg[1], 1e-6))))
+        if states is not None:
+            s = states[f]
+            seg = s[n] - s[n - 1]
+            r.place(s[0:n] + par, s[n] + par, float(np.arctan2(seg[0], max(seg[1], 1e-6))))
         r.set("shift", tuple(float(v) for v in shift))
         r.set("glow", float(loop["glow_mean"] + loop["glow_swing"] * np.sin(2 * w)))
         r.set("time", phase)
