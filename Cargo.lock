@@ -30,6 +30,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "21e4227379beff4205943696e6c3e0cd809bacdf3f0edd6e3dd153e2269571a4"
 
 [[package]]
+name = "auroval-ui"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "fontdue",
+ "glow",
+ "gstreamer",
+ "gstreamer-app",
+ "gstreamer-gl",
+ "gstreamer-gl-egl",
+ "gstreamer-video",
+ "image",
+ "khronos-egl",
+ "mlua",
+ "smithay-client-toolkit",
+ "wayland-client",
+ "wayland-egl",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -415,21 +435,12 @@ dependencies = [
 name = "greet"
 version = "0.0.0"
 dependencies = [
+ "auroval-ui",
  "chrono",
- "fontdue",
- "glow",
  "greetd-proto",
- "gstreamer",
- "gstreamer-app",
- "gstreamer-gl",
- "gstreamer-gl-egl",
- "gstreamer-video",
  "image",
- "khronos-egl",
- "mlua",
  "smithay-client-toolkit",
  "wayland-client",
- "wayland-egl",
 ]
 
 [[package]]

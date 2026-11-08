@@ -475,7 +475,7 @@ def main [
     $lines | str join "\n" | save -f $out
 
     # ── 7/8 the locale probe, because it is nearly free ─────────────────────
-    # crates/greet/src/clock.rs now resolves the date's language from LC_ALL,
+    # crates/auroval-ui/src/clock.rs now resolves the date's language from LC_ALL,
     # then LC_TIME, then LANG, the way the C library does. /etc/locale.conf on
     # this machine sets LC_TIME=nl_NL.UTF-8. If the greeter cannot see it, the
     # login screen says "Sunday, 8 November" while everything else on the

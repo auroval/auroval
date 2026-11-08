@@ -10,18 +10,12 @@
 //!     about what it can and cannot reach.
 
 mod auth;
-mod background;
-mod clock;
-mod config;
-mod dump;
-mod render;
-mod sessions;
 mod shell;
-mod store;
-mod theme;
-mod ui;
-mod video;
-mod view;
+
+// Everything this binary draws with now lives in `auroval-ui`, so that the
+// locker can draw the same screen without linking greetd. See that crate's
+// doc comment for where the line was drawn and why.
+use auroval_ui::{background, clock, config, render, sessions, store, ui, video, view};
 
 use config::Config;
 use store::Store;

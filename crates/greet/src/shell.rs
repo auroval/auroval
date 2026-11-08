@@ -43,12 +43,12 @@ use wayland_client::{
 };
 
 use crate::auth::{self, Answer};
-use crate::background::Background;
-use crate::config::Config;
-use crate::render::{Gl, Target};
-use crate::store::Store;
-use crate::ui::{Stage, UiState};
-use crate::view::{self, Style};
+use auroval_ui::background::Background;
+use auroval_ui::config::Config;
+use auroval_ui::render::{Gl, Target};
+use auroval_ui::store::Store;
+use auroval_ui::ui::{Stage, UiState};
+use auroval_ui::view::{self, Style};
 
 /// One output: its window, its EGL surface, and whether it needs drawing.
 struct Screen {
@@ -99,7 +99,7 @@ pub struct Shell {
     /// announced.
     log_keys: bool,
     /// `AUROVAL_FRAME_DUMP`. `None` unless it is set; see `dump`.
-    dump: Option<crate::dump::Dump>,
+    dump: Option<auroval_ui::dump::Dump>,
 
     /// `AUROVAL_LOG_DRAWS`. One line a second saying how many turns of the
     /// loop drew a frame and how many did not. The whole claim of this loop
@@ -138,11 +138,11 @@ pub fn run(cfg: Config, ui: UiState, preview: bool) -> Result<(), String> {
     // R11's typography is half the look and the language is the other half.
     // greetd clears the environment, so what the greeter ends up with is
     // whatever systemd exported, and that is not something to assume.
-    let locale = crate::clock::locale_from_env();
-    eprintln!("auroval-greet: {}", crate::clock::describe(locale));
+    let locale = auroval_ui::clock::locale_from_env();
+    eprintln!("auroval-greet: {}", auroval_ui::clock::describe(locale));
     // C10, asserted rather than assumed: the greeter runs as its own user and
     // must work when /home/<user> is mode 700.
-    if !crate::store::is_outside_homes(&cfg.state_path) {
+    if !auroval_ui::store::is_outside_homes(&cfg.state_path) {
         eprintln!(
             "auroval-greet: refusing {} — C10 forbids any greeter path inside a home directory",
             cfg.state_path.display()
@@ -185,7 +185,7 @@ pub fn run(cfg: Config, ui: UiState, preview: bool) -> Result<(), String> {
         session_cmd,
         locale,
         log_keys: std::env::var_os("AUROVAL_LOG_KEYS").is_some(),
-        dump: crate::dump::Dump::from_env(),
+        dump: auroval_ui::dump::Dump::from_env(),
         log_draws: std::env::var_os("AUROVAL_LOG_DRAWS").is_some(),
         draws: 0,
         turns: 0,
@@ -262,7 +262,7 @@ impl Shell {
     fn tick_clock(&mut self) {
         let now = chrono::Local::now();
         // hyprlock's own formats, in hyprlock's own language: see `clock`.
-        let (c, d) = crate::clock::lines(now, self.locale);
+        let (c, d) = auroval_ui::clock::lines(now, self.locale);
         self.ui.clock = c;
         self.ui.date = d;
     }
@@ -282,12 +282,12 @@ impl Shell {
                     self.ui.typed.clear();
                 }
                 auth::Ui::Message { text, is_error } => {
-                    self.ui.notify(crate::ui::Notice {
+                    self.ui.notify(auroval_ui::ui::Notice {
                         text,
                         kind: if is_error {
-                            crate::ui::NoticeKind::Error
+                            auroval_ui::ui::NoticeKind::Error
                         } else {
-                            crate::ui::NoticeKind::Info
+                            auroval_ui::ui::NoticeKind::Info
                         },
                     });
                 }
@@ -296,7 +296,7 @@ impl Shell {
                     self.ui.typed.clear();
                     // R4, and only now: remembering a login that failed would
                     // make the next boot worse, not better.
-                    let last = crate::store::LastLogin {
+                    let last = auroval_ui::store::LastLogin {
                         user: Some(self.ui.username.clone()),
                         session: self.ui.session().map(|s| s.id.clone()),
                     };
@@ -309,9 +309,9 @@ impl Shell {
             }
         }
         if let Some(why) = ended {
-            self.ui.notice = Some(crate::ui::Notice {
+            self.ui.notice = Some(auroval_ui::ui::Notice {
                 text: why,
-                kind: crate::ui::NoticeKind::Error,
+                kind: auroval_ui::ui::NoticeKind::Error,
             });
             self.ui.stage = Stage::AskingUser;
             self.ui.typed.clear();
