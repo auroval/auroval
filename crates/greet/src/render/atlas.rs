@@ -183,12 +183,21 @@ impl Atlas {
             .sum()
     }
 
-    /// Top of the tallest glyph to the baseline, so a line can be placed by
-    /// its visual centre rather than by its baseline.
-    pub fn ascent(&self, px: f32) -> f32 {
+    /// Baseline offset from the vertical centre of a line box, so a line can
+    /// be placed by its visual centre rather than by its baseline.
+    ///
+    /// It is `(ascent - descent) / 2`, and the descent is the half that was
+    /// missing. Centring on the ascent alone drops the line by half a descent
+    /// -- 18 px on the 147 px clock, which is what put this greeter's clock
+    /// below hyprlock's when the two were measured side by side on
+    /// 2026-11-08. Pango centres the full logical line box, so matching it
+    /// means counting both ends.
+    ///
+    /// fontdue reports the descent as a negative number, so this adds.
+    pub fn baseline_from_centre(&self, px: f32) -> f32 {
         self.font
             .horizontal_line_metrics(px)
-            .map(|m| m.ascent)
-            .unwrap_or(px * 0.8)
+            .map(|m| (m.ascent + m.descent) * 0.5)
+            .unwrap_or(px * 0.3)
     }
 }
