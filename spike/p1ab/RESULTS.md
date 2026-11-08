@@ -104,6 +104,58 @@ carry the cost.
 redraws itself about sixty times a second while nothing moves. The fix is to
 draw when something changed, which also fixes the repeat rate.
 
+## The second sitting, with frames — and the one thing it caught
+
+2026-11-08 11:29. Same shape as the first: `pam_exec` at 11:29:35, a
+`pam_unix` authentication failure at 11:30:00, `pam_exec` again at 11:30:01,
+and `session opened for user dirk` at 11:31:10. R3, R1 and R2 hold a second
+time, this time on a greeter the operator could actually read.
+
+48 frames, in `frames-2026-11-08/`. `all-field-states.png` is the whole
+conversation as a strip: the OATH prompt, six dots, the password prompt, four
+dots, and the next prompt.
+
+**And no error anywhere.** Not in one frame of the forty-eight. Measured
+rather than remembered: the notice line (y 815–865) is byte-identical in every
+frame from the second one onward — the same ink, the same x extent 635..1917 —
+and no pixel anywhere in any frame is within tolerance of the error colour
+`#f38ba8`. Between the wrong password being submitted (frame 17, t=28.6 s) and
+the next prompt appearing (frame 18, t=34.3 s) **no frame was written at
+all**, which means nothing visible changed for those 5.7 seconds.
+
+So R3 splits:
+
+| clause | verdict |
+|---|---|
+| the process does not exit | **holds** — same pid through a failure and a later success |
+| returns to the prompt | **holds** — the conversation restarts and the second attempt works |
+| shows the message | **fails** — the person is never told the password was wrong |
+
+From the operator's side that is a login screen which, on a typo, silently
+throws away a one-time password and asks for a new one with no explanation.
+
+`auth.rs` does send it: the `ErrorType::AuthError` arm sends
+`Ui::Message { is_error: true }` before it cancels and re-creates the session,
+and that arm demonstrably ran, because the conversation restarted. `pump_auth`
+sets `ui.notice` from it. Why nothing reaches the screen is **not settled**,
+and reading the code further is not going to settle it.
+
+**The next step is the test `auth.rs` has never had**: a fake greetd on a
+socket, driven through a failed authentication, asserting that a
+`Ui::Message { is_error: true }` comes out. That is desk work, it needs no
+console, and it is the first real test of the one module that still has none.
+
+Two smaller things the frames caught for free:
+
+- **The prompt overflows the field.** `One-time password (OATH) for `dirk`:`
+  is drawn centred at the field's text size with no clipping, so it runs out
+  over both borders (frames 3 and 18). It fits for `Password:` and for nothing
+  longer.
+- **The notice is never cleared.** The `pam_exec` line from the first attempt
+  is still on screen at the end of the second, because `Ui::Prompt` does not
+  reset `notice`. Combined with the missing error, the screen's only message
+  is a stale one.
+
 ## What the sitting cost, and what it taught
 
 Four things went wrong that had nothing to do with the requirements, and all
