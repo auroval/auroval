@@ -1,0 +1,73 @@
+# The system packages this workspace needs, declared once.
+#
+# Two things read this file and they must not disagree, because the
+# devcontainer exists so that a green pull request means something. When CI was
+# taught about Mesa and a font in #44 and the container was not, `cargo test`
+# inside the container failed three tests that passed everywhere else; the
+# container had quietly stopped standing in for CI. Keeping the list in one
+# place is what stops that recurring.
+#
+# The readers:
+#
+#   .devcontainer/Dockerfile                     `COPY`s and installs it
+#   .github/actions/rust-build-deps/action.yml   installs it on the runner
+#
+# It lives in `.devcontainer/` rather than at the repository root because
+# `.devcontainer` is the Docker build context -- `docker build -f
+# .devcontainer/Dockerfile .devcontainer` in the `devcontainer builds` job, and
+# the same folder implicitly when the maintainer opens the container from
+# `devcontainer.json`. `COPY` cannot reach outside its context, and widening
+# the context to the repository root would hand Docker a 5 GB `target/` on
+# every build. CI reaches down into this folder instead, which costs it one
+# path and nothing else.
+#
+# Format: one package per line, Debian names, `#` starts a comment. Both
+# readers strip comments and blank lines and pass the rest to `apt-get install
+# --no-install-recommends`. Explain a package when you add it: the reasons
+# below are the reason this file is worth more than two agreeing lists.
+
+# What the crates link against. pkg-config is how the -sys crates find the
+# rest; GStreamer is the video decode path; Wayland and xkbcommon are the
+# client surfaces and keyboard, via smithay-client-toolkit.
+#
+# Deliberately absent: libudev-dev and libseat-dev. The container carried them
+# from its first commit and CI never did, and nothing here needs them -- they
+# are compositor-side libraries (wlroots, cage), and this workspace is a
+# Wayland *client*. Cargo.lock has no udev or libseat crate, and CI has been
+# building the whole workspace, spikes included, without them since #44. They
+# were an anticipation that never came true, so they are gone rather than
+# copied into the shared list. The compositor runs on the host, where the
+# system provides them.
+pkg-config
+libgstreamer1.0-dev
+libgstreamer-plugins-base1.0-dev
+libwayland-dev
+libxkbcommon-dev
+
+# What `cargo test` needs rather than what the build needs.
+#
+# The render tests in crates/greet/src/view.rs draw through a surfaceless EGL
+# context and read the pixels back. Neither a runner nor a container has a GPU
+# or a display, so what satisfies them is Mesa's software rasteriser:
+# libegl-mesa0 is the EGL driver, libgl1-mesa-dri carries llvmpipe, libgbm1 is
+# what the Mesa EGL loader wants present. Without these, eglInitialize fails
+# and the tests fail loudly rather than skipping -- which is the intended
+# behaviour, and the reason these are installed instead of the tests carrying
+# an #[ignore].
+libegl1
+libegl-mesa0
+libgbm1
+libgl1-mesa-dri
+
+# And a font: the atlas loads fonts by path and never through fontconfig (see
+# crates/greet/src/render/atlas.rs), so an environment with no DejaVu on disk
+# gets "no usable font" rather than a fallback.
+fonts-dejavu-core
+
+# Packages are only half of it. These tests assert pixel values, so the
+# rasteriser has to be the same one every run, which three environment
+# variables pin: EGL_PLATFORM=surfaceless, GALLIUM_DRIVER=llvmpipe and
+# LIBGL_ALWAYS_SOFTWARE=1. They cannot live in this file -- one reader is a
+# Dockerfile `ENV` baked into an image, the other is a `env:` block on a single
+# CI step -- so they are set in `.devcontainer/Dockerfile` and in the `test`
+# job of `.github/workflows/ci.yml`. If you change one, change the other.
