@@ -342,11 +342,73 @@ def write_png(path: str, rgb: np.ndarray, sixteen: bool = True) -> None:
     cv2.imwrite(path, cv2.cvtColor(data, cv2.COLOR_RGB2BGR))
 
 
+# ------------------------------------------------------------------ encoding
+def encoder_args(codec: str, crf: int) -> list[str]:
+    """ffmpeg's `-c:v` onwards for one of the two formats the theme allows.
+
+    Both formats are named in docs/themes/nightshade.md's media table, and the
+    choice is not cosmetic: the greeter's measured hardware path is
+    `nvh264dec`, so what is deployed as the background is H.264, while HEVC is
+    what the seam and parallax were measured on. Before this existed the H.264
+    file was a hand-run transcode of the HEVC one, which is how the deployed
+    background ended up with no colour tag at all.
+
+    The colour tag goes on twice on purpose. §2.1 asks for primaries and range
+    to be DECLARED, and `scene_check` reports "unset / unset" otherwise --
+    which it did for every loop this project made, the deployed one included.
+    Undeclared is not neutral: §2 says the import assumes limited range, the
+    safer guess, so an untagged full-range file is silently crushed. ffmpeg's
+    own flags are only half the job, because libx26x writes its own VUI and
+    ffprobe reads THAT: with the flags alone the file came back
+    `color_space=bt709` but `color_primaries=unknown`.
+
+    The two encoders spell the range differently -- x265 takes
+    `range=limited`, x264 takes `range=tv` -- and an unknown parameter is an
+    error, not a warning, so they cannot share one string.
+    """
+    tags = "colorprim=bt709:transfer=bt709:colormatrix=bt709"
+    common = [
+        "-preset",
+        "slow",
+        "-crf",
+        str(crf),
+        "-pix_fmt",
+        "yuv420p",
+        "-color_primaries",
+        "bt709",
+        "-color_trc",
+        "bt709",
+        "-colorspace",
+        "bt709",
+        "-color_range",
+        "tv",
+    ]
+    if codec == "h264":
+        return ["-c:v", "libx264", *common, "-x264-params", f"{tags}:range=tv"]
+    return [
+        "-c:v",
+        "libx265",
+        *common,
+        "-x265-params",
+        f"{tags}:range=limited",
+        # hvc1 rather than hev1, so the stream is described in the container's
+        # sample entry where a player looks before it opens the bitstream.
+        "-tag:v",
+        "hvc1",
+    ]
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Render a nightshade scene still or loop.")
     ap.add_argument("scene", help="scene JSON (see scenes/ for the shape)")
     ap.add_argument("out", help="output .png for --still, .mp4 for --loop")
     ap.add_argument("--still", action="store_true", help="one frame, for judging")
+    ap.add_argument(
+        "--codec",
+        choices=("hevc", "h264"),
+        default="hevc",
+        help="--loop format; both are in the theme's media table, and H.264 is what is deployed",
+    )
     ap.add_argument("--tilt", type=float, default=0.10, help="chain angle for --still, radians")
     ap.add_argument(
         "--spinup", type=int, default=24, help="loop periods discarded before recording"
@@ -411,40 +473,7 @@ def main() -> None:
             str(fps),
             "-i",
             "-",
-            "-c:v",
-            "libx265",
-            "-preset",
-            "slow",
-            "-crf",
-            str(loop.get("crf", 16)),
-            "-pix_fmt",
-            "yuv420p",
-            # Tag the colour. §2.1 asks for primaries and range to be
-            # DECLARED, and scene_check reports "unset / unset" otherwise --
-            # which it has done for every loop this project has made,
-            # including the one currently deployed as the greeter background.
-            # Undeclared is not neutral: §2 says the import assumes limited
-            # range, the safer guess, so an untagged full-range file is
-            # silently crushed. These three are what the pixels already are;
-            # the tag only stops the reader having to guess.
-            "-color_primaries",
-            "bt709",
-            "-color_trc",
-            "bt709",
-            "-colorspace",
-            "bt709",
-            "-color_range",
-            "tv",
-            # And again through x265's own parameters, which is not
-            # belt-and-braces. libx265 writes its own VUI, and ffprobe reads
-            # that rather than ffmpeg's container tags: with the flags above
-            # alone the file came back `color_space=bt709` but
-            # `color_primaries=unknown` and `color_transfer=unknown`, which
-            # is a half-tagged file and still a §2.1 miss.
-            "-x265-params",
-            "colorprim=bt709:transfer=bt709:colormatrix=bt709:range=limited",
-            "-tag:v",
-            "hvc1",
+            *encoder_args(args.codec, int(loop.get("crf", 16))),
             args.out,
         ],
         stdin=subprocess.PIPE,

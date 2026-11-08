@@ -8,7 +8,16 @@ seamless loop.
 python3 tools/nightshade-loop/depth.py MASTER.png DEPTH.npy
 python3 tools/nightshade-loop/render.py scenes/nightshade-01.json out.png --still
 python3 tools/nightshade-loop/render.py scenes/nightshade-01.json out.mp4
+python3 tools/nightshade-loop/render.py scenes/nightshade-01.json out.mp4 --codec h264
 ```
+
+Both formats in the theme's media table are produced here, colour-tagged.
+`--codec h264` is what gets deployed, because the greeter's measured hardware
+path is `nvh264dec`; HEVC is the default and is what the seam numbers are
+quoted on. Deploy a render, never a transcode of one: the file that was
+deployed as the greeter background was a hand transcode and carried no colour
+tag on any of the four fields, so the reader had to guess the range. See
+§10.9 of [`nightshade-assets.md`](../../docs/themes/nightshade-assets.md).
 
 ## Two scenes, two kinds of motion
 

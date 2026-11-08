@@ -854,3 +854,39 @@ a later line referenced a variable that did not exist.
 
 **An edit that cannot fail loudly will eventually fail quietly.** Anchor edits
 on something that will raise if it is missing.
+
+### 10.9 A tag left unset is a decision, taken by the reader
+
+Every loop this project had made came back from `scene_check` as
+`colour primaries / range: unset / unset`, the deployed greeter background
+included — and the deployed file was worse than that, because it was a
+hand-run H.264 transcode of the HEVC render and carried no tag at all on any
+of the four fields.
+
+Undeclared is not neutral. §2 says the import assumes limited range because it
+is the safer guess, so an untagged full-range file is silently crushed. The
+pixels were always bt709/limited; nothing but the declaration was missing, and
+the declaration is the half a reader can actually see.
+
+Two things made it stay missing:
+
+* **ffmpeg's own colour flags are half the fix.** libx26x writes its own VUI
+  and `ffprobe` reads that rather than the container tags. With
+  `-color_primaries`/`-color_trc`/`-colorspace` alone the HEVC file came back
+  `color_space=bt709` but `color_primaries=unknown` — half-tagged, still a
+  §2.1 miss. `-x265-params colorprim=…:transfer=…:colormatrix=…:range=…` is
+  the other half, and x264 spells the range differently (`range=tv` against
+  x265's `range=limited`), so the two cannot share one string.
+* **The deployed format was not something the tool could produce.** The
+  greeter's measured hardware path is `nvh264dec`, so what ships is H.264,
+  while the renderer only emitted HEVC. The gap was closed by hand, once, and
+  a hand step carries no contract. `render.py --codec {hevc,h264}` now emits
+  both, tagged.
+
+Re-rendered scene-01 on both paths: §2.1 passes, and **matugen returns the
+same 215.9° and the same seven colours**, so nothing downstream of the palette
+moves. The seam improved from 1.40× to 1.23× (H.264) and 1.13× (HEVC) — the
+old file's seam was partly the transcode's.
+
+**A clause that reports "unset" for every artefact is not measuring the
+artefacts; it is measuring a missing step.**
