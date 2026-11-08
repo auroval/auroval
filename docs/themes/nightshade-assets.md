@@ -357,15 +357,25 @@ The split is covered by `--self-test`, which builds two frames carrying the
 same light in the same safe field at different places, and asserts that the
 whole-field number cannot separate them while the surround number does.
 
-**The bright-fraction threshold is still met by nothing**, and that is a
-separate question from this one. The mean threshold is now reachable — two of
-the eight candidates measured meet it — but ≤ 2% above 0.25 is not met even by
-an image whose surround is near-black: scene-01's master sits at 7.6% and the
-best scene-02 candidate at 7.8%. Those two are the ones that look right, so
-the threshold is calibrated against an idea rather than against the reference,
-and it should be recalibrated against the reference or dropped. Left as it
-stands rather than quietly retuned, because what counts as the nightshade look
-is the maintainer's call and not the tool's.
+**On the bright-fraction threshold, written and then corrected the same day.**
+
+What stood here said that ≤ 2% above 0.25 was met by nothing, that the best
+images sat at 7.6% and 7.8%, and that the threshold was therefore calibrated
+against an idea rather than against the reference — filed as A10, proposing
+recalibration.
+
+That was a conclusion drawn from the eight images that existed at the time,
+and scene-04 falsified it a few hours later. `pond-warm-b-s11` measures
+**0.0353 mean and 1.74% above 0.25**, and passes §2.2's composition clause
+outright — the first candidate of any scene to do so.
+
+So the threshold is reachable and A10 is withdrawn. Acting on it would have
+loosened a limit that works, on the evidence that nothing had yet reached it,
+which is an argument from a small sample and not from the measure.
+
+What it took was not a tuning change. It was a brief that stated darkness as
+appearance rather than as lighting (§5.5.1): *"gone almost black with wet moss
+and shadow"*, *"everything that is not a fish sunk in deep shadow"*.
 
 ### 5.4 The palette, and a trap worth knowing
 
@@ -670,7 +680,7 @@ re-runs the first of these and fails loudly if matugen's behaviour changes.
 | ~~A7~~ | ~~nightshade's rendering style~~ **Settled 2026-11-07: ink-and-wash (sumi-e), recorded in §4.1.1.** Chosen from six candidates generated from an identical subject and seed. The paired finding went into §4.5: the style is traditional, the subject matter must not be. | Settled |
 | A8 | A4's scrim threshold now looks like the wrong axis on its own. Measured: the only candidate with correct composition scored 0.275, just *above* the 25% guess, while a candidate with **no subject** scored 0.000. Scrim alone rewards emptiness, so the reject rule needs a second term — minimum subject extent, or ornament density — or gate 1 will systematically prefer duller images. | Maintainer |
 | A9 | The generator obeys instruction about style and subject and ignores instruction about structure (§10). Is that FLUX.2 [klein] specifically, a 4B-parameter limit, or every model? Decides whether the filter stage can ever shrink. | Maintainer |
-| A10 | The composition clause's bright-fraction threshold (≤ 2% above 0.25) is met by no image ever generated, including the reference, whose surround sits at 7.6% and looks right (§5.3.1). Recalibrate against the reference or drop the term. Not changed by the split, deliberately -- what counts as the look is a maintainer decision. | Maintainer |
+| A10 | **Withdrawn the day it was filed.** Proposed recalibrating the composition clause's bright-fraction threshold (≤ 2% above 0.25) because no image had met it. `pond-warm-b-s11` then measured 1.74% and passed the clause outright (§5.3.1), so the threshold is reachable and loosening it would have removed a working limit on the evidence of a small sample. What it took was a brief stating darkness as appearance rather than as lighting (§5.5.1). | Withdrawn |
 | A11 | Hue is not stable across seeds of one brief: six scene-02 candidates, one subject, gave 344.9°, 57.9°, 355.7°, 306.4°, 2.6°, 7.3°. If tone and chroma are the theme's and hue is the media's (N1), the accent is decided by which candidate is accepted rather than by the scene, and acceptance becomes an unrecorded palette decision. | Maintainer |
 
 ---
