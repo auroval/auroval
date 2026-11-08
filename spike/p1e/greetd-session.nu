@@ -59,7 +59,7 @@ def main [
     print $"  2/($total)  the VT"
     # Taking a VT out from under a live session is exactly the mistake this
     # must not make, so both checks, not just the cheap one.
-    let active = (open /sys/class/tty/tty0/active | str trim)
+    let active = (open --raw /sys/class/tty/tty0/active | str trim)
     if $active == $"tty($vt)" {
         print $"         VT ($vt) is the active console. Pick a free one with --vt."
         exit 2
@@ -73,7 +73,11 @@ def main [
         print $"         VT ($vt) already has a login session. Pick a free one with --vt."
         exit 2
     }
-    let want = (open $config | parse -r '(?m)^\s*vt\s*=\s*(\d+)' | get -o capture0.0)
+    # --raw, because `open` on a .toml parses it into a record and `parse`
+    # only takes text. It cost a console sitting to find: the script got as
+    # far as "2/5 the VT" and died on an input-type error with greetd not
+    # started and the operator on a VT wondering what to do.
+    let want = (open --raw $config | parse -r '(?m)^\s*vt\s*=\s*(\d+)' | get -o capture0.0)
     if ($want | is-not-empty) and $want != ($vt | into string) {
         print $"         ($config) says vt = ($want) but you asked for ($vt)."
         print $"         Edit the file, or re-run deploy/install.nu --vt ($vt)."
@@ -82,7 +86,7 @@ def main [
     print $"         VT ($vt) is free"
 
     print $"  3/($total)  the greeter"
-    let cmd = (open $config | parse -r '(?m)^\s*command\s*=\s*"([^"]+)"' | get -o capture0.0 | default "")
+    let cmd = (open --raw $config | parse -r '(?m)^\s*command\s*=\s*"([^"]+)"' | get -o capture0.0 | default "")
     if ($cmd | is-empty) or not ($cmd | path exists) {
         print $"         the config's command \(($cmd)) does not exist — run deploy/install.nu"
         exit 2
@@ -110,7 +114,7 @@ def main [
     sleep 2sec
     if (^pgrep -x greetd | complete).exit_code != 0 {
         print "greetd did not start. Log:"
-        if ($LOG | path exists) { open $LOG | print }
+        if ($LOG | path exists) { open --raw $LOG | print }
         exit 1
     }
     print $"greetd running; output streaming to ($LOG)"
@@ -135,6 +139,6 @@ def main [
     print ""
     if ($LOG | path exists) {
         print $"── ($LOG) ──"
-        open $LOG | print
+        open --raw $LOG | print
     }
 }
