@@ -29,6 +29,7 @@
 def main [
     --no-build            # skip cargo, use whatever is in target/release
     --vt: int = 3         # VT the staged greetd config points at
+    --frame-dump: string = ""   # bake AUROVAL_FRAME_DUMP=<dir> into the startup script
 ] {
     let repo = ($env.FILE_PWD | path dirname)
     let deploy = $"($repo)/deploy"
@@ -58,6 +59,17 @@ def main [
     mkdir $stage
     cp $bin $"($stage)/auroval-greet"
     cp $"($deploy)/auroval-greet.sh" $"($stage)/auroval-greet.sh"
+    # greetd clears the environment, so a debug variable exported in the
+    # shell that starts greetd never reaches the greeter. The only place it
+    # can be set is the script greetd itself runs, which is why this is a
+    # flag here rather than something to remember on the console.
+    if $frame_dump != "" {
+        let line = $"\n# --frame-dump: staged for one sitting. Not for a deployed greeter.\nAUROVAL_FRAME_DUMP=($frame_dump)\nexport AUROVAL_FRAME_DUMP\n"
+        let body = (open --raw $"($stage)/auroval-greet.sh")
+        $body
+        | str replace "exec cage" $"($line)\nexec cage"
+        | save -f $"($stage)/auroval-greet.sh"
+    }
     cp $"($deploy)/auroval.tmpfiles.conf" $"($stage)/auroval.tmpfiles.conf"
     # The checked-in greetd config says vt = 3. Substitute rather than ask the
     # maintainer to edit a file he is about to copy with root privileges.
@@ -66,6 +78,10 @@ def main [
     | save -f $"($stage)/greetd-auroval.toml"
     ^chmod 0755 $"($stage)/auroval-greet" $"($stage)/auroval-greet.sh"
     print $"         ($stage)"
+    if $frame_dump != "" {
+        print $"         AUROVAL_FRAME_DUMP=($frame_dump) is baked in — re-run"
+        print "         without --frame-dump to take it out again."
+    }
 
     print $"  3/($total)  check the greeter user"
     let has_greeter = ((^id -u greeter | complete).exit_code == 0)
