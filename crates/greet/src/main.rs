@@ -11,6 +11,7 @@
 
 mod auth;
 mod background;
+mod clock;
 mod config;
 mod render;
 mod sessions;
@@ -141,9 +142,9 @@ fn snapshot() {
             session: None,
         },
     );
-    let now = chrono::Local::now();
-    state.clock = now.format("%H:%M").to_string();
-    state.date = now.format("%A, %-d %B").to_string();
+    let (c, d) = clock::lines(chrono::Local::now(), clock::locale_from_env());
+    state.clock = c;
+    state.date = d;
     match pose.as_str() {
         "user" => {}
         "error" => {

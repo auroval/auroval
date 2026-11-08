@@ -21,9 +21,20 @@ khronos-egl = { version = "6", features = ["dynamic"] }
 glow = "0.16"
 fontdue = "0.9"
 # Local time, for the clock and the date line (R11). default-features off
-# keeps it to the `clock` feature: the greeter needs the wall clock and
-# nothing else chrono can do. MIT OR Apache-2.0, like the rest of the graph.
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# keeps this to what the greeter needs and nothing else chrono can do.
+# MIT OR Apache-2.0, like the rest of the graph.
+#
+# `unstable-locales` is what makes the date line read in the machine's own
+# language. hyprlock runs `date +"%A, %-d %B"`, which honours LC_TIME; this
+# greeter formatted with chrono's built-in English and said "Sunday" where
+# the lock screen said "zondag" -- found by putting the two side by side on
+# 2026-11-08. The feature's name is chrono's own warning that its API may
+# move; the alternative is libc's setlocale, which is global mutable state in
+# a process that draws from several places, so this is the smaller risk.
+chrono = { version = "0.4", default-features = false, features = [
+    "clock",
+    "unstable-locales",
+] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 # Q4: Lua in a restricted interpreter. `vendored` builds Lua 5.4 from source so
 # the sandbox is not at the mercy of whatever liblua the host happens to ship.

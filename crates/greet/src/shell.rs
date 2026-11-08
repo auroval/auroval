@@ -79,6 +79,10 @@ pub struct Shell {
     to_auth: Option<Sender<Answer>>,
     from_auth: Option<Receiver<auth::Ui>>,
     session_cmd: Vec<String>,
+    /// Resolved once at startup, not per tick: the greeter's environment is
+    /// fixed by the time it draws, and a locale lookup every frame would be
+    /// work for an answer that cannot change.
+    locale: chrono::Locale,
 
     started: Instant,
     pub first_frame: Option<Instant>,
@@ -147,6 +151,7 @@ pub fn run(cfg: Config, ui: UiState, preview: bool) -> Result<(), String> {
         to_auth: None,
         from_auth: None,
         session_cmd,
+        locale: crate::clock::locale_from_env(),
         started: Instant::now(),
         first_frame: None,
         done: false,
@@ -206,9 +211,10 @@ impl Shell {
 
     fn tick_clock(&mut self) {
         let now = chrono::Local::now();
-        // hyprlock's own formats: $TIME and `date +"%A, %-d %B"`.
-        self.ui.clock = now.format("%H:%M").to_string();
-        self.ui.date = now.format("%A, %-d %B").to_string();
+        // hyprlock's own formats, in hyprlock's own language: see `clock`.
+        let (c, d) = crate::clock::lines(now, self.locale);
+        self.ui.clock = c;
+        self.ui.date = d;
     }
 
     /// Everything greetd has said since the last frame.
