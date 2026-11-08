@@ -122,6 +122,35 @@ impl UiState {
         }
     }
 
+    /// Put a notice on the screen, keeping an error that has not been
+    /// answered yet.
+    ///
+    /// **An error must outlive the messages that follow it.** The shell
+    /// drains everything the conversation has said since the last frame, and
+    /// after a wrong password greetd sends the error and then immediately
+    /// re-opens the conversation — whose first PAM module spoke again within
+    /// milliseconds. Last-one-wins meant the error was replaced before a
+    /// single frame was drawn. Forty-eight captured frames of a real login
+    /// on 2026-11-08 contain no error at all for exactly this reason, and
+    /// the person who typed the wrong password was never told.
+    ///
+    /// So an error stays until the person does something about it, which is
+    /// `submit` clearing it. Another error still replaces it: the newest
+    /// thing that went wrong is the useful one.
+    pub fn notify(&mut self, n: Notice) {
+        let holding_an_error = matches!(
+            &self.notice,
+            Some(Notice {
+                kind: NoticeKind::Error,
+                ..
+            })
+        );
+        if holding_an_error && n.kind != NoticeKind::Error {
+            return;
+        }
+        self.notice = Some(n);
+    }
+
     pub fn session(&self) -> Option<&Session> {
         self.sessions.get(self.selected)
     }
@@ -216,6 +245,48 @@ mod tests {
 
     /// The failure this was written against: an empty secret field drew
     /// nothing at all, prompt included.
+    fn notice(text: &str, kind: NoticeKind) -> Notice {
+        Notice {
+            text: text.into(),
+            kind,
+        }
+    }
+
+    /// The console sitting's finding, as a unit test. After a wrong password
+    /// greetd sends the error and then re-opens the conversation, whose
+    /// first PAM module spoke again milliseconds later — and the shell drains
+    /// both before it draws. Last-one-wins made the error invisible.
+    #[test]
+    fn an_error_is_not_replaced_by_the_chatter_that_follows_it() {
+        let mut ui = UiState::new(vec![], &LastLogin::default());
+        ui.notify(notice("Authentication failure", NoticeKind::Error));
+        ui.notify(notice(
+            "an extra PAM step is in this stack",
+            NoticeKind::Info,
+        ));
+        assert_eq!(
+            ui.notice.as_ref().map(|n| n.text.as_str()),
+            Some("Authentication failure"),
+            "the error has to survive long enough to be read"
+        );
+    }
+
+    #[test]
+    fn a_newer_error_does_replace_an_older_one() {
+        let mut ui = UiState::new(vec![], &LastLogin::default());
+        ui.notify(notice("first", NoticeKind::Error));
+        ui.notify(notice("second", NoticeKind::Error));
+        assert_eq!(ui.notice.as_ref().map(|n| n.text.as_str()), Some("second"));
+    }
+
+    #[test]
+    fn an_info_replaces_an_info() {
+        let mut ui = UiState::new(vec![], &LastLogin::default());
+        ui.notify(notice("first", NoticeKind::Info));
+        ui.notify(notice("second", NoticeKind::Info));
+        assert_eq!(ui.notice.as_ref().map(|n| n.text.as_str()), Some("second"));
+    }
+
     #[test]
     fn an_empty_secret_field_shows_the_prompt_and_not_zero_dots() {
         let mut ui = UiState::new(vec![session("hyprland")], &LastLogin::default());

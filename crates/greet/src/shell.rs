@@ -249,7 +249,7 @@ impl Shell {
                     self.ui.typed.clear();
                 }
                 auth::Ui::Message { text, is_error } => {
-                    self.ui.notice = Some(crate::ui::Notice {
+                    self.ui.notify(crate::ui::Notice {
                         text,
                         kind: if is_error {
                             crate::ui::NoticeKind::Error
@@ -316,6 +316,11 @@ impl Shell {
                 if let Some(tx) = &self.to_auth {
                     let _ = tx.send(Answer::Text(std::mem::take(&mut self.ui.typed)));
                     self.ui.prompt = "…".into();
+                    // The answer is the person acting on whatever the last
+                    // message said, so it stops being news here. Without
+                    // this an error from the previous attempt would sit
+                    // under the new prompt looking like it describes it.
+                    self.ui.notice = None;
                 }
             }
             Stage::Starting => {}
