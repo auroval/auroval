@@ -623,8 +623,9 @@ to keep in sync.
 |---|---|---|
 | N1 | nightshade's tonal targets (§4.3) — the accent's L\* and C\*, which decide whether it reads as neon or as pastel. The theme's visual signature, and the one number worth getting wrong a few times first. | Maintainer, against the first scene |
 | N2 | Does the centre window title stay in the bar (§5)? | Maintainer |
-| N3 | How many scenes does nightshade ship? Daily rotation over two scenes is a two-day cycle, which is not rotation. | Maintainer |
+| N3 | How many scenes does nightshade ship? Rotation over two scenes is a two-step cycle, which is barely rotation. **Mechanism built 2026-11-08** — the login screen takes a pool of candidates and advances per launch, so the question is now only the count, not whether it is possible. Two are in the pool. | Maintainer |
 | N4 | Fixed clock times or solar phase boundaries (§3.3)? No longer constrained by the format — Q4 chose Lua — so this is now purely what is wanted. Solar is right and costs a location; clock is wrong in December and costs nothing. | Maintainer |
 | N5 | Should tenet 2 gain a per-surface clause (§3.2)? | Maintainer |
 | N7 | The scrim (§2.4) is the one place a user's file changes how nightshade looks rather than what colour it is. Acceptable, or does nightshade prefer to show bright media undimmed and let the text fight it? | Maintainer |
+| N9 | A rotating background and a derived palette pull against each other: scene-01 is 215.9° and scene-05 is 69.3°, 146° apart, and §4.3 gives the UI one accent. Measured harmless for now — each scene clears all four legibility clauses under the other's palette, and `greet.lua` ships no palette table yet — but it becomes real when §4.4's packaging reaches the greeter. The shape is a palette per candidate rather than a second key parallel to the pool; a parallel key is the drift R9 already rejected once. | Maintainer |
 | N6 | The name collides with Nightshade, the University of Chicago image-poisoning tool. Different domain, and theme names are namespaced under auroval — noted, not raised as a blocker. | Maintainer |

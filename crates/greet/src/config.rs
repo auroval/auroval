@@ -36,23 +36,37 @@ use crate::theme::{Geometry, Palette};
 
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Where the background comes from (R9), in the order to try them.
+    /// Where the background comes from (R9) — candidates to rotate between,
+    /// each of them a chain to fall back along.
     ///
     /// R9 is a chain — *"fall back, in order, to still image then solid
     /// colour"* — and a single path cannot express one. A video that will not
     /// play has nothing to fall back to except the colour, which skips the
     /// middle step the requirement names.
     ///
-    /// A list rather than a second `background_still` key: it reads in the
-    /// order R9 states, there is no second key to drift out of step with the
-    /// first, and it generalises to more than two without inventing a third.
-    /// An empty list is the solid colour, which is also where a list whose
-    /// every entry fails ends up.
+    /// The outer list is a different thing from the inner one, and conflating
+    /// them was the first design here. A chain is ORDERED BY DEGRADATION:
+    /// later entries are worse and exist only for when the earlier ones fail,
+    /// so a second background appended to a working chain is never seen. A
+    /// pool is ORDERED BY NOTHING: its entries are equals, and `rotation`
+    /// picks one per launch. Rotation over a chain would promote a still over
+    /// a video, which is R9 read backwards.
     ///
-    /// A theme may still write `background = "one.png"`; a bare string is
-    /// read as a list of one, because breaking every existing theme to
-    /// express a fallback nobody has configured yet would be a poor trade.
-    pub background: Vec<PathBuf>,
+    /// Three spellings, and the first two are what every existing theme
+    /// already writes:
+    ///
+    /// ```lua
+    /// background = "one.png"                    -- one candidate, one rung
+    /// background = { "loop.mp4", "still.png" }  -- one candidate, R9's chain
+    /// background = {                            -- two candidates, each a chain
+    ///   { "nightshade-01.mp4", "nightshade-01.png" },
+    ///   { "nightshade-05.mp4", "nightshade-05.png" },
+    /// }
+    /// ```
+    ///
+    /// An empty pool is the solid colour, which is also where a pool whose
+    /// every candidate fails ends up.
+    pub background: Vec<Vec<PathBuf>>,
     /// The palette table this theme ships, already parsed.
     pub palette: Palette,
     /// R11's numbers. A theme may move them; the defaults are hyprlock's.
@@ -161,19 +175,36 @@ impl Config {
     /// same rule as `Palette::parse`'s treatment of unknown roles, for the same
     /// reason: a half-written theme must not be the reason nobody can log in.
     fn absorb(&mut self, t: &Table, path: &Path) {
-        // A string or a list of strings, and a string is a list of one.
-        // Asked for in that order because the common theme has one
-        // background and should not have to write brackets to say so.
+        // A string, a list of strings, or a list of lists of strings. Asked
+        // for in that order of increasing structure, because the common theme
+        // has one background and should not have to write brackets to say so,
+        // and because mlua's conversion is the only thing that can tell the
+        // three apart: `Vec<String>` simply fails on a table of tables.
         match t.get::<Option<String>>("background") {
-            Ok(Some(s)) => self.background = vec![PathBuf::from(s)],
+            Ok(Some(s)) => self.background = vec![vec![PathBuf::from(s)]],
             Ok(None) => {}
             Err(_) => match t.get::<Option<Vec<String>>>("background") {
-                Ok(Some(v)) => self.background = v.into_iter().map(PathBuf::from).collect(),
+                Ok(Some(v)) => self.background = vec![v.into_iter().map(PathBuf::from).collect()],
                 Ok(None) => {}
-                Err(e) => self.note(format!(
-                    "{}: background ignored, wanted a path or a list of paths ({e})",
-                    path.display()
-                )),
+                Err(_) => match t.get::<Option<Vec<Vec<String>>>>("background") {
+                    Ok(Some(v)) => {
+                        self.background = v
+                            .into_iter()
+                            // A candidate with no rungs can never be shown,
+                            // and rotating onto it would be a launch with no
+                            // background for no stated reason. Dropped here
+                            // rather than carried into the pool.
+                            .filter(|chain: &Vec<String>| !chain.is_empty())
+                            .map(|chain| chain.into_iter().map(PathBuf::from).collect())
+                            .collect()
+                    }
+                    Ok(None) => {}
+                    Err(e) => self.note(format!(
+                        "{}: background ignored, wanted a path, a list of paths, \
+                         or a list of lists of paths ({e})",
+                        path.display()
+                    )),
+                },
             },
         }
         match t.get::<Option<String>>("ambient_sound") {
@@ -392,11 +423,31 @@ mod tests {
         assert!(c.problems.is_empty(), "no problems: {:?}", c.problems);
         assert_eq!(
             c.background,
-            vec![
+            vec![vec![
                 PathBuf::from("/usr/share/auroval/nightshade/loop.mp4"),
                 PathBuf::from("/usr/share/auroval/nightshade/still.png"),
+            ]],
+            "one candidate, whose order is the requirement rather than an \
+             accident of parsing"
+        );
+    }
+
+    /// The pool. Two candidates, unequal chains, so code that confuses the
+    /// outer list with the inner one cannot pass by accident.
+    #[test]
+    fn a_background_may_be_a_pool_of_chains() {
+        let c = Config::load(&fixture("rotation.lua"));
+        assert!(c.problems.is_empty(), "no problems: {:?}", c.problems);
+        assert_eq!(
+            c.background,
+            vec![
+                vec![
+                    PathBuf::from("/var/lib/auroval/nightshade-01.mp4"),
+                    PathBuf::from("/var/lib/auroval/nightshade-01.png"),
+                ],
+                vec![PathBuf::from("/var/lib/auroval/nightshade-05.mp4")],
             ],
-            "the order is the requirement, not an accident of parsing"
+            "two candidates, each keeping its own chain's order"
         );
     }
 
@@ -406,8 +457,10 @@ mod tests {
         assert!(c.problems.is_empty(), "no problems: {:?}", c.problems);
         assert_eq!(
             c.background,
-            vec![PathBuf::from("/usr/share/auroval/nightshade/still.png")],
-            "a bare string is a list of one"
+            vec![vec![PathBuf::from(
+                "/usr/share/auroval/nightshade/still.png"
+            )]],
+            "a bare string is one candidate of one rung"
         );
         assert_eq!(c.geometry.clock_px, 96.0, "the theme moved this");
         assert_eq!(c.geometry.field_w, 420.0, "and this");

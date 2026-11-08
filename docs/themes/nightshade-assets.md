@@ -890,3 +890,42 @@ old file's seam was partly the transcode's.
 
 **A clause that reports "unset" for every artefact is not measuring the
 artefacts; it is measuring a missing step.**
+
+### 10.10 A pool and a chain are not the same list
+
+Asked to put a second scene *into rotation* on the login screen rather than
+*in place of* the first, the obvious move was to append it to R9's
+`background` list. That list already held two paths and took more.
+
+It would never have been seen. R9's list is **ordered by degradation**: the
+first entry that works wins, and the ones behind it exist for when it does
+not. A second scene appended to a working chain is dead text.
+
+A pool is **ordered by nothing** — its entries are equals, and one is chosen
+per launch. Rotating over a chain would promote a still above a video, which
+is R9 read backwards. So they are nested rather than merged: the outer list is
+the pool, each entry a chain, and R9 is untouched inside a candidate.
+
+Two consequences worth having measured:
+
+* **The choice advances, it is not drawn.** With two candidates a fair coin
+  shows the same one twice running half the time, which does not read as
+  rotation. Advancing costs one integer remembered across launches, in
+  `/var/lib/auroval/last-background` beside R4's login memory — the same
+  directory, for C10's reason. The file is advisory: unreadable means "start
+  somewhere", and somewhere comes from the clock rather than being fixed at 0,
+  because a machine that cannot keep the file would otherwise pin to the first
+  candidate on every boot, which is the behaviour rotation exists to avoid.
+* **Rotation and the derived palette pull against each other.** Candidates
+  have their own hues — 215.9° for scene-01, 69.3° for scene-05, 146° apart —
+  and §4.3 derives the UI accent from *the* scene's hue. One static palette
+  therefore matches at most one candidate. Measured both ways round: each
+  scene clears all four legibility clauses under the *other* scene's palette,
+  so this is an aesthetic mismatch and not a safety one. It is also latent
+  rather than live, because `greet.lua` currently ships no palette table at
+  all and the greeter uses its defaults. It becomes real the moment §4.4's
+  packaging reaches the greeter, and the honest shape is then a palette *per
+  candidate*, not a second key parallel to the pool — see N9.
+
+**A list whose order means something cannot also be a list whose order means
+nothing.**

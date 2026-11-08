@@ -15,6 +15,7 @@ mod clock;
 mod config;
 mod dump;
 mod render;
+mod rotation;
 mod sessions;
 mod shell;
 mod store;
@@ -409,9 +410,17 @@ fn snapshot() {
     // wrong for a snapshot: one frame rendered immediately would always show
     // the fallback colour and the background would look broken. So this waits
     // for it, briefly and with a stated limit, rather than pretending.
-    let mut bg = background::Background::start(&cfg.background);
+    // One candidate out of the pool, the same way the greeter picks one, so a
+    // snapshot photographs what a login would actually show. The state file
+    // is the greeter's, so a snapshot advances the rotation too -- which is
+    // correct: it is a launch.
+    let chosen = rotation::choose(&cfg.background, &rotation::state_beside(&cfg.state_path));
+    for p in &chosen.problems {
+        eprintln!("auroval-greet: {p}");
+    }
+    let mut bg = background::Background::start(chosen.chain);
     let mut ready = None;
-    if !cfg.background.is_empty() {
+    if !chosen.chain.is_empty() {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while !bg.settled(&gl) && std::time::Instant::now() < deadline {
             std::thread::sleep(std::time::Duration::from_millis(10));
