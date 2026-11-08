@@ -268,14 +268,16 @@ def run-once [bin: string, timeout: int, out: string]: nothing -> string {
     $text
 }
 
-# `keys   1.234  press   keysym "BackSpace"  typed 3 chars`
+# `keys   1.234  press   keysym "BackSpace"  field 3 chars`
+# (`typed` is accepted too: that was the word before the first sitting
+#  showed it was reading the wrong buffer at the username stage.)
 #
 # The keysym is Debug-formatted in the greeter, so it arrives quoted; the quotes
 # are optional here so a hand-written log parses too. The character itself is
 # never in the log, deliberately — see `log_key` in shell.rs.
 def parse-keys [text: string] {
     $text
-    | parse -r '(?m)^keys\s+(?<t>[\d.]+)\s+(?<how>press|repeat)\s+keysym\s+"?(?<sym>[^"\s]+)"?\s+typed\s+(?<n>\d+)\s+chars'
+    | parse -r '(?m)^keys\s+(?<t>[\d.]+)\s+(?<how>press|repeat)[\w-]*\s+keysym\s+"?(?<sym>[^"\s]+)"?\s+(?:typed|field)\s+(?<n>\d+)\s+chars'
     | each { |r| { t: ($r.t | into float), how: $r.how, sym: $r.sym, n: ($r.n | into int) } }
 }
 
@@ -385,7 +387,7 @@ def judge [keys: list, caps: list, info: list] {
 
     # ── did the field agree with the keyboard ────────────────────────────
     # The count is logged BEFORE the event is applied, so the last line of a
-    # held backspace reads `typed 1 chars` with the field about to be empty.
+    # held backspace reads `field 1 chars` with the field about to be empty.
     # That is why the floor is 1 and not 0: it is the shape of the log, not
     # slack in the requirement.
     let counts = ($keys | get n)
@@ -393,7 +395,7 @@ def judge [keys: list, caps: list, info: list] {
     let peak_at = ($counts | enumerate | where item == $peak | get 0.index)
     let after = ($counts | skip $peak_at)
     let trough = ($after | math min)
-    $out = ($out | append (check "typed count rose, fell" (($peak > 0) and ($trough <= 1)) (
+    $out = ($out | append (check "field count rose, fell" (($peak > 0) and ($trough <= 1)) (
         $"rose to ($peak), fell to ($trough)" + (if $peak == 0 { " — no character ever reached the field" } else if $trough > 1 { " — the held backspace did not empty it" } else { "" })
     )))
 

@@ -500,7 +500,16 @@ impl SeatHandler for Shell {
                 &seat,
                 None,
                 self.loop_handle.clone(),
-                Box::new(|shell: &mut Shell, _kbd, event| shell.on_key(event)),
+                // Repeats arrive HERE and nowhere else. SCTK's calloop timer
+                // calls this closure directly; `KeyboardHandler::repeat_key`
+                // only fires for a server-sent `KeyState::Repeated`, which
+                // most compositors never send. The first R6 sitting logged
+                // zero repeats for that reason and read as a failure of the
+                // greeter, which it was not.
+                Box::new(|shell: &mut Shell, _kbd, event| {
+                    shell.log_key("repeat", &event);
+                    shell.on_key(event)
+                }),
             );
             match r {
                 Ok(k) => self.keyboard = Some(k),
@@ -558,6 +567,9 @@ impl KeyboardHandler for Shell {
         self.on_key(event);
     }
 
+    /// Only for a repeat the *compositor* sends as `KeyState::Repeated`.
+    /// Local repeat does not come through here; see the closure in
+    /// `new_capability`.
     fn repeat_key(
         &mut self,
         _: &Connection,
@@ -566,7 +578,7 @@ impl KeyboardHandler for Shell {
         _: u32,
         event: KeyEvent,
     ) {
-        self.log_key("repeat", &event);
+        self.log_key("repeat-from-compositor", &event);
         self.on_key(event);
     }
 
@@ -638,15 +650,20 @@ impl Shell {
     /// log is a worse bug than the one it was added to find. The keysym is
     /// enough to tell a repeat from a press, and the count is enough to tell
     /// whether the field agreed.
+    ///
+    /// The count is `ui.field()`, not `ui.typed`: at the username stage
+    /// `push` fills `username` and `typed` stays empty, so the first R6
+    /// sitting logged `typed 0 chars` for every keystroke and read as "no
+    /// character ever reached the field" when every character had.
     fn log_key(&self, how: &str, event: &KeyEvent) {
         if !self.log_keys {
             return;
         }
         eprintln!(
-            "keys {:>7.3}  {how:<6}  keysym {:?}  typed {} chars",
+            "keys {:>7.3}  {how:<6}  keysym {:?}  field {} chars",
             self.started.elapsed().as_secs_f32(),
             event.keysym.name().unwrap_or("?"),
-            self.ui.typed.chars().count()
+            self.ui.field().chars().count()
         );
     }
 
