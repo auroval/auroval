@@ -36,9 +36,23 @@ use crate::theme::{Geometry, Palette};
 
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Where the still background comes from (R9). `None` means the solid
-    /// colour, which is also what a missing or unreadable file degrades to.
-    pub background: Option<PathBuf>,
+    /// Where the background comes from (R9), in the order to try them.
+    ///
+    /// R9 is a chain — *"fall back, in order, to still image then solid
+    /// colour"* — and a single path cannot express one. A video that will not
+    /// play has nothing to fall back to except the colour, which skips the
+    /// middle step the requirement names.
+    ///
+    /// A list rather than a second `background_still` key: it reads in the
+    /// order R9 states, there is no second key to drift out of step with the
+    /// first, and it generalises to more than two without inventing a third.
+    /// An empty list is the solid colour, which is also where a list whose
+    /// every entry fails ends up.
+    ///
+    /// A theme may still write `background = "one.png"`; a bare string is
+    /// read as a list of one, because breaking every existing theme to
+    /// express a fallback nobody has configured yet would be a poor trade.
+    pub background: Vec<PathBuf>,
     /// The palette table this theme ships, already parsed.
     pub palette: Palette,
     /// R11's numbers. A theme may move them; the defaults are hyprlock's.
@@ -58,7 +72,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            background: None,
+            background: Vec::new(),
             palette: Palette::default(),
             geometry: Geometry::default(),
             ambient_sound: None,
@@ -147,10 +161,20 @@ impl Config {
     /// same rule as `Palette::parse`'s treatment of unknown roles, for the same
     /// reason: a half-written theme must not be the reason nobody can log in.
     fn absorb(&mut self, t: &Table, path: &Path) {
+        // A string or a list of strings, and a string is a list of one.
+        // Asked for in that order because the common theme has one
+        // background and should not have to write brackets to say so.
         match t.get::<Option<String>>("background") {
-            Ok(Some(s)) => self.background = Some(PathBuf::from(s)),
+            Ok(Some(s)) => self.background = vec![PathBuf::from(s)],
             Ok(None) => {}
-            Err(e) => self.note(format!("{}: background ignored ({e})", path.display())),
+            Err(_) => match t.get::<Option<Vec<String>>>("background") {
+                Ok(Some(v)) => self.background = v.into_iter().map(PathBuf::from).collect(),
+                Ok(None) => {}
+                Err(e) => self.note(format!(
+                    "{}: background ignored, wanted a path or a list of paths ({e})",
+                    path.display()
+                )),
+            },
         }
         match t.get::<Option<String>>("ambient_sound") {
             Ok(Some(s)) => self.ambient_sound = Some(PathBuf::from(s)),
@@ -342,7 +366,7 @@ mod tests {
     #[test]
     fn the_default_is_usable_on_its_own() {
         let c = Config::default();
-        assert!(c.background.is_none());
+        assert!(c.background.is_empty(), "no background is the solid colour");
         assert!(c.ambient_sound.is_none(), "R23 is silent unless asked for");
         assert!(crate::store::is_outside_homes(&c.state_path), "C10");
     }
@@ -361,13 +385,29 @@ mod tests {
 
     /// Without this one, every test below could be passing because the loader
     /// reads nothing at all.
+    /// R9's chain, written the way a theme writes it.
+    #[test]
+    fn a_background_may_be_a_list_and_keeps_its_order() {
+        let c = Config::load(&fixture("chain.lua"));
+        assert!(c.problems.is_empty(), "no problems: {:?}", c.problems);
+        assert_eq!(
+            c.background,
+            vec![
+                PathBuf::from("/usr/share/auroval/nightshade/loop.mp4"),
+                PathBuf::from("/usr/share/auroval/nightshade/still.png"),
+            ],
+            "the order is the requirement, not an accident of parsing"
+        );
+    }
+
     #[test]
     fn a_theme_that_behaves_is_actually_read() {
         let c = Config::load(&fixture("good.lua"));
         assert!(c.problems.is_empty(), "no problems: {:?}", c.problems);
         assert_eq!(
-            c.background.as_deref(),
-            Some(Path::new("/usr/share/auroval/nightshade/still.png"))
+            c.background,
+            vec![PathBuf::from("/usr/share/auroval/nightshade/still.png")],
+            "a bare string is a list of one"
         );
         assert_eq!(c.geometry.clock_px, 96.0, "the theme moved this");
         assert_eq!(c.geometry.field_w, 420.0, "and this");

@@ -429,12 +429,54 @@ mod tests {
     /// different GL contexts is a diff between two rasterisers as much as
     /// between two inputs, and the point of the superellipse test is that
     /// the only difference is the one it changed.
+    /// R9's chain, with pixels: a first candidate that cannot decode must
+    /// not cost the second one its turn.
+    ///
+    /// This lives here rather than in `background::tests` because the step
+    /// that moves to the next candidate happens in `poll`, and `poll` needs
+    /// a GL context -- which no test on a build machine has except the ones
+    /// in this module.
+    #[test]
+    fn a_background_that_will_not_decode_gives_the_next_one_its_turn() {
+        let _guard = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+        let good = write_circle_png(400, 400, 100);
+        let bad = good.with_file_name("truncated.png");
+        let whole = std::fs::read(&good).expect("the fixture");
+        std::fs::write(&bad, &whole[..whole.len() / 3]).expect("a truncated png");
+
+        let (mut gl, target) =
+            unsafe { Gl::headless(W, H) }.expect("an off-screen GL context for the render tests");
+        gl.make_current(&target).expect("make current");
+
+        let mut bg = Background::start(&[bad.clone(), good.clone()]);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !bg.settled(&gl) && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        assert!(
+            bg.ready(&gl).is_some(),
+            "the second candidate must be on screen; problems so far: {:?}",
+            bg.problems()
+        );
+        let said = bg.problems();
+        assert_eq!(said.len(), 1, "exactly the one failure, named: {said:?}");
+        assert!(
+            said[0].contains("truncated.png"),
+            "the log has to say which one failed: {said:?}"
+        );
+        std::fs::remove_file(&bad).ok();
+    }
+
     fn render_each(frames: &[(&UiState, &Style)], background: Option<&Path>) -> Vec<Frame> {
         let (mut gl, target) =
             unsafe { Gl::headless(W, H) }.expect("an off-screen GL context for the render tests");
         gl.make_current(&target).expect("make current");
 
-        let mut bg = Background::start(background);
+        let chain: Vec<PathBuf> = background
+            .map(|p| vec![p.to_path_buf()])
+            .unwrap_or_default();
+        let mut bg = Background::start(&chain);
         let ready = if background.is_some() {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
             while !bg.settled(&gl) && std::time::Instant::now() < deadline {
