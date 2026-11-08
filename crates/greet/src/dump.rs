@@ -11,6 +11,13 @@
 //! back for the render tests, so this is the same thing pointed at a
 //! directory.
 //!
+//! **With a video background the two coincide**, and the directory fills at
+//! the clip's rate: a 20-second run against a 60 fps loop wrote 1169 PNGs.
+//! That is the contract working rather than failing — every one of those is a
+//! different picture — but it makes the dump useless for the question it was
+//! built to answer, which is what the UI did. Use it with a still or with no
+//! background configured.
+//!
 //! **One frame per change, not per frame.** A 2560x1440 PNG costs on the
 //! order of a hundred milliseconds to encode and write, and the loop that
 //! would be doing it is the same loop whose timing R6 measures, and a repeat
