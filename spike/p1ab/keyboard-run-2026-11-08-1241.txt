@@ -1,0 +1,205 @@
+auroval P1/A+B — keyboard through wl_seat, with a person holding a key (R6)
+2026-11-08T12:41:08+01:00
+
+binary    /home/dirk/Documents/projects/auroval/target/release/auroval-greet  (the one built in this tree)
+timeout   45 s  — the only way the run ends
+host      games-werkkamer  kernel 7.3.1-1-cachyos
+tty       /dev/tty3
+
+── captured log ──
+00:00:00.000 [INFO] [libseat] [libseat/backend/seatd.c:64] Could not connect to socket /run/seatd.sock: No such file or directory
+00:00:00.000 [INFO] [libseat] [libseat/libseat.c:76] Backend 'seatd' failed to open seat, skipping
+00:00:00.001 [INFO] [libseat] [libseat/libseat.c:73] Seat opened with backend 'logind'
+00:00:00.001 [INFO] [backend/session/session.c:117] Successfully loaded libseat session
+00:00:00.003 [INFO] [backend/backend.c:248] Found 1 GPUs
+00:00:00.003 [INFO] [backend/drm/backend.c:225] Initializing DRM backend for /dev/dri/card1 (nvidia-drm)
+00:00:00.003 [INFO] [backend/drm/drm.c:312] Found 4 DRM CRTCs
+00:00:00.003 [INFO] [backend/drm/drm.c:270] Found 12 DRM planes
+00:00:00.021 [INFO] [render/egl.c:205] Supported EGL client extensions: EGL_EXT_platform_base EGL_EXT_device_base EGL_EXT_device_query EGL_EXT_device_enumeration EGL_KHR_client_get_all_proc_addresses EGL_EXT_client_extensions EGL_KHR_debug EGL_KHR_platform_x11 EGL_EXT_platform_x11 EGL_EXT_platform_device EGL_MESA_platform_surfaceless EGL_EXT_explicit_device EGL_KHR_platform_wayland EGL_EXT_platform_wayland EGL_KHR_platform_gbm EGL_MESA_platform_gbm EGL_EXT_platform_xcb
+00:00:00.036 [INFO] [render/egl.c:369] Using EGL 1.5
+00:00:00.036 [INFO] [render/egl.c:370] Supported EGL display extensions: EGL_ANDROID_native_fence_sync EGL_EXT_buffer_age EGL_EXT_client_sync EGL_EXT_create_context_robustness EGL_EXT_image_dma_buf_import EGL_EXT_image_dma_buf_import_modifiers EGL_MESA_image_dma_buf_export EGL_EXT_output_base EGL_EXT_output_drm EGL_EXT_pixel_format_float EGL_EXT_protected_content EGL_EXT_stream_consumer_egloutput EGL_EXT_stream_acquire_mode EGL_EXT_sync_reuse EGL_IMG_context_priority EGL_KHR_config_attribs EGL_KHR_create_context_no_error EGL_KHR_context_flush_control EGL_KHR_create_context EGL_KHR_fence_sync EGL_KHR_get_all_proc_addresses EGL_KHR_partial_update EGL_KHR_swap_buffers_with_damage EGL_KHR_no_config_context EGL_KHR_gl_colorspace EGL_KHR_gl_renderbuffer_image EGL_KHR_gl_texture_2D_image EGL_KHR_gl_texture_3D_image EGL_KHR_gl_texture_cubemap_image EGL_KHR_image EGL_KHR_image_base EGL_KHR_reusable_sync EGL_KHR_stream EGL_KHR_stream_attrib EGL_KHR_stream_consumer_gltexture EGL_KHR_stream_cross_process_fd EGL_KHR_stream_fifo EGL_KHR_stream_producer_eglsurface EGL_KHR_surfaceless_context EGL_KHR_wait_sync EGL_NV_nvrm_fence_sync EGL_NV_quadruple_buffer EGL_NV_stream_consumer_eglimage EGL_NV_stream_cross_display EGL_NV_stream_cross_object EGL_NV_stream_cross_process EGL_NV_stream_cross_system EGL_NV_stream_dma EGL_NV_stream_flush EGL_NV_stream_metadata EGL_NV_stream_remote EGL_NV_stream_reset EGL_NV_stream_socket EGL_NV_stream_socket_inet EGL_NV_stream_socket_unix EGL_NV_stream_sync EGL_NV_stream_fifo_next EGL_NV_stream_fifo_synchronous EGL_NV_stream_consumer_gltexture_yuv EGL_NV_stream_attrib EGL_NV_stream_origin EGL_NV_system_time EGL_NV_output_drm_flip_event EGL_NV_triple_buffer EGL_NV_robustness_video_memory_purge EGL_WL_bind_wayland_display EGL_WL_wayland_eglstream
+00:00:00.036 [INFO] [render/egl.c:372] Supported EGL device extensions: EGL_NV_device_cuda EGL_EXT_device_drm EGL_EXT_device_drm_render_node EGL_EXT_device_query_name EGL_EXT_device_persistent_id
+00:00:00.036 [INFO] [render/egl.c:374] EGL vendor: NVIDIA
+00:00:00.036 [INFO] [render/egl.c:376] EGL driver name: nvidia
+00:00:00.081 [INFO] [render/gles2/renderer.c:538] Creating GLES2 renderer
+00:00:00.081 [INFO] [render/gles2/renderer.c:539] Using OpenGL ES 3.2 NVIDIA 615.78.08
+00:00:00.081 [INFO] [render/gles2/renderer.c:540] GL vendor: NVIDIA Corporation
+00:00:00.081 [INFO] [render/gles2/renderer.c:541] GL renderer: NVIDIA GeForce RTX 4070 Ti/PCIe/SSE2
+00:00:00.081 [INFO] [render/gles2/renderer.c:542] Supported GLES2 extensions: GL_EXT_shader_clock GL_EXT_shader_realtime_clock GL_EXT_base_instance GL_EXT_blend_func_extended GL_EXT_blend_minmax GL_EXT_buffer_storage GL_EXT_clear_texture GL_EXT_clip_control GL_EXT_clip_cull_distance GL_EXT_color_buffer_float GL_EXT_color_buffer_half_float GL_EXT_conservative_depth GL_EXT_copy_image GL_EXT_depth_clamp GL_EXT_debug_label GL_EXT_discard_framebuffer GL_EXT_disjoint_timer_query GL_EXT_draw_buffers_indexed GL_EXT_draw_elements_base_vertex GL_EXT_EGL_image_array GL_EXT_EGL_image_storage GL_EXT_EGL_image_external_wrap_modes GL_EXT_float_blend GL_EXT_frag_depth GL_EXT_geometry_point_size GL_EXT_geometry_shader GL_EXT_gpu_shader5 GL_EXT_map_buffer_range GL_EXT_multi_draw_indirect GL_EXT_multisample_compatibility GL_EXT_multisampled_render_to_texture GL_EXT_multisampled_render_to_texture2 GL_EXT_multiview_texture_multisample GL_EXT_multiview_timer_query GL_EXT_occlusion_query_boolean GL_EXT_polygon_offset_clamp GL_EXT_post_depth_coverage GL_EXT_primitive_bounding_box GL_EXT_raster_multisample GL_EXT_render_snorm GL_EXT_robustness GL_EXT_separate_shader_objects GL_EXT_shader_group_vote GL_EXT_shader_implicit_conversions GL_EXT_shader_integer_mix GL_EXT_shader_io_blocks GL_EXT_shader_non_constant_global_initializers GL_EXT_shader_texture_lod GL_EXT_shader_texture_samples GL_EXT_shadow_samplers GL_EXT_sparse_texture GL_EXT_sparse_texture2 GL_EXT_sRGB GL_EXT_sRGB_write_control GL_EXT_tessellation_point_size GL_EXT_tessellation_shader GL_EXT_texture_border_clamp GL_EXT_texture_buffer GL_EXT_texture_compression_bptc GL_EXT_texture_compression_dxt1 GL_EXT_texture_compression_rgtc GL_EXT_texture_compression_s3tc GL_EXT_texture_cube_map_array GL_EXT_texture_filter_anisotropic GL_EXT_texture_filter_minmax GL_EXT_texture_format_BGRA8888 GL_EXT_texture_mirror_clamp_to_edge GL_EXT_texture_norm16 GL_EXT_texture_query_lod GL_EXT_texture_rg GL_EXT_texture_shadow_lod GL_EXT_texture_sRGB_R8 GL_EXT_texture_sRGB_decode GL_EXT_texture_storage GL_EXT_texture_view GL_EXT_draw_transform_feedback GL_EXT_unpack_subimage GL_EXT_window_rectangles GL_KHR_context_flush_control GL_KHR_debug GL_EXT_memory_object GL_EXT_memory_object_fd GL_NV_memory_object_sparse GL_KHR_parallel_shader_compile GL_KHR_no_error GL_KHR_robust_buffer_access_behavior GL_KHR_robustness GL_EXT_semaphore GL_EXT_semaphore_fd GL_NV_timeline_semaphore GL_KHR_shader_subgroup GL_KHR_texture_compression_astc_ldr GL_KHR_texture_compression_astc_sliced_3d GL_KHR_texture_compression_astc_hdr GL_NV_bgr GL_NV_bindless_texture GL_NV_blend_equation_advanced GL_NV_blend_equation_advanced_coherent GL_NVX_blend_equation_advanced_multi_draw_buffers GL_NV_blend_minmax_factor GL_NV_clip_space_w_scaling GL_NV_compute_shader_derivatives GL_NV_conditional_render GL_NV_conservative_raster GL_NV_conservative_raster_pre_snap_triangles GL_NV_copy_buffer GL_NV_copy_image GL_NV_draw_buffers GL_NV_draw_instanced GL_NV_draw_texture GL_NV_draw_vulkan_image GL_NV_EGL_stream_consumer_external GL_NV_explicit_attrib_location GL_NV_fbo_color_attachments GL_NV_fill_rectangle GL_NV_fragment_coverage_to_color GL_NV_fragment_shader_barycentric GL_NV_fragment_shader_interlock GL_NV_framebuffer_blit GL_NV_framebuffer_mixed_samples GL_NV_framebuffer_multisample GL_NV_generate_mipmap_sRGB GL_NV_geometry_shader_passthrough GL_NV_instanced_arrays GL_NV_internalformat_sample_query GL_NV_gpu_shader5 GL_NV_image_formats GL_NV_memory_attachment GL_NV_mesh_shader GL_NV_occlusion_query_samples GL_NV_non_square_matrices GL_NV_pack_subimage GL_NV_packed_float GL_NV_packed_float_linear GL_NV_path_rendering GL_NV_path_rendering_shared_edge GL_NV_pixel_buffer_object GL_NV_polygon_mode GL_NV_primitive_shading_rate GL_NV_read_buffer GL_NV_read_depth GL_NV_read_depth_stencil GL_NV_read_stencil GL_NV_representative_fragment_test GL_NV_sample_locations GL_NV_sample_mask_override_coverage GL_NV_scissor_exclusive GL_NV_shader_atomic_fp16_vector GL_NV_shader_noperspective_interpolation GL_NV_shader_subgroup_partitioned GL_NV_shader_texture_footprint GL_NV_shading_rate_image GL_NV_shadow_samplers_array GL_NV_shadow_samplers_cube GL_NV_sRGB_formats GL_NV_stereo_view_rendering GL_NV_texture_array GL_NV_texture_barrier GL_NV_texture_border_clamp GL_NV_texture_compression_latc GL_NV_texture_compression_s3tc GL_NV_texture_compression_s3tc_update GL_NV_texture_dirty_tile_map GL_NV_timer_query GL_NV_viewport_array GL_NV_viewport_array2 GL_NV_viewport_swizzle GL_KHR_blend_equation_advanced GL_KHR_blend_equation_advanced_coherent GL_OES_compressed_ETC1_RGB8_texture GL_EXT_compressed_ETC1_RGB8_sub_texture GL_OES_depth24 GL_OES_depth32 GL_OES_depth_texture GL_OES_depth_texture_cube_map GL_OES_copy_image GL_OES_draw_buffers_indexed GL_OES_draw_elements_base_vertex GL_OES_texture_border_clamp GL_OES_tessellation_point_size GL_OES_tessellation_shader GL_OES_texture_buffer GL_OES_geometry_point_size GL_OES_geometry_shader GL_OES_gpu_shader5 GL_OES_shader_io_blocks GL_OES_texture_view GL_OES_primitive_bounding_box GL_OES_EGL_image GL_OES_EGL_image_external GL_OES_EGL_image_external_essl3 GL_OES_EGL_sync GL_OES_element_index_uint GL_OES_fbo_render_mipmap GL_OES_get_program_binary GL_OES_mapbuffer GL_OES_packed_depth_stencil GL_OES_rgb8_rgba8 GL_EXT_read_format_bgra GL_OES_sample_shading GL_OES_sample_variables GL_OES_shader_image_atomic GL_OES_shader_multisample_interpolation GL_OES_standard_derivatives GL_OES_surfaceless_context GL_OES_texture_cube_map_array GL_OES_texture_npot GL_OES_texture_float GL_OES_texture_float_linear GL_OES_texture_half_float GL_OES_texture_half_float_linear GL_OES_texture_stencil8 GL_OES_texture_storage_multisample_2d_array GL_OES_vertex_array_object GL_OES_vertex_half_float GL_OES_viewport_array GL_OVR_multiview GL_OVR_multiview2 GL_OVR_multiview_multisampled_render_to_texture GL_ANDROID_extension_pack_es31a 
+00:00:00.083 [ERROR] [xwayland/sockets.c:47] Failed to bind socket @/tmp/.X11-unix/X0: Address already in use
+00:00:00.217 [INFO] [../cage/seat.c:141] Input device Razer Razer DeathAdder Elite cannot be mapped to an output device
+
+00:00:00.219 [INFO] [../cage/seat.c:141] Input device Razer Razer DeathAdder Elite Keyboard cannot be mapped to an output device
+
+00:00:00.227 [INFO] [../cage/seat.c:141] Input device Ducky Akko Keyboard cannot be mapped to an output device
+
+00:00:00.233 [INFO] [../cage/seat.c:141] Input device ydotoold virtual device cannot be mapped to an output device
+
+00:00:00.235 [INFO] [../cage/seat.c:141] Input device libvirtualhid Mouse cannot be mapped to an output device
+
+00:00:00.235 [INFO] [../cage/seat.c:141] Input device libvirtualhid Mouse (Absolute) cannot be mapped to an output device
+
+00:00:00.235 [INFO] [backend/drm/drm.c:1781] Scanning DRM connectors on /dev/dri/card1
+00:00:00.384 [INFO] [backend/drm/drm.c:1836] Found connector 'HDMI-A-1'
+00:00:00.384 [INFO] [backend/drm/drm.c:1861] 'HDMI-A-1' connected
+00:00:00.384 [INFO] [backend/drm/drm.c:1646] Detected modes:
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   2560x1440 @ 59.951 Hz (preferred)
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   3840x2160 @ 59.940 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   3840x2160 @ 50.000 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   3840x2160 @ 29.970 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   3840x2160 @ 25.000 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   3840x2160 @ 23.976 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   2560x1440 @ 143.912 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   2560x1080 @ 59.939 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   1920x1200 @ 59.885 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   1920x1080 @ 60.000 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   1920x1080 @ 59.939 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   1920x1080 @ 50.000 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   1600x1200 @ 60.000 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   1680x1050 @ 59.954 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   1280x1024 @ 75.025 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   1280x1024 @ 60.020 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   1280x800 @ 59.810 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   1152x864 @ 75.000 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   1280x720 @ 59.943 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   1280x720 @ 50.000 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   1024x768 @ 75.029 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   1024x768 @ 60.004 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   800x600 @ 75.000 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   800x600 @ 60.317 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   720x576 @ 50.000 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   720x480 @ 59.940 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   640x480 @ 75.000 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   640x480 @ 59.940 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1670]   640x480 @ 59.929 Hz 
+00:00:00.384 [INFO] [backend/drm/drm.c:1707] Physical size: 700x400
+00:00:00.385 [INFO] [backend/drm/drm.c:1836] Found connector 'DP-1'
+00:00:00.385 [INFO] [backend/drm/drm.c:1836] Found connector 'DP-2'
+00:00:00.385 [INFO] [backend/drm/drm.c:1836] Found connector 'DP-3'
+00:00:00.385 [INFO] [backend/drm/drm.c:1895] connector HDMI-A-1: Requesting modeset
+00:00:00.392 [INFO] [backend/drm/drm.c:980] connector HDMI-A-1: Modesetting with 2560x1440 @ 59.951 Hz
+auroval-greet: config: /etc/auroval/greet.lua: not read (No such file or directory (os error 2)); using defaults
+auroval-greet: font /usr/share/fonts/TTF/MesloLGSNerdFont-Regular.ttf
+auroval-greet: locale nl_NL from LC_ALL=— LC_TIME=nl_NL.UTF-8 LANG=en_US.UTF-8
+keys   0.004  repeat-info Repeat { rate: 25, delay: 600 }
+auroval-greet: first frame 8 ms, surface 2560x1440
+keys   3.571  repeat-info Repeat { rate: 25, delay: 600 }
+keys   3.571  press   keysym "XK_f"  field 0 chars
+keys   3.670  press   keysym "XK_i"  field 1 chars
+keys   4.002  press   keysym "XK_v"  field 2 chars
+keys   4.113  press   keysym "XK_e"  field 3 chars
+keys   4.269  press   keysym "XK_r"  field 4 chars
+keys   5.923  press   keysym "XK_BackSpace"  field 5 chars
+keys   6.524  repeat  keysym "XK_BackSpace"  field 4 chars
+keys   6.564  repeat  keysym "XK_BackSpace"  field 3 chars
+keys   6.604  repeat  keysym "XK_BackSpace"  field 2 chars
+keys   6.644  repeat  keysym "XK_BackSpace"  field 1 chars
+keys   6.684  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   6.724  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   6.764  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   6.804  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   6.844  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   6.884  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   6.924  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   6.964  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.004  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.045  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.085  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.125  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.165  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.205  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.245  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.285  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.325  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.365  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.405  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.445  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.485  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.525  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.565  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.605  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.646  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.686  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.726  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.766  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.806  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.846  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.886  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.926  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   7.966  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.006  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.046  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.086  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.126  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.166  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.206  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.246  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.286  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.326  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.366  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.406  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.446  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.486  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.526  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.566  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.606  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.647  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.687  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.727  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.767  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.807  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.847  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.887  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.927  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   8.967  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.007  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.047  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.087  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.127  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.167  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.207  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.247  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.287  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.327  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.367  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.408  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.448  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.488  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.528  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.568  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.608  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.648  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.688  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.728  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.768  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.808  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.848  repeat  keysym "XK_BackSpace"  field 0 chars
+keys   9.888  repeat  keysym "XK_BackSpace"  field 0 chars
+keys  11.587  press   keysym "XK_Caps_Lock"  field 0 chars
+keys  11.587  caps-lock on
+00:00:13.952 [INFO] [xwayland/server.c:108] Starting Xwayland on :2
+The XKEYBOARD keymap compiler (xkbcomp) reports:
+> Warning:          Unsupported maximum keycode 709, clipping.
+>                   X11 cannot support keycodes above 255.
+> Warning:          Virtual modifier Hyper multiply defined
+>                   Using 0, ignoring 0
+> Warning:          Virtual modifier ScrollLock multiply defined
+>                   Using 0, ignoring 0
+Errors from xkbcomp are not fatal to the X server
+keys  13.863  press   keysym "XK_Caps_Lock"  field 0 chars
+keys  13.956  caps-lock off
+keys  16.469  press   keysym "XK_Tab"  field 0 chars
+keys  18.990  press   keysym "XK_Control_L"  field 0 chars
+keys  19.134  press   keysym "XK_Alt_L"  field 0 chars
+00:00:20.147 [INFO] [libseat] [libseat/backend/logind.c:358] Disabling seat
+00:00:20.147 [INFO] [backend/drm/backend.c:112] DRM FD paused
+00:00:20.147 [ERROR] [backend/drm/drm.c:1385] connector HDMI-A-1: Failed to disable CRTC 206
+00:00:26.153 [INFO] [xwayland/server.c:215] Restarting Xwayland (lazy)
+
+── verdict ──
+[PASS] repeat-info announced — Repeat { rate: 25, delay: 600 }  (at 0.004 s)
+[PASS] repeat events — 85 events over 84 intervals, median 40.0 ms
+[PASS] rate agrees — announced 25/s = 40.0 ms, measured 40.0 ms, off by 0.0 ms (0.0%)
+[PASS] caps lock both ways — 1 on, 1 off
+[PASS] field count rose, fell — rose to 5, fell to 0
+R6 COVERED — all checks passed on this sitting.
