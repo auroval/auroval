@@ -8,7 +8,7 @@ with a deadline and stopped itself.
 
 | requirement | state |
 |---|---|
-| R6 — key repeat and caps lock | **four of five checks pass.** The fifth failed for a real reason, below; its cause is fixed and awaiting one more sitting |
+| R6 — key repeat and caps lock | **holds, five of five.** The fifth check failed until the draw loop was fixed: 50.0 ms became 40.0 ms against the announced 40.0 |
 | R3 — a wrong password is not fatal | **holds, measured** |
 | R1 — an extra PAM step needs no code change | **holds, both branches** |
 | R2 — the greeter starts what it names | **holds for the exec half** |
@@ -193,6 +193,35 @@ Two smaller things the frames caught for free:
   reset `notice`. Combined with the missing error, the screen's only message
   was a stale one. Fixed in the same place: answering a prompt is acting on
   whatever the last message said, so `submit` clears it.
+
+## R6, settled — and the loop was the whole of it
+
+Third sitting, 12:41, after #49 made the greeter draw only when the picture
+changed. Receipt `keyboard-run-2026-11-08-1241.txt`.
+
+```
+[PASS] repeat-info announced  Repeat { rate: 25, delay: 600 }
+[PASS] repeat events          85 events over 84 intervals, median 40.0 ms
+[PASS] rate agrees            announced 40.0 ms, measured 40.0 ms, off by 0.0 ms
+[PASS] caps lock both ways    1 on, 1 off
+[PASS] field count rose, fell rose to 5, fell to 0
+R6 COVERED
+```
+
+84 intervals: minimum 40.0 ms, lower quartile 40.0, median 40.0, maximum 41.0.
+Against a 50.0 ms median and a 46-55 spread on the same harness, the same
+machine and the same hand two hours earlier.
+
+**That is the reading from the second sitting confirmed rather than argued.**
+The claim was that SCTK reschedules repeat from when its callback returned, so
+the period was the requested 40 ms plus a full 2560x1440 redraw. Take the
+redraw away and the 10 ms goes with it, exactly. Nothing about repeat itself
+was touched -- no timer, no rate, no key handling -- so the only thing that
+could have moved the number is the one thing that changed.
+
+It is also the argument for leaving the check failing in the morning instead
+of widening its tolerance. A 10% tolerance would have passed at 50 ms, and
+this measurement would never have been taken.
 
 ## What the sitting cost, and what it taught
 
