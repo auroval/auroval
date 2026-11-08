@@ -13,6 +13,7 @@ mod auth;
 mod background;
 mod clock;
 mod config;
+mod dump;
 mod render;
 mod sessions;
 mod shell;
@@ -89,6 +90,10 @@ AUROVAL_EXIT_AFTER_FIRST_FRAME makes greet and preview exit as soon as
 AUROVAL_LOG_KEYS logs one line per keyboard event to stderr: press or
   repeat, the keysym, and how many characters the field holds. Never the
   character itself. For the R6 round, which needs a real seat.
+AUROVAL_FRAME_DUMP=<dir> writes a PNG whenever what is on the screen
+  changes, and a stderr line naming each one. For answering what the
+  screen actually showed, after a console sitting. Refuses a directory
+  inside a home, and slows the loop by the cost of a PNG per change.
   snapshot <out.png> [stage]
            render one frame off-screen and write it, with no compositor and
            no greetd. stage is user | password | error | starting.";

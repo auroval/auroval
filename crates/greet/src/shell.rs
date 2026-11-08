@@ -91,6 +91,8 @@ pub struct Shell {
     /// timestamps can be checked against the repeat rate the compositor
     /// announced.
     log_keys: bool,
+    /// `AUROVAL_FRAME_DUMP`. `None` unless it is set; see `dump`.
+    dump: Option<crate::dump::Dump>,
 
     started: Instant,
     pub first_frame: Option<Instant>,
@@ -161,6 +163,7 @@ pub fn run(cfg: Config, ui: UiState, preview: bool) -> Result<(), String> {
         session_cmd,
         locale: crate::clock::locale_from_env(),
         log_keys: std::env::var_os("AUROVAL_LOG_KEYS").is_some(),
+        dump: crate::dump::Dump::from_env(),
         started: Instant::now(),
         first_frame: None,
         done: false,
@@ -328,6 +331,7 @@ impl Shell {
     fn draw_all(&mut self) {
         let Some(gl) = self.gl.as_mut() else { return };
         let ids: Vec<u32> = self.screens.keys().copied().collect();
+        let first = ids.first().copied().unwrap_or_default();
         for id in ids {
             let Some(screen) = self.screens.get(&id) else {
                 continue;
@@ -342,6 +346,16 @@ impl Shell {
             // it is here and not before the loop over outputs.
             let bg = self.background.ready(gl);
             view::draw(gl, &self.ui, &self.style, bg);
+            // Before `present`, not after: the buffer this reads is the one
+            // just drawn, and a swapped buffer's contents are undefined.
+            // Only the first output, because a dump is a record of what was
+            // said and not of how many screens said it.
+            if id == first {
+                if let Some(d) = self.dump.as_mut() {
+                    let (w, h) = (target.width, target.height);
+                    d.maybe(&self.ui, w, h, || gl.read_pixels());
+                }
+            }
             gl.present(target);
             if self.first_frame.is_none() {
                 self.first_frame = Some(Instant::now());
