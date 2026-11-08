@@ -266,7 +266,7 @@ ls candidates/*.png | each { |f| python3 tools/scene-check/scene_check.py $f.nam
 |---|---|
 | Format | codec and profile, colour primaries, declared range, pixel format |
 | Geometry | resolution, aspect |
-| Composition | mean luminance and bright fraction over the central 60×70% |
+| Composition | mean luminance and bright fraction **around** the subject, inside the central 60×70% (§5.3.1) |
 | **Legibility** | the background behind **each UI element separately** |
 | Loop | duration, and the seam against an ordinary frame step |
 | Palette | the derived palette, plus assertions that it holds its floors |
@@ -295,6 +295,50 @@ They were one number and should not have been:
 
 A candidate that passes legibility but fails composition is the interesting
 case: it will work, and it is not nightshade.
+
+#### 5.3.1 Composition is measured around the subject, not through it
+
+The composition clause first averaged over the whole central 60×70%, and in
+that form it never passed. Not once, across every candidate of every scene.
+
+It could not. §2.2 asks for mean luminance ≤ 0.06 over that rectangle while
+§4.1 asks for "one subject, centred ... rim light and glow only" — **in the
+same rectangle**. The two clauses want opposite things and §4.1 wins every
+time, because the glow is what makes the picture. §4.1's own wording says
+where the darkness is supposed to be, and it is not "everywhere": *"near-black
+field below and **around** the subject"*.
+
+The symptom was that the measure stopped telling images apart. scene-01's
+master and its `v5-nacre` loop scored 0.1901 and 0.1873 — the same number, to
+within noise — and they are **opposites**: the master's light is entirely in
+its subject and its surround is near-black, the loop's surround is the bright
+part. A measure that calls those two the same is measuring the wrong region.
+
+So a centred column of 40% of the safe field's width — 24% of the frame — is
+excluded, and the clause is gated on what is left. The column and the whole
+field are still reported, because a subject that has grown too bright is a
+real failure and the column is where it shows.
+
+| | whole field | subject column | surround (gated) |
+|---|---|---|---|
+| scene-01 `master` | 0.1901 | 0.3915 | **0.0561** |
+| scene-01 `v5-nacre` | 0.1873 | 0.1204 | **0.2319** |
+| scene-02 `shrine-b-s7` | 0.0992 | 0.1726 | **0.0503** |
+| scene-02 `shrine-s1` | 0.1653 | 0.1700 | **0.1623** |
+
+The split is covered by `--self-test`, which builds two frames carrying the
+same light in the same safe field at different places, and asserts that the
+whole-field number cannot separate them while the surround number does.
+
+**The bright-fraction threshold is still met by nothing**, and that is a
+separate question from this one. The mean threshold is now reachable — two of
+the eight candidates measured meet it — but ≤ 2% above 0.25 is not met even by
+an image whose surround is near-black: scene-01's master sits at 7.6% and the
+best scene-02 candidate at 7.8%. Those two are the ones that look right, so
+the threshold is calibrated against an idea rather than against the reference,
+and it should be recalibrated against the reference or dropped. Left as it
+stands rather than quietly retuned, because what counts as the nightshade look
+is the maintainer's call and not the tool's.
 
 ### 5.4 The palette, and a trap worth knowing
 
@@ -599,6 +643,8 @@ re-runs the first of these and fails loudly if matugen's behaviour changes.
 | ~~A7~~ | ~~nightshade's rendering style~~ **Settled 2026-11-07: ink-and-wash (sumi-e), recorded in §4.1.1.** Chosen from six candidates generated from an identical subject and seed. The paired finding went into §4.5: the style is traditional, the subject matter must not be. | Settled |
 | A8 | A4's scrim threshold now looks like the wrong axis on its own. Measured: the only candidate with correct composition scored 0.275, just *above* the 25% guess, while a candidate with **no subject** scored 0.000. Scrim alone rewards emptiness, so the reject rule needs a second term — minimum subject extent, or ornament density — or gate 1 will systematically prefer duller images. | Maintainer |
 | A9 | The generator obeys instruction about style and subject and ignores instruction about structure (§10). Is that FLUX.2 [klein] specifically, a 4B-parameter limit, or every model? Decides whether the filter stage can ever shrink. | Maintainer |
+| A10 | The composition clause's bright-fraction threshold (≤ 2% above 0.25) is met by no image ever generated, including the reference, whose surround sits at 7.6% and looks right (§5.3.1). Recalibrate against the reference or drop the term. Not changed by the split, deliberately -- what counts as the look is a maintainer decision. | Maintainer |
+| A11 | Hue is not stable across seeds of one brief: six scene-02 candidates, one subject, gave 344.9°, 57.9°, 355.7°, 306.4°, 2.6°, 7.3°. If tone and chroma are the theme's and hue is the media's (N1), the accent is decided by which candidate is accepted rather than by the scene, and acceptance becomes an unrecorded palette decision. | Maintainer |
 
 ---
 

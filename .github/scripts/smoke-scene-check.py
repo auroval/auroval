@@ -54,6 +54,7 @@ REQUIRED_KEYS = {
     "hue",
     "hue_source",
     "scrim_alpha",
+    "safe_field",
     "palette",
     "notes",
     "clauses",

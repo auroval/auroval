@@ -45,6 +45,27 @@ SAFE_MEAN_LUM_MAX = 0.06
 SAFE_BRIGHT_FRAC_MAX = 0.02
 SAFE_BRIGHT_LEVEL = 0.25
 
+# §4.1 asks for a "near-black field below and AROUND the subject", and the
+# subject itself is required to be lit: "one subject, centred ... rim light and
+# glow only". Measured across the whole safe field those two clauses are in
+# direct conflict, and §4.1 wins every time, because the glow is what makes
+# the picture. The measure recorded the conflict as a constant: §4.6 notes
+# that "every candidate generated so far scores 0.900, so the measure has
+# saturated and is no longer distinguishing between images".
+#
+# So the clause is measured where §4.1 actually puts the darkness -- around
+# the subject -- by excluding a centred column of this fraction of the safe
+# field's width. The whole field and the column are still reported, because
+# the column is where a scene's own light belongs and watching it is how a
+# subject that has grown too bright gets noticed.
+#
+# 0.40 of the safe field is 24% of the frame. Chosen against the eight
+# candidates that existed when the split was introduced, as the width that
+# separates scene-01's master from its v5-nacre loop: the old measure called
+# them the same image (0.1901 against 0.1873) and they are opposites -- the
+# master's light is all in its subject, the loop's is all in its surround.
+SAFE_SUBJECT_COL = 0.40
+
 MIN_SHORT_SIDE = 1440  # §2.2
 TARGET_ASPECT = 16 / 9
 ASPECT_TOLERANCE = 0.02
@@ -114,7 +135,7 @@ class Result:
     assertions: list[Clause] = field(default_factory=list)
     scrim_alpha: float = 0.0
     regions: dict = field(default_factory=dict)
-    safe_field: tuple = (0.0, 0.0)
+    safe_field: SafeField | None = None
     notes: list[str] = field(default_factory=list)
 
 
@@ -210,6 +231,17 @@ def safe_field_box(w: int, h: int) -> tuple[int, int, int, int]:
     return (w - bw) // 2, (h - bh) // 2, (w + bw) // 2, (h + bh) // 2
 
 
+def subject_column_box(w: int, h: int) -> tuple[int, int, int, int]:
+    """The centred column inside the safe field where the subject is allowed
+    to be bright. Full height of the safe field: a subject is a vertical
+    thing, and §4.1 puts it in the upper-middle without saying where it stops.
+    """
+    x0, y0, x1, y1 = safe_field_box(w, h)
+    cw = int((x1 - x0) * SAFE_SUBJECT_COL)
+    cx = (x0 + x1) // 2
+    return cx - cw // 2, y0, cx - cw // 2 + cw, y1
+
+
 def ui_regions(W: int, H: int) -> dict[str, tuple[int, int, int, int]]:
     """The boxes the greeter's own text and input field occupy.
 
@@ -261,11 +293,30 @@ def measure_regions(img: Image.Image) -> dict[str, float]:
     return out
 
 
-def measure_safe_field(img: Image.Image) -> tuple[float, float]:
+@dataclass
+class SafeField:
+    """Three readings of the same rectangle. Only `surround` is gated."""
+
+    whole: tuple[float, float]
+    column: tuple[float, float]
+    surround: tuple[float, float]
+
+
+def measure_safe_field(img: Image.Image) -> SafeField:
     w, h = img.size
     x0, y0, x1, y1 = safe_field_box(w, h)
-    lum = luminance_map(img)[y0:y1, x0:x1]
-    return float(lum.mean()), float((lum > SAFE_BRIGHT_LEVEL).mean())
+    cx0, _, cx1, _ = subject_column_box(w, h)
+    lum = luminance_map(img)
+    whole = lum[y0:y1, x0:x1]
+    column = lum[y0:y1, cx0:cx1]
+    surround = np.concatenate([lum[y0:y1, x0:cx0], lum[y0:y1, cx1:x1]], axis=1)
+
+    def pair(a: np.ndarray) -> tuple[float, float]:
+        if a.size == 0:
+            return 0.0, 0.0
+        return float(a.mean()), float((a > SAFE_BRIGHT_LEVEL).mean())
+
+    return SafeField(pair(whole), pair(column), pair(surround))
 
 
 def hue_via_matugen(src: Path, frame: Image.Image, tmp: Path) -> tuple[float, str, str] | None:
@@ -576,19 +627,34 @@ def evaluate(path: Path, tmp: Path, hue_override: float | None = None) -> Result
         )
     )
 
-    mean_lum, bright = measure_safe_field(frame)
+    sf = measure_safe_field(frame)
+    mean_lum, bright = sf.surround
     comp_ok = mean_lum <= SAFE_MEAN_LUM_MAX and bright <= SAFE_BRIGHT_FRAC_MAX
     res.clauses.append(
         Clause(
             "§2.2",
-            "composition (dark field)",
+            "composition (around subject)",
             comp_ok,
             f"mean luminance {mean_lum:.4f} (≤ {SAFE_MEAN_LUM_MAX}), "
             f"{bright * 100:.2f}% above {SAFE_BRIGHT_LEVEL} (≤ {SAFE_BRIGHT_FRAC_MAX * 100:.0f}%)",
             "" if comp_ok else "no scrim on its own: this is a look clause, not a legibility one",
         )
     )
-    res.safe_field = (mean_lum, bright)
+    # Reported, never gated: the subject is supposed to be the lit thing, so a
+    # number here is context for the one above rather than a verdict. It earns
+    # its place by catching the opposite failure -- a subject that has gone so
+    # bright the surround stays dark only because everything else is.
+    res.clauses.append(
+        Clause(
+            "§4.1",
+            "subject column (not gated)",
+            True,
+            f"mean {sf.column[0]:.4f}, {sf.column[1] * 100:.2f}% above {SAFE_BRIGHT_LEVEL}"
+            f"   ·   whole field {sf.whole[0]:.4f}, {sf.whole[1] * 100:.2f}%",
+            "",
+        )
+    )
+    res.safe_field = sf
 
     got = None if hue_override is not None else hue_via_matugen(path, frame, tmp)
     if hue_override is not None:
@@ -731,6 +797,16 @@ def render_preview(
             font=_font(18),
             fill=_rgba(pal["error"]["hex"], 0.9),
         )
+        # The column is drawn too, because the gated number is the part of the
+        # box OUTSIDE it and a single rectangle would show the wrong region.
+        cx = subject_column_box(W, H)
+        d.rectangle(cx, outline=_rgba(pal["tertiary"]["hex"], 0.7), width=2)
+        d.text(
+            (cx[0] + 10, cx[3] - 30),
+            "subject column (excluded)",
+            font=_font(18),
+            fill=_rgba(pal["tertiary"]["hex"], 0.9),
+        )
 
     sw = 120
     for i, k in enumerate(
@@ -871,7 +947,7 @@ def self_test() -> int:
         print("\n  self-test\n")
         res = evaluate(hard, tmp, hue_override=320.0)
 
-        mean_lum, _ = res.safe_field
+        mean_lum, _ = res.safe_field.surround
         check(
             "composition passes, so only legibility can catch this",
             mean_lum < SAFE_MEAN_LUM_MAX,
@@ -914,6 +990,49 @@ def self_test() -> int:
         check(
             "clean media passes composition",
             all(c.met for c in r2.clauses if c.name.startswith("composition")),
+        )
+
+        # The whole point of excluding a centred column: a glow around the
+        # subject is a different failure from a glow that IS the subject, and
+        # averaging over one rectangle cannot tell them apart. This is the
+        # pair that forced the split -- scene-01's master and its v5-nacre
+        # loop measured 0.1901 and 0.1873 over the whole safe field and are
+        # opposites, so the old measure called two opposite images the same.
+        #
+        # Built as two frames carrying the same amount of light in the same
+        # safe field, placed differently. The surround clause must separate
+        # them; a measure that passes or fails both has lost what it is for.
+        def lit(cx_frac: float) -> Image.Image:
+            im = Image.new("RGB", (W, H), (8, 3, 10))
+            dd = ImageDraw.Draw(im)
+            r = 150
+            cx, cy = int(W * cx_frac), H // 2
+            dd.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(245, 240, 255))
+            return im
+
+        centred, offset = tmp / "lit-centre.png", tmp / "lit-flank.png"
+        lit(0.50).save(centred)
+        lit(0.32).save(offset)  # inside the safe field, outside the column
+        rc = evaluate(centred, tmp, hue_override=200.0)
+        ro = evaluate(offset, tmp, hue_override=200.0)
+
+        def comp(r: Result) -> bool:
+            return all(c.met for c in r.clauses if c.name.startswith("composition"))
+
+        check(
+            "light in the subject column passes",
+            comp(rc),
+            f"surround mean {rc.safe_field.surround[0]:.4f}",
+        )
+        check(
+            "the same light beside the subject fails",
+            not comp(ro),
+            f"surround mean {ro.safe_field.surround[0]:.4f}",
+        )
+        check(
+            "the whole-field measure cannot tell them apart",
+            abs(rc.safe_field.whole[0] - ro.safe_field.whole[0]) < 0.005,
+            f"whole {rc.safe_field.whole[0]:.4f} vs {ro.safe_field.whole[0]:.4f}",
         )
 
     print(f"\n  {len(failures)} failed\n" if failures else "\n  all passed\n")
@@ -995,6 +1114,11 @@ def main() -> int:
                         "hue": res.hue,
                         "hue_source": res.hue_source,
                         "scrim_alpha": res.scrim_alpha,
+                        "safe_field": {
+                            "whole": res.safe_field.whole,
+                            "column": res.safe_field.column,
+                            "surround": res.safe_field.surround,
+                        },
                         "palette": res.palette,
                         "notes": res.notes,
                         "clauses": [vars(c) for c in res.clauses],
