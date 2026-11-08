@@ -83,6 +83,14 @@ pub struct Shell {
     /// fixed by the time it draws, and a locale lookup every frame would be
     /// work for an answer that cannot change.
     locale: chrono::Locale,
+    /// `AUROVAL_LOG_KEYS`. R6 asks for key repeat and a caps-lock warning,
+    /// and both of those can only be exercised by a person holding a key on
+    /// a real seat -- there is no seat in a unit test and no keyboard in a
+    /// snapshot. Without this the verification is somebody saying it felt
+    /// right, which is not a receipt. With it, the run leaves a log whose
+    /// timestamps can be checked against the repeat rate the compositor
+    /// announced.
+    log_keys: bool,
 
     started: Instant,
     pub first_frame: Option<Instant>,
@@ -152,6 +160,7 @@ pub fn run(cfg: Config, ui: UiState, preview: bool) -> Result<(), String> {
         from_auth: None,
         session_cmd,
         locale: crate::clock::locale_from_env(),
+        log_keys: std::env::var_os("AUROVAL_LOG_KEYS").is_some(),
         started: Instant::now(),
         first_frame: None,
         done: false,
@@ -545,6 +554,7 @@ impl KeyboardHandler for Shell {
         _: u32,
         event: KeyEvent,
     ) {
+        self.log_key("press", &event);
         self.on_key(event);
     }
 
@@ -556,6 +566,7 @@ impl KeyboardHandler for Shell {
         _: u32,
         event: KeyEvent,
     ) {
+        self.log_key("repeat", &event);
         self.on_key(event);
     }
 
@@ -581,7 +592,15 @@ impl KeyboardHandler for Shell {
     ) {
         // R6: the warning has to be visible before you submit, so it tracks
         // the lock itself rather than the shift key.
+        let was = self.ui.caps_lock;
         self.ui.caps_lock = raw.locked & 0x2 != 0;
+        if self.log_keys && was != self.ui.caps_lock {
+            eprintln!(
+                "keys {:>7.3}  caps-lock {}",
+                self.started.elapsed().as_secs_f32(),
+                if self.ui.caps_lock { "on" } else { "off" }
+            );
+        }
     }
 
     fn update_keymap(
@@ -598,12 +617,39 @@ impl KeyboardHandler for Shell {
         _: &Connection,
         _: &QueueHandle<Self>,
         _: &wl_keyboard::WlKeyboard,
-        _: RepeatInfo,
+        info: RepeatInfo,
     ) {
+        // SCTK does the repeating; this is only worth saying out loud,
+        // because it is the number the logged intervals have to agree with.
+        if self.log_keys {
+            eprintln!(
+                "keys {:>7.3}  repeat-info {info:?}",
+                self.started.elapsed().as_secs_f32()
+            );
+        }
     }
 }
 
 impl Shell {
+    /// One line per keyboard event, when `AUROVAL_LOG_KEYS` is set.
+    ///
+    /// The character is deliberately **not** logged: this runs in a password
+    /// field, and an instrumentation flag that writes what you typed into a
+    /// log is a worse bug than the one it was added to find. The keysym is
+    /// enough to tell a repeat from a press, and the count is enough to tell
+    /// whether the field agreed.
+    fn log_key(&self, how: &str, event: &KeyEvent) {
+        if !self.log_keys {
+            return;
+        }
+        eprintln!(
+            "keys {:>7.3}  {how:<6}  keysym {:?}  typed {} chars",
+            self.started.elapsed().as_secs_f32(),
+            event.keysym.name().unwrap_or("?"),
+            self.ui.typed.chars().count()
+        );
+    }
+
     fn on_key(&mut self, event: KeyEvent) {
         match event.keysym {
             Keysym::Return | Keysym::KP_Enter => self.submit(),

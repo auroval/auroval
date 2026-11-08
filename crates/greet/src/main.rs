@@ -50,6 +50,9 @@ AUROVAL_CONFIG overrides /etc/auroval/greet.lua.
 AUROVAL_EXIT_AFTER_FIRST_FRAME makes greet and preview exit as soon as
   they have drawn once and printed the R16 line. For the measurement
   harness; a login screen that does this is no login screen.
+AUROVAL_LOG_KEYS logs one line per keyboard event to stderr: press or
+  repeat, the keysym, and how many characters the field holds. Never the
+  character itself. For the R6 round, which needs a real seat.
   snapshot <out.png> [stage]
            render one frame off-screen and write it, with no compositor and
            no greetd. stage is user | password | error | starting.";
