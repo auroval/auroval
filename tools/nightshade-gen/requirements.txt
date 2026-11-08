@@ -1,0 +1,31 @@
+# Dependencies for nightshade-gen. Install into a venv:
+#     python3 -m venv .venv-gen
+#     .venv-gen/bin/pip install -r tools/nightshade-gen/requirements.txt
+#
+# diffusers is pinned exactly, and that pin is the point of this file.
+# scene-01's source.md lists "diffusers is not pinned" as its first known gap:
+# it was installed from git main and resolved to 0.42.0.dev0, so the weights
+# were pinned by revision hash and the code around them was not, which makes
+# "reproducible a year later" only half true.
+#
+# 0.42.1 is the release that carries Flux2KleinPipeline, so the pin is a
+# version rather than a commit — a stronger record than scene-01 could have
+# had, since no release existed when it was generated.
+diffusers==0.42.1
+#
+# torch is deliberately NOT pinned. It is ~3 GB of CUDA wheels whose build must
+# match the installed driver, pinning it would break on the next driver update,
+# and it does not decide what the image looks like — the weights, the prompt
+# and the seed do. The resolved version is recorded in every run.json instead,
+# which is where it is useful.
+torch
+transformers
+accelerate
+sentencepiece
+protobuf
+numpy>=1.26
+# 16-bit RGB PNG. Pillow cannot write one — its 16-bit support is
+# single-channel — and this is the library nightshade-loop already reads
+# masters with, so the master is written and read by the same code.
+opencv-python-headless>=4.10
+Pillow>=10
