@@ -50,4 +50,31 @@ export XDG_STATE_HOME
 # authentication. And it is the greeter only: C5's fail-closed argument is
 # about the ext-session-lock locker, which is a different surface and does not
 # run under cage.
-exec cage -s -- /usr/local/lib/auroval/auroval-greet greet "$@"
+# systemd-cat, because otherwise this greeter talks to a screen.
+#
+# greetd does not relay its session's output anywhere, so everything cage and
+# the greeter write to stderr lands on the VT. That is two things at once, and
+# both were found on the first real boot, 2026-11-08:
+#
+#   * wlroots logs at INFO and writes 66 lines per start, 41 of them the
+#     monitor's supported modes. On a login screen that is two screens of
+#     terminal output before the first frame.
+#   * and the greeter's own lines went with it -- the first-frame number R16
+#     is measured in, the locale line, the font line, and the config error R13
+#     requires to name a file and a line. All of them printed to a console
+#     nobody reads, and gone the moment the greeter drew over it.
+#
+# With this they are in the journal under their own tag: `journalctl -t
+# auroval-greet`, or `-b` for this boot. Verified by running the same command
+# with --identifier set: 0 bytes to the terminal, 19 lines to the journal.
+#
+# The verbosity is deliberately NOT reduced. Those 41 DRM lines are how this
+# project learned which modes the monitor offers and which one cage picks;
+# they were noise only because of where they were going.
+#
+# It costs one more exec before cage, which C15 above cares about. It is
+# before the greeter starts, so it does not enter R16's number -- that is
+# measured from the greeter's own start -- but it does add to wall time, and
+# saying so is cheaper than someone rediscovering it with a stopwatch.
+exec systemd-cat --identifier=auroval-greet \
+    cage -s -- /usr/local/lib/auroval/auroval-greet greet "$@"
