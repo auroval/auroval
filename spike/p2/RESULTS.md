@@ -33,11 +33,24 @@ before the clip ended: 12 s × 60 fps, every one.
 
 ## What does not work: R7's budget
 
-| pipeline | memory | format | CPU |
-|---|---|---|---|
-| no GL at all (P0's path) | CUDAMemory | NV12 | **5.2%** |
-| `glupload` only | GLMemory | NV12 | **32.1%** |
-| `glsinkbin` (adds `glcolorconvert`) | GLMemory | RGBA | **34.0%** |
+| pipeline | memory | format | CPU | cost of the step |
+|---|---|---|---|---|
+| `fakesink`, frames stay put | CUDAMemory | NV12 | **5.2%** | — |
+| plain `appsink` | system | NV12 | **18.7%** | +13 to leave CUDA |
+| `glupload` only | GLMemory | NV12 | **32.1%** | +13 for GL rather than system |
+| `glsinkbin` | GLMemory | RGBA | **34.0%** | +2 to convert colour |
+
+Read down that column rather than across it. The expensive thing is not GL and
+it is not the colour conversion: **it is taking the frame out of CUDA memory at
+all**, and doing it twice over — once to leave, once to arrive somewhere a
+renderer can use. Each is worth about thirteen points.
+
+One consequence is worth saying out loud because it is the opposite of what
+"zero-copy" suggests: the GL path costs *more CPU* than downloading to system
+memory. It is still the right one — a system-memory frame would then need a
+`glTexImage2D` of 2560×1440 per frame from our own code, which this
+measurement does not include — but the phrase has been doing some work it has
+not earned.
 
 R7's budget is *"no more than 5% of one core"*. Getting the frame into a
 texture this renderer can draw costs **about thirty points more than that**.
@@ -76,13 +89,35 @@ That is a question for the maintainer, not a thing to quietly fix:
 
 - **revise R7's criterion** to cover decode *to a drawable texture*, with a
   number measured here rather than inherited from P0
-- **try `memory:DMABuf`**, which Q5 lists as unverified for want of Intel or
-  AMD hardware — but the nvidia driver moved from 615 to 620 today, and
-  dmabuf export may now be available on this machine. An `EGLImage` import
-  would avoid the interop copy entirely
+- ~~**try `memory:DMABuf`**~~ — **closed, 2026-11-08.** `gst-inspect-1.0
+  nvh264dec` on driver 620.70.06 advertises exactly three memory types on its
+  source pad: `memory:CUDAMemory`, `memory:GLMemory` and plain `video/x-raw`.
+  There is no dmabuf to import. The EGL side would have taken one —
+  `EGL_EXT_image_dma_buf_import` is in this display's extensions — but the
+  decoder does not offer one. Q5's "unverified for want of the hardware" is
+  now "unavailable on this decoder, whatever the hardware".
 - **accept it**, which is defensible for a login screen on this hardware and
   much less so for P3's lock screen, which is on display for minutes rather
   than seconds
+
+## Two things that do not work, so nobody tries them twice
+
+**Forcing `memory:GLMemory` on a plain `appsink` fails**, exactly as Q5 said,
+and answering the context query on the bus is not enough to rescue it. The
+run dies with `Internal data stream error` from qtdemux — which is what a
+failed negotiation upstream looks like from the outside, and is worth
+recognising because it names the wrong element.
+
+The mechanism is worth writing down, because Q5 recorded the symptom and not
+this: the decoder learns about the GL context from the **allocation query**
+that travels upstream from a GL element, not from the bus. A bare `appsink`
+answers no queries, so there is nothing to negotiate against. `glupload` is
+therefore not an optimisation to be removed — it is the thing that makes the
+negotiation possible.
+
+**Letting the decoder produce `memory:GLMemory` itself** — it advertises it —
+is the same thing by another name, and fails the same way for the same
+reason.
 
 ## How to reproduce
 
@@ -99,6 +134,12 @@ greeter useless as a greeter — they are measurement scaffolding:
 - `AUROVAL_VIDEO_NO_GL=1` replaces the sink with `fakesink`, which is P0's
   pipeline. It delivers no frames to the renderer by design; it exists so the
   GL cost can be attributed rather than guessed at.
+- `AUROVAL_VIDEO_SYSMEM=1` takes frames in plain system memory. The
+  discriminator between "GL is expensive" and "leaving CUDA is expensive", and
+  the answer is the second.
+- `AUROVAL_VIDEO_DIRECT=1` forces GLMemory on a bare appsink. It **fails**,
+  on purpose: it is kept so the failure can be reproduced rather than
+  rediscovered.
 
 ## What is not done
 

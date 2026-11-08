@@ -151,7 +151,31 @@ impl Video {
         // pipeline P0 measured at 2.5%% of a core. It draws nothing, so it is
         // useless as a background -- it exists so the GL cost can be
         // attributed rather than guessed at.
-        let glsink: gst::Element = if std::env::var_os("AUROVAL_VIDEO_NO_GL").is_some() {
+        // AUROVAL_VIDEO_DIRECT: the appsink IS the video sink, with no
+        // glsinkbin and no glupload between it and the decoder. `nvh264dec`
+        // advertises `video/x-raw(memory:GLMemory)` on its own source pad, so
+        // it can do the interop itself; this asks whether its own path is
+        // cheaper than glupload's.
+        //
+        // The caps are set here, which looks like the thing Q5 warns against.
+        // It is not quite: Q5's trap is forcing GLMemory *before* the GL
+        // context is established, and the bus handler below answers the
+        // context query for every element including the decoder. Whether that
+        // is enough is exactly what this measures.
+        // AUROVAL_VIDEO_SYSMEM: plain system memory, no GL feature at all.
+        // The discriminator between two explanations of the 32%: is it the
+        // GL interop, or is it leaving CUDA memory by any route?
+        let glsink: gst::Element = if std::env::var_os("AUROVAL_VIDEO_SYSMEM").is_some() {
+            sink.set_caps(Some(&gst::Caps::builder("video/x-raw").build()));
+            sink.clone().upcast()
+        } else if std::env::var_os("AUROVAL_VIDEO_DIRECT").is_some() {
+            sink.set_caps(Some(
+                &gst::Caps::builder("video/x-raw")
+                    .features(["memory:GLMemory"])
+                    .build(),
+            ));
+            sink.clone().upcast()
+        } else if std::env::var_os("AUROVAL_VIDEO_NO_GL").is_some() {
             gst::ElementFactory::make("fakesink")
                 .property("sync", true)
                 .build()
