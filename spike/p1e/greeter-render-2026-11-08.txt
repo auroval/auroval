@@ -1,0 +1,49 @@
+auroval P1/E — R15: the configured background with /home at mode 700
+2026-11-08T17:45:45+01:00
+
+binary    /usr/local/lib/auroval/auroval-greet
+config    /etc/auroval/greet.lua
+home      /home/dirk   (the one R15 says must not be needed)
+host      games-werkkamer  kernel 7.3.3-1-cachyos
+method    runuser -u greeter -- env -i ...   (greetd clears the environment; so does this)
+
+greeter   uid 950, home /, groups greeter video
+home      /home/dirk is mode 700, owner dirk:dirk
+          greeter's own attempt to list it: ls: cannot open directory '/home/dirk': Permission denied
+
+configured /usr/local/share/auroval/background.mp4
+           mode root:root 644; greeter can read it: true
+cache      /var/cache/auroval  greeter:greeter 750
+
+reference — as greeter, no background configured: the solid colour
+  colours 2030   (the login field and its text, nothing else)
+  corner  18,18,28
+  exited  0 in 0.18 sec
+
+real — as greeter, through /etc/auroval/greet.lua
+  drew    true
+  colours 203699
+  corner  1,1,1
+  exited  0 in 1.41 sec
+  png     /var/cache/auroval/r15-background.png
+  stderr  1 lines:
+          [background] playing /usr/local/share/auroval/background.mp4
+
+────────────────────────────────────────────────────────────────
+VERDICT  R15 'with /home at mode 700, the configured background still renders': PASS
+
+  home      /home/dirk was mode 700 and the greeter's own `ls` was refused:
+              ls: cannot open directory '/home/dirk': Permission denied
+  rendered  203699 distinct colours against the solid colour's 2030
+            — a factor of 100, so there is a picture behind the login field
+  said      [background] playing /usr/local/share/auroval/background.mp4
+  fellback  false   (a fallback line anywhere in stderr would mean the opposite of a pass)
+
+  This covers R15 entirely: R15 is about whether the greeter can
+  reach its configured background as itself, and it can. It does NOT
+  cover logging in — snapshot never speaks to greetd or PAM. That is
+  spike/p1ab/greetd-round.nu's sitting.
+
+frames   /var/cache/auroval/r15-reference.png
+         /var/cache/auroval/r15-background.png
+receipt  /home/dirk/auroval-p1e-greeter-render.txt
