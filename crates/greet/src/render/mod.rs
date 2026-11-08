@@ -189,6 +189,23 @@ impl Gl {
     /// # Safety
     /// The pointer must outlive this value.
     pub unsafe fn new(display_ptr: *mut std::ffi::c_void) -> Result<Gl, String> {
+        Gl::with_surface_type(display_ptr, egl::WINDOW_BIT)
+    }
+
+    /// The body of both constructors. `surface_type` is the one thing they
+    /// disagree about, and it is not a detail: EGL matches `EGL_SURFACE_TYPE`
+    /// by "config has all of these bits", so asking for `WINDOW_BIT` on a
+    /// display that will never have a window excludes every config there is.
+    /// Mesa's surfaceless platform offers pbuffer configs and no window
+    /// configs at all, so the Wayland path asks for one and the headless path
+    /// asks for the other.
+    ///
+    /// # Safety
+    /// As `new`.
+    unsafe fn with_surface_type(
+        display_ptr: *mut std::ffi::c_void,
+        surface_type: egl::Int,
+    ) -> Result<Gl, String> {
         let egl = Egl::load_required().map_err(|e| format!("libEGL: {e}"))?;
         let display = egl
             .get_display(display_ptr)
@@ -202,7 +219,7 @@ impl Gl {
                 display,
                 &[
                     egl::SURFACE_TYPE,
-                    egl::WINDOW_BIT,
+                    surface_type,
                     egl::RENDERABLE_TYPE,
                     egl::OPENGL_ES2_BIT,
                     egl::RED_SIZE,
@@ -285,7 +302,7 @@ impl Gl {
     /// # Safety
     /// Creates an EGL context; must be called once, from one thread.
     pub unsafe fn headless(width: u32, height: u32) -> Result<(Gl, Target), String> {
-        let mut gl = Gl::new(egl::DEFAULT_DISPLAY)?;
+        let mut gl = Gl::with_surface_type(egl::DEFAULT_DISPLAY, egl::PBUFFER_BIT)?;
         let fbo = gl.gl.create_framebuffer()?;
         let tex = gl.gl.create_texture()?;
         gl.gl.bind_texture(glow::TEXTURE_2D, Some(tex));
