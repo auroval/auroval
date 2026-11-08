@@ -215,7 +215,7 @@ fn snapshot() {
         // is not the password, with nothing typed into it yet.
         "prompt" => {
             state.stage = ui::Stage::Answering;
-            state.prompt = "One-time password (OATH) :".into();
+            state.prompt = "One-time password (OATH) for `dirk`:".into();
             state.secret = true;
         }
         _ => {

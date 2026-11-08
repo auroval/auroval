@@ -523,6 +523,12 @@ impl Gl {
     }
 
     /// Centre a line horizontally on `cx`, placing its visual middle on `cy`.
+    /// How wide a string would be drawn, so a caller can decide where it
+    /// fits before it draws it.
+    pub fn width_of(&self, s: &str, px: f32) -> f32 {
+        self.atlas.width(s, px)
+    }
+
     pub fn draw_centred(&mut self, s: &str, px: f32, cx: f32, cy: f32, colour: Rgba) {
         let w = self.atlas.width(s, px);
         let baseline = self.atlas.baseline_from_centre(px);

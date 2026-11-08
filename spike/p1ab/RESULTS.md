@@ -134,27 +134,41 @@ So R3 splits:
 From the operator's side that is a login screen which, on a typo, silently
 throws away a one-time password and asks for a new one with no explanation.
 
-`auth.rs` does send it: the `ErrorType::AuthError` arm sends
-`Ui::Message { is_error: true }` before it cancels and re-creates the session,
-and that arm demonstrably ran, because the conversation restarted. `pump_auth`
-sets `ui.notice` from it. Why nothing reaches the screen is **not settled**,
-and reading the code further is not going to settle it.
+**Settled afterwards, at the desk, by the test `auth.rs` had never had.** A
+fake greetd on a socket, driven through a failed authentication, asserts that
+`Ui::Message { is_error: true }` comes out before the conversation restarts.
+It **passes** against the existing `auth.rs` — which is what located the bug
+downstream of it rather than in it.
 
-**The next step is the test `auth.rs` has never had**: a fake greetd on a
-socket, driven through a failed authentication, asserting that a
-`Ui::Message { is_error: true }` comes out. That is desk work, it needs no
-console, and it is the first real test of the one module that still has none.
+The cause is in `pump_auth`, and the frames had already shown it without
+anyone noticing: the two `pam_exec` lines arrived **16 ms apart** (frames 1
+and 2). `pump_auth` drains everything the conversation has said since the last
+frame and keeps the last one. After a wrong password greetd sends the error
+and `auth.rs` immediately re-opens the conversation, whose first PAM module
+spoke again within milliseconds — so error, info, info all landed in one
+drain, the info won, and because it was the same text already on screen,
+nothing changed at all. The error existed in the model for microseconds and
+was never drawn.
+
+`UiState::notify` now keeps an error until the person acts on it, and `submit`
+clears it. Mutation-tested: remove the two lines that keep it and
+`an_error_is_not_replaced_by_the_chatter_that_follows_it` fails.
 
 Two smaller things the frames caught for free:
 
 - **The prompt overflows the field.** `One-time password (OATH) for `dirk`:`
-  is drawn centred at the field's text size with no clipping, so it runs out
-  over both borders (frames 3 and 18). It fits for `Password:` and for nothing
-  longer.
-- **The notice is never cleared.** The `pam_exec` line from the first attempt
-  is still on screen at the end of the second, because `Ui::Prompt` does not
+  was drawn centred at the field's text size with no clipping, so it ran out
+  over both borders (frames 3 and 18). Fixed: a prompt that does not fit moves
+  above the field at the same size, where the width available is the screen.
+  Shrinking it would have been the wrong answer — the prompts that overflow
+  are exactly the unfamiliar ones nobody can guess. `Password:` fits and stays
+  where hyprlock puts it. Mutation-tested through the render tests: without
+  the rule the drawn run through the field is 351 px instead of 340.
+- **The notice was never cleared.** The `pam_exec` line from the first attempt
+  was still on screen at the end of the second, because `Ui::Prompt` does not
   reset `notice`. Combined with the missing error, the screen's only message
-  is a stale one.
+  was a stale one. Fixed in the same place: answering a prompt is acting on
+  whatever the last message said, so `submit` clears it.
 
 ## What the sitting cost, and what it taught
 

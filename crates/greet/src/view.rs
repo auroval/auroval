@@ -109,7 +109,23 @@ pub fn draw(
                 Stage::Answering => (ui.prompt.as_str(), p.on_surface),
                 Stage::Starting => ("starting…", p.outline),
             };
-            gl.draw_centred(hint, text_px, cx, fy + g.field_h * 0.5, colour);
+            // A prompt the greeter did not write can be any length. PAM sent
+            // "One-time password (OATH) for `dirk`:" during the console
+            // sitting on 2026-11-08, and at the field's own text size it ran
+            // out over both borders -- see
+            // spike/p1ab/frames-2026-11-08/18-next-prompt-no-error.png.
+            //
+            // Shrinking it to fit is the wrong answer: a prompt exists to be
+            // read, and the ones that overflow are exactly the unfamiliar
+            // ones nobody can guess. So it keeps its size and moves above the
+            // field, where the width available is the screen rather than
+            // 340 px. `Password:` fits and stays where hyprlock puts it.
+            let padded = g.field_w - g.field_rounding * 2.0;
+            if gl.width_of(hint, text_px) > padded {
+                gl.draw_centred(hint, text_px, cx, fy - text_px, colour);
+            } else {
+                gl.draw_centred(hint, text_px, cx, fy + g.field_h * 0.5, colour);
+            }
         }
         FieldDisplay::Text(t) => {
             gl.draw_centred(t, text_px, cx, fy + g.field_h * 0.5, p.on_surface);
@@ -394,6 +410,67 @@ mod tests {
         // the outline and the fill but clear of any centred text.
         let (y0, h) = f.run_y(ex + 3, ey + eh / 2);
         assert_eq!((y0, h), (ey, eh), "field height and top edge");
+    }
+
+    /// A prompt the greeter did not write can be any length, and R1 says it
+    /// has to be rendered anyway. During the console sitting PAM sent
+    /// `One-time password (OATH) for \`dirk\`:`, which at the field's text
+    /// size is wider than 340 px, and it was drawn straight out over both
+    /// borders — see
+    /// `spike/p1ab/frames-2026-11-08/18-next-prompt-no-error.png`.
+    ///
+    /// So a prompt that does not fit moves above the field. This renders one
+    /// of each through one context and checks the picture, because the
+    /// arithmetic that decides it is one line and the thing that matters is
+    /// where the ink lands.
+    #[test]
+    fn a_prompt_too_wide_for_the_field_is_drawn_above_it_rather_than_through_it() {
+        let _guard = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+        let st = style();
+        let (ex, ey, ew, eh) = expected_field(&st.geometry);
+
+        let mut short = state();
+        // Empty, or the field shows dots and no prompt is drawn at all --
+        // which would make every assertion below pass for the wrong reason.
+        short.typed.clear();
+        short.prompt = "Password:".into();
+        let mut long = short.clone();
+        long.prompt = "One-time password (OATH) for `dirk`:".into();
+
+        let out = render_each(&[(&short, &st), (&long, &st)], None);
+        let (short, long) = (&out[0], &out[1]);
+        let row = ey + eh / 2;
+
+        // The short one behaves as hyprlock does: inside the field, so the
+        // drawn run through its middle is the field and nothing wider.
+        assert_eq!(
+            short.run_x(ex + 3, row).1,
+            ew,
+            "`Password:` fits and belongs where hyprlock puts it"
+        );
+
+        // The long one must not widen that run. Before the fix it did, by
+        // the overhang at both ends.
+        assert_eq!(
+            long.run_x(ex + 3, row).1,
+            ew,
+            "a long prompt drawn inside the field runs out over its borders"
+        );
+
+        // And it has to be somewhere: a band above the field that is empty
+        // for the short prompt must have ink for the long one.
+        let band = (ey - 30)..(ey - 2);
+        let ink = |f: &Frame| {
+            band.clone()
+                .map(|y| (0..W).filter(|&x| f.drawn(x, y)).count())
+                .sum::<usize>()
+        };
+        assert_eq!(ink(short), 0, "nothing above the field for a short prompt");
+        assert!(
+            ink(long) > 200,
+            "the long prompt went somewhere, but not above the field: {} px",
+            ink(long)
+        );
     }
 
     /// R11's trap, and #36 names it: `rounding_power = 4` is part of the
