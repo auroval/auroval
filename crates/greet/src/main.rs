@@ -90,6 +90,10 @@ AUROVAL_EXIT_AFTER_FIRST_FRAME makes greet and preview exit as soon as
 AUROVAL_LOG_KEYS logs one line per keyboard event to stderr: press or
   repeat, the keysym, and how many characters the field holds. Never the
   character itself. For the R6 round, which needs a real seat.
+AUROVAL_LOG_DRAWS logs one line a second to stderr: how many turns of
+  the loop drew a frame and how many did not. An idle login screen draws
+  nothing, and that is a claim worth a counter — see
+  spike/p1ab/draw-rate.nu, which reads exactly these lines.
 AUROVAL_FRAME_DUMP=<dir> writes a PNG whenever what is on the screen
   changes, and a stderr line naming each one. For answering what the
   screen actually showed, after a console sitting. Refuses a directory

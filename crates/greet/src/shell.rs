@@ -56,6 +56,13 @@ struct Screen {
     target: Option<Target>,
     scale: i32,
     configured: bool,
+    /// `view::signature` of the last frame actually drawn here, or `None`
+    /// when this surface has nothing on it yet. This is the whole of "does it
+    /// need drawing": `None` forces a frame, and a signature that no longer
+    /// matches the state is a frame. It is per screen rather than per shell
+    /// because the signature carries the surface size, so two outputs of
+    /// different sizes do not share an answer.
+    last: Option<String>,
 }
 
 pub struct Shell {
@@ -93,6 +100,16 @@ pub struct Shell {
     log_keys: bool,
     /// `AUROVAL_FRAME_DUMP`. `None` unless it is set; see `dump`.
     dump: Option<crate::dump::Dump>,
+
+    /// `AUROVAL_LOG_DRAWS`. One line a second saying how many turns of the
+    /// loop drew a frame and how many did not. The whole claim of this loop
+    /// is that an idle login screen draws nothing, and a claim about frames
+    /// is worth exactly as much as the count behind it — the same reason
+    /// `AUROVAL_LOG_KEYS` exists. It prints nothing unless asked.
+    log_draws: bool,
+    draws: u32,
+    turns: u32,
+    reported: Instant,
 
     started: Instant,
     pub first_frame: Option<Instant>,
@@ -169,6 +186,10 @@ pub fn run(cfg: Config, ui: UiState, preview: bool) -> Result<(), String> {
         locale,
         log_keys: std::env::var_os("AUROVAL_LOG_KEYS").is_some(),
         dump: crate::dump::Dump::from_env(),
+        log_draws: std::env::var_os("AUROVAL_LOG_DRAWS").is_some(),
+        draws: 0,
+        turns: 0,
+        reported: Instant::now(),
         started: Instant::now(),
         first_frame: None,
         done: false,
@@ -186,6 +207,13 @@ pub fn run(cfg: Config, ui: UiState, preview: bool) -> Result<(), String> {
         shell.add_output(o);
     }
 
+    // The timeout stays at 16 ms even though nothing is drawn on most turns.
+    // It is not a frame budget: greetd's conversation arrives on a channel
+    // that calloop knows nothing about, so `pump_auth` is only as prompt as
+    // this timeout, and a prompt that appears a fifth of a second after PAM
+    // asked for it is a worse login screen than a loop that wakes up often
+    // and does nothing. Keys, and SCTK's repeat timer, wake the loop by
+    // themselves and do not wait for it.
     while !shell.done {
         loop_
             .dispatch(Duration::from_millis(16), &mut shell)
@@ -193,6 +221,7 @@ pub fn run(cfg: Config, ui: UiState, preview: bool) -> Result<(), String> {
         shell.pump_auth();
         shell.tick_clock();
         shell.draw_all();
+        shell.report_draws();
     }
     Ok(())
 }
@@ -222,6 +251,10 @@ impl Shell {
                 target: None,
                 scale,
                 configured: false,
+                // A new output has never been drawn to, which is what makes
+                // it draw: an output appearing part way through a login is
+                // one of the things that has to force a frame.
+                last: None,
             },
         );
     }
@@ -338,35 +371,73 @@ impl Shell {
         self.ui.prompt.clear();
     }
 
+    /// Draw the outputs whose picture has changed, and only those.
+    ///
+    /// The decision is `view::signature`: what the frame would look like, as
+    /// a string, compared with what is on the surface already. Nothing else
+    /// decides it, which is the point — the alternative is a second list of
+    /// "what is visible" kept in step with the view by hand.
+    ///
+    /// Three things that are not a state change still produce a frame, and
+    /// all three fall out of the same comparison rather than needing a flag:
+    /// a surface with nothing on it yet (`last` is `None`, set for a new
+    /// output and reset by `configure` on a resize or a scale change), a
+    /// surface whose size has changed (the size is in the signature), and
+    /// R9's background arriving some time after start (so is the background).
     fn draw_all(&mut self) {
         let Some(gl) = self.gl.as_mut() else { return };
-        let ids: Vec<u32> = self.screens.keys().copied().collect();
-        let first = ids.first().copied().unwrap_or_default();
+        let mut ids: Vec<u32> = self.screens.keys().copied().collect();
+        // Sorted, so that "the first output" means the same output on every
+        // turn. It used to be whichever one the `HashMap` happened to yield,
+        // which was survivable while the dump computed its own signature and
+        // is not now: two outputs of different sizes taking turns to be first
+        // would look like the picture changing, over and over.
+        ids.sort_unstable();
+        let first = ids.first().copied();
         for id in ids {
-            let Some(screen) = self.screens.get(&id) else {
-                continue;
-            };
-            let Some(target) = screen.target.as_ref() else {
+            // Destructured rather than borrowed whole, so that `last` can be
+            // written while `target` is still in hand.
+            let Some(Screen {
+                target: Some(target),
+                last,
+                ..
+            }) = self.screens.get_mut(&id)
+            else {
                 continue;
             };
             if gl.make_current(target).is_err() {
                 continue;
             }
             // The poll has to happen with the context current, which is why
-            // it is here and not before the loop over outputs.
+            // it is here and not before the loop over outputs. It also has to
+            // happen on turns that do not draw: the decode landing is how the
+            // background gets on screen at all, and nobody else asks.
             let bg = self.background.ready(gl);
+            let (w, h) = (target.width, target.height);
+            let sig = view::signature(&self.ui, (w, h), bg.is_some());
+            if last.as_deref() == Some(sig.as_str()) {
+                // Nothing has moved. This is the normal case on an idle login
+                // screen, and R6's repeat rate is the reason it matters: SCTK
+                // counts the next repeat from when its callback returned, so a
+                // frame drawn here would be added to the repeat period.
+                continue;
+            }
+            *last = Some(sig.clone());
             view::draw(gl, &self.ui, &self.style, bg);
             // Before `present`, not after: the buffer this reads is the one
             // just drawn, and a swapped buffer's contents are undefined.
             // Only the first output, because a dump is a record of what was
             // said and not of how many screens said it.
-            if id == first {
+            if Some(id) == first {
                 if let Some(d) = self.dump.as_mut() {
-                    let (w, h) = (target.width, target.height);
-                    d.maybe(&self.ui, w, h, || gl.read_pixels());
+                    d.maybe(&self.ui, &sig, w, h, || gl.read_pixels());
                 }
             }
             gl.present(target);
+            // Saturating because this is a counter in a process that may run
+            // for weeks on a machine nobody logs into, and an overflow panic
+            // in instrumentation would take the login screen with it.
+            self.draws = self.draws.saturating_add(1);
             if self.first_frame.is_none() {
                 self.first_frame = Some(Instant::now());
                 // R16 is a budget, so the number is printed rather than
@@ -378,8 +449,8 @@ impl Shell {
                 eprintln!(
                     "auroval-greet: first frame {} ms, surface {}x{}",
                     (Instant::now() - self.started).as_millis(),
-                    target.width,
-                    target.height
+                    w,
+                    h
                 );
                 // The measurement harness in spike/p1e wants this number and
                 // nothing else, and `preview` otherwise draws forever. Eleven
@@ -393,12 +464,35 @@ impl Shell {
                     self.done = true;
                 }
             }
-            if self.preview {
-                // One frame is all a preview owes anybody, but the clock has
-                // to keep moving for the look to be judged, so it keeps
-                // drawing and simply never logs in.
-            }
         }
+    }
+
+    /// One line a second, when `AUROVAL_LOG_DRAWS` is set: frames drawn, and
+    /// turns of the loop that drew nothing.
+    ///
+    /// An idle login screen should report `drew 0`, and a minute later
+    /// exactly one frame for the clock. That is the receipt for this loop, and
+    /// it can be taken anywhere a Wayland display exists — unlike the repeat
+    /// rate it was written for, which needs a seat on a real VT.
+    fn report_draws(&mut self) {
+        if !self.log_draws {
+            return;
+        }
+        self.turns = self.turns.saturating_add(1);
+        if self.reported.elapsed() < Duration::from_secs(1) {
+            return;
+        }
+        let secs = self.reported.elapsed().as_secs_f32();
+        eprintln!(
+            "draws {:>7.3}  drew {} of {} turns  ({:.1} frames/s)",
+            self.started.elapsed().as_secs_f32(),
+            self.draws,
+            self.turns,
+            self.draws as f32 / secs,
+        );
+        self.draws = 0;
+        self.turns = 0;
+        self.reported = Instant::now();
     }
 }
 
@@ -478,6 +572,13 @@ impl WindowHandler for Shell {
                     Err(e) => eprintln!("auroval-greet: no EGL surface for this output: {e}"),
                 },
             }
+            // A configure is the compositor asking for a frame, so forget
+            // what was on this surface and draw unconditionally. The size
+            // change would force it by itself, but a configure that keeps
+            // the size is still a configure — and a surface that answers
+            // one with silence is a greeter the compositor is still waiting
+            // for.
+            screen.last = None;
             screen.configured = true;
         }
     }

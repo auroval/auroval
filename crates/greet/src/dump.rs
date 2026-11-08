@@ -13,8 +13,9 @@
 //!
 //! **One frame per change, not per frame.** A 2560x1440 PNG costs on the
 //! order of a hundred milliseconds to encode and write, and the loop that
-//! would be doing it is the same loop whose timing R6 measures — the repeat
-//! rate is already 40 ms plus a redraw. Dumping every frame would not record
+//! would be doing it is the same loop whose timing R6 measures, and a repeat
+//! period is that gap plus whatever the callback's turn of the loop spent.
+//! Dumping every frame would not record
 //! the greeter, it would record a different, slower greeter. So a frame is
 //! written only when the thing being drawn has actually changed, which is
 //! also what makes the output readable: ten files that each mean something,
@@ -22,11 +23,12 @@
 //!
 //! **This is a debug flag on a login screen, and it stays one.** It writes
 //! nothing unless the variable is set, it refuses any directory inside a
-//! home (R15, C10), and the signature below deliberately holds the *length*
-//! of the field and never its contents — though what is on the screen it
-//! captures is dots in a password field, the file name should not be the
-//! thing that leaks a length either, so it carries a counter and a
-//! timestamp and nothing else.
+//! home (R15, C10), and the signature it dedupes on — `view::signature`,
+//! which is also what the shell decides to draw on — holds a hidden field as
+//! a count of dots and never as its contents. Though what the captured frame
+//! shows is dots in a password field, the file name should not be the thing
+//! that leaks a length either, so it carries a counter and a timestamp and
+//! nothing else.
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -71,41 +73,29 @@ impl Dump {
         })
     }
 
-    /// What is on the screen, as a string, for deciding whether it changed.
-    ///
-    /// The field is its character count and not its text. At the username
-    /// stage that is a name rather than a secret, but a signature that is
-    /// sometimes the content and sometimes a count is a signature somebody
-    /// will misread later.
-    ///
-    /// The surface size is in it because a resize is a different picture of
-    /// the same state, and on a VT it is also how a mode change would show
-    /// up — which is worth a frame.
-    fn signature(ui: &UiState, w: u32, h: u32) -> String {
-        format!(
-            "{w}x{h}|{:?}|{}|{}|{}|{}|{}|{}|{}",
-            ui.stage,
-            ui.prompt,
-            ui.field().chars().count(),
-            ui.secret,
-            ui.caps_lock,
-            ui.notice.as_ref().map(|n| n.text.as_str()).unwrap_or(""),
-            ui.session().map(|s| s.id.as_str()).unwrap_or(""),
-            // The clock, so a minute rolling over is a frame. It is one file
-            // a minute and it dates every other frame in the directory.
-            ui.clock,
-        )
-    }
-
     /// Write a frame if anything visible has changed since the last one.
     ///
+    /// `sig` is `view::signature` — what the picture depends on, as a string.
+    /// This used to compute its own; it does not any more, because the shell
+    /// now draws on exactly that signature changing and two lists of "what is
+    /// visible" that must agree is the bug this project keeps finding. The
+    /// dedupe stays here even so: the shell may draw for reasons that are not
+    /// a change of picture (a first frame, a reconfigured surface), and a dump
+    /// is a record of what was *said*.
+    ///
     /// `pixels` is RGBA, top row first, as `Gl::read_pixels` returns it.
-    pub fn maybe(&mut self, ui: &UiState, w: u32, h: u32, pixels: impl FnOnce() -> Vec<u8>) {
-        let sig = Self::signature(ui, w, h);
-        if self.last.as_deref() == Some(sig.as_str()) {
+    pub fn maybe(
+        &mut self,
+        ui: &UiState,
+        sig: &str,
+        w: u32,
+        h: u32,
+        pixels: impl FnOnce() -> Vec<u8>,
+    ) {
+        if self.last.as_deref() == Some(sig) {
             return;
         }
-        self.last = Some(sig);
+        self.last = Some(sig.to_string());
         let ms = self.started.elapsed().as_millis();
         let path = self.dir.join(format!("{:04}-{:07}ms.png", self.n, ms));
         self.n += 1;

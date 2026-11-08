@@ -8,7 +8,7 @@ with a deadline and stopped itself.
 
 | requirement | state |
 |---|---|
-| R6 — key repeat and caps lock | **four of five checks pass.** The fifth fails for a real reason, below |
+| R6 — key repeat and caps lock | **four of five checks pass.** The fifth failed for a real reason, below; its cause is fixed and awaiting one more sitting |
 | R3 — a wrong password is not fatal | **holds, measured** |
 | R1 — an extra PAM step needs no code change | **holds, both branches** |
 | R2 — the greeter starts what it names | **holds for the exec half** |
@@ -103,6 +103,30 @@ carry the cost.
 **Underneath it is a defect worth more than the symptom.** This login screen
 redraws itself about sixty times a second while nothing moves. The fix is to
 draw when something changed, which also fixes the repeat rate.
+
+### The redraw, fixed and measured — the repeat rate, still to re-measure
+
+`shell::run` now draws an output only when `view::signature` — what the
+picture depends on, as a string, living beside `draw` so there is one list of
+it — differs from what is on that surface already. Receipt:
+`draw-rate-2026-11-08.txt`, taken with `draw-rate.nu` under a headless cage,
+which needs no VT and no sudo.
+
+| | idle frames/s | frames in 115 s idle |
+|---|---|---|
+| before (5f3563c, counter added) | 62.4 | — |
+| after | 0.0 | 4: the first frame, its configure, and two minute rollovers |
+
+The first frame is unchanged at a 4 ms median over seven runs each (1280x720,
+cage's headless default), so R16 pays nothing for this.
+
+**The repeat rate itself is not re-measured.** It cannot be from a desktop:
+nested or headless, the repeat comes from another compositor. It is one
+sitting on tty3 — `nu spike/p1ab/keyboard-round.nu`, and the check to read is
+"rate agrees", which asked 40.0 ms and measured 50.0 ms above. If the reading
+of the mechanism is right, the median should now land on 40 ms; if it does
+not, the 10 ms was never the redraw and this table says so rather than
+hiding it.
 
 ## The second sitting, with frames — and the one thing it caught
 
