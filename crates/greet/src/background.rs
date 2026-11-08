@@ -97,7 +97,10 @@ impl std::fmt::Display for Problem {
 }
 
 impl Problem {
-    fn new(path: &Path, reason: impl Into<String>) -> Problem {
+    /// `pub(crate)` rather than private: `video` reports its failures in the
+    /// same shape, because R9 makes them the same kind of thing — a reason
+    /// the background is not what was configured, carrying the path.
+    pub(crate) fn new(path: &Path, reason: impl Into<String>) -> Problem {
         Problem {
             path: path.to_path_buf(),
             reason: reason.into(),
@@ -221,6 +224,36 @@ enum State {
     /// deleted here: the renderer outlives the greeter's run, and there is no
     /// point in a destructor that only ever runs at exit.
     Ready { tex: glow::Texture, w: u32, h: u32 },
+    /// Configured as a video, not started yet.
+    ///
+    /// `start` runs before there is a surface, which is the whole reason the
+    /// still decode happens on a thread — R16's first frame must not wait on
+    /// it. A video needs the GL context in order to share it with GStreamer,
+    /// and the GL context does not exist that early, so this records the
+    /// intent and `poll` acts on it at the first frame that has one.
+    VideoPending(PathBuf),
+    /// Playing. Each frame hands back a different texture from GStreamer's
+    /// pool; see `video::Video` for why the mapping is held rather than the
+    /// id alone.
+    Video(Box<crate::video::Video>),
+}
+
+/// Whether a configured background is a video, by its extension.
+///
+/// By extension and not by sniffing, deliberately. The alternative is to try
+/// the image decoder first and fall back on failure, which means every video
+/// background pays for a failed image decode on the startup path C15 measures
+/// in milliseconds. An extension that lies falls back anyway: a `.mp4` that
+/// is not a video fails in GStreamer and lands on the solid colour with a
+/// line saying so, which is R9 either way.
+fn looks_like_video(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase())
+            .as_deref(),
+        Some("mp4" | "mkv" | "webm" | "mov" | "m4v" | "avi")
+    )
 }
 
 /// The background, from configuration to pixels.
@@ -261,6 +294,13 @@ impl Background {
         };
         let path = path.to_path_buf();
         let configured = Some(path.clone());
+        if looks_like_video(&path) {
+            return Background {
+                state: State::VideoPending(path),
+                configured,
+                problems: Vec::new(),
+            };
+        }
         let (tx, rx) = mpsc::channel();
         // A detached thread, deliberately: there is nothing to join, and a
         // decode still running at exit must not hold the greeter open.
@@ -312,8 +352,21 @@ impl Background {
     /// which keeps the view a pure function of what it is given.
     pub fn ready(&mut self, gl: &Gl) -> Option<(glow::Texture, u32, u32)> {
         self.poll(gl);
-        match self.state {
-            State::Ready { tex, w, h } => Some((tex, w, h)),
+        match &self.state {
+            State::Ready { tex, w, h } => Some((*tex, *w, *h)),
+            State::Video(v) => v.frame().map(|f| {
+                (
+                    // GStreamer's texture id is a raw GL name, which is what
+                    // `glow::NativeTexture` wraps. The renderer draws it like
+                    // any other 2D texture because `glsinkbin` has already
+                    // converted to RGBA -- the two points of CPU that buys
+                    // are measured in spike/p2/RESULTS.md, and they buy not
+                    // needing a second shader for NV12.
+                    glow::NativeTexture(std::num::NonZeroU32::new(f.texture).unwrap()),
+                    f.width,
+                    f.height,
+                )
+            }),
             _ => None,
         }
     }
@@ -321,6 +374,32 @@ impl Background {
     /// Take delivery of the decode, if it has arrived, and upload it. Costs a
     /// `try_recv` per frame while pending and nothing at all once settled.
     fn poll(&mut self, r: &Gl) {
+        if let State::VideoPending(path) = &self.state {
+            let path = path.clone();
+            match crate::video::Video::start(&path, r.egl_handles()) {
+                Ok(v) => {
+                    eprintln!("[background] playing {}", path.display());
+                    self.state = State::Video(Box::new(v));
+                }
+                Err(problem) => {
+                    // R9's order is video, then still, then colour. There is
+                    // no still here to fall back to: the configuration names
+                    // one background, so a video that will not play lands on
+                    // the colour. Giving it a still as well is a second
+                    // configuration key and therefore the maintainer's call,
+                    // not something to invent in a fallback path.
+                    self.state = State::Solid;
+                    self.fell_back(problem);
+                }
+            }
+            return;
+        }
+        if let State::Video(v) = &self.state {
+            for p in v.problems() {
+                self.problems.push(format!("[background] {p}"));
+            }
+            return;
+        }
         let State::Pending(rx) = &self.state else {
             return;
         };
@@ -385,7 +464,18 @@ impl Background {
     /// not distinguish "not yet" from "never".
     pub fn settled(&mut self, gl: &Gl) -> bool {
         self.poll(gl);
-        !matches!(self.state, State::Pending(_))
+        // "Settled" means there is nothing further to wait for, and for a
+        // video that includes its first frame: the only callers are the
+        // snapshot modes, which exist to capture a picture and would
+        // otherwise capture the fallback every time. The greeter itself does
+        // not call this -- it asks `ready` once per frame and draws the
+        // colour until there is something better, which is what keeps the
+        // decoder off R16's critical path.
+        match &self.state {
+            State::Pending(_) | State::VideoPending(_) => false,
+            State::Video(v) => v.frame().is_some(),
+            _ => true,
+        }
     }
 
     #[allow(dead_code)]
