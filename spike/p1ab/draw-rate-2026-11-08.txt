@@ -1,0 +1,72 @@
+auroval #36 — frames drawn by an idle login screen, before and after
+2026-11-08, games-werkkamer, kernel 7.3.1-1-cachyos, nvidia 615.78.08
+
+Instrument   spike/p1ab/draw-rate.nu, which runs `auroval-greet preview`
+             under a headless cage (WLR_BACKENDS=headless) with
+             AUROVAL_LOG_DRAWS set and reads the greeter's own counter.
+             No VT, no DRM master, no sudo, and no pixel on any screen.
+Surface      1280x720 — cage's headless default. The console figures in
+             RESULTS.md are 2560x1440; this measures how MANY frames are
+             drawn, not what one costs.
+before       5f3563c (main), plus the AUROVAL_LOG_DRAWS counter and nothing
+             else, so that both sides are read by the same instrument.
+after        the branch. Same binary otherwise, same flags, same cage.
+
+── idle, 8 s ─────────────────────────────────────────────────────────────
+
+before
+draws   1.014  drew 65 of 65 turns  (64.1 frames/s)
+draws   2.023  drew 63 of 63 turns  (62.4 frames/s)
+draws   3.033  drew 63 of 63 turns  (62.4 frames/s)
+draws   4.042  drew 63 of 63 turns  (62.4 frames/s)
+draws   5.051  drew 63 of 63 turns  (62.4 frames/s)
+
+after
+draws   1.015  drew 2 of 65 turns  (2.0 frames/s)
+draws   2.027  drew 0 of 63 turns  (0.0 frames/s)
+draws   3.038  drew 0 of 63 turns  (0.0 frames/s)
+draws   4.049  drew 0 of 63 turns  (0.0 frames/s)
+draws   5.060  drew 0 of 63 turns  (0.0 frames/s)
+
+Every turn drew a frame before; none does now. The loop still wakes about
+63 times a second — deliberately, because greetd's conversation arrives on
+a channel calloop knows nothing about, so `pump_auth` is only as prompt as
+that timeout. Waking is a string compare; drawing was a 2560x1440 frame.
+
+The two frames in the first second are the first frame and the configure
+that follows it. The frame dump proves they are one picture: the same run
+with AUROVAL_FRAME_DUMP set drew 2 frames and wrote exactly 1 PNG
+(1280x720 RGBA), which is what the dump's own dedupe is still there for.
+
+── idle across two minute boundaries, 115 s ──────────────────────────────
+
+after, every second that drew anything:
+
+draws   1.015  drew 2 of 65 turns   first frame and its configure
+draws   6.070  drew 1 of 64 turns   the minute rolled over
+draws  65.700  drew 1 of 64 turns   and again, 59.6 s later
+
+4 frames in 115 seconds. The other 112 lines all read `drew 0 of 63`.
+The clock still moves, which is the check that matters: "draws on a
+change" and "never draws" are the same number under a minute.
+
+── R16, the first frame ──────────────────────────────────────────────────
+
+AUROVAL_EXIT_AFTER_FIRST_FRAME, seven runs each, ms:
+
+before   5 4 4 4 5 4 4     median 4
+after    4 4 5 4 4 3 5     median 4
+
+The signature is formatted once before the first draw; it does not show up
+against a frame. R16's floor is 100 ms and its 2560x1440 median is 8 ms.
+
+── not measured here ─────────────────────────────────────────────────────
+
+The key repeat rate, which is the defect this fixes. It needs a seat on a
+real VT: nested or headless, the repeat comes from somewhere else. One
+command, on tty3, as yourself:
+
+    nu spike/p1ab/keyboard-round.nu
+
+The check to read is "rate agrees": 40.0 ms asked, 50.0 ms measured on
+2026-11-08. The mechanism is in RESULTS.md's R6 section.

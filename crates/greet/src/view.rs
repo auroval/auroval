@@ -20,6 +20,76 @@ pub struct Style {
     pub palette: Palette,
 }
 
+/// Everything the picture depends on, as a string, for deciding whether to
+/// draw at all.
+///
+/// A login screen changes when someone types, when the clock rolls over, or
+/// when the conversation says something; between those it is a still image.
+/// `shell::run` used to redraw it about sixty times a second anyway, and that
+/// was not merely waste: smithay-client-toolkit reschedules key repeat with
+/// `TimeoutAction::ToDuration(gap)`, counted from the moment its callback
+/// *returns*, so every frame drawn inside that callback's turn of the loop was
+/// added to the repeat period. The console sitting on 2026-11-08 measured
+/// 50.0 ms repeats against the 40 ms the compositor announced, and the 10 ms
+/// of difference was a 2560x1440 redraw of a screen on which nothing had
+/// moved (`spike/p1ab/RESULTS.md`, R6).
+///
+/// **It lives here, beside `draw`, and there is only one of it.** Two lists
+/// of "what is visible" maintained in two files is the shape of bug this
+/// project keeps finding, so whoever adds a line to `draw` has this function
+/// in front of them. `dump` dedupes on the same string rather than computing
+/// its own.
+///
+/// It never holds a secret. The field goes in as `field_display` renders it —
+/// text as text, a hidden field as a count of dots — which is exactly what is
+/// on the screen and so can leak nothing the screen does not. A count is not
+/// enough on its own: at the username stage the name is drawn verbatim, and a
+/// backspace plus a keystroke in one turn of the loop would keep the length
+/// and change the word.
+///
+/// `surface` is in it because a resize is a different picture of the same
+/// state, and `background` because R9's decode lands some time after start
+/// and arrives as a new picture with no state change behind it.
+pub fn signature(ui: &UiState, surface: (u32, u32), background: bool) -> String {
+    let (w, h) = surface;
+    let field = match ui.field_display() {
+        FieldDisplay::Text(t) => format!("t{t}"),
+        FieldDisplay::Dots(n) => format!("d{n}"),
+    };
+    let notice = match &ui.notice {
+        // The kind is in it as well as the text: an error and an info with
+        // the same words are drawn in different colours, and the field's
+        // outline changes with them.
+        Some(n) => format!("{:?}:{}", n.kind, n.text),
+        None => String::new(),
+    };
+    let session = match ui.session() {
+        // The label, not the id: what is drawn is the name, and the "tab to
+        // change" half of it appears only when there is more than one.
+        Some(s) => format!("{}/{}", s.name, ui.sessions.len()),
+        None => String::new(),
+    };
+    format!(
+        "{w}x{h}|bg{}|{:?}|{}|{}|{}|{}|{}|{}|{}|{}",
+        background as u8,
+        ui.stage,
+        ui.username,
+        field,
+        ui.prompt,
+        // `secret` is deliberately not here. It is not drawn; what it
+        // decides is whether the field comes out as dots or as text, and
+        // `field_display` above has already asked it. Listing it as well
+        // would be an entry no test could fail, which this project rewrites
+        // rather than keeps.
+        ui.caps_lock,
+        notice,
+        session,
+        // The clock and the date, so a minute rolling over is still a frame.
+        ui.clock,
+        ui.date,
+    )
+}
+
 pub fn draw(
     gl: &mut Gl,
     ui: &UiState,
@@ -239,6 +309,7 @@ mod tests {
     use crate::background::Background;
     use crate::render::Gl;
     use crate::store::LastLogin;
+    use crate::ui::Notice;
     use crate::ui::Stage;
     use std::io::Write;
     use std::path::{Path, PathBuf};
@@ -607,5 +678,227 @@ mod tests {
         let mut f = std::fs::File::create(&path).expect("fixture");
         f.write_all(&bytes.into_inner()).expect("fixture");
         path
+    }
+
+    // ── `signature`: when the loop draws, and when it does not ──────────
+    //
+    // These need no GL context, because the question they ask is about the
+    // decision rather than the pixels. They are here and not in a module of
+    // their own so that the helper that builds a frame's worth of state is
+    // the same one the render tests use.
+
+    const SURFACE: (u32, u32) = (W, H);
+
+    /// Enough of a session to be named at the bottom of the screen.
+    fn session(id: &str) -> crate::sessions::Session {
+        crate::sessions::Session {
+            id: id.into(),
+            name: id.into(),
+            comment: None,
+            command: vec![id.into()],
+            kind: crate::sessions::Kind::Wayland,
+            path: PathBuf::from(format!("/usr/share/wayland-sessions/{id}.desktop")),
+        }
+    }
+
+    fn sig(ui: &UiState) -> String {
+        signature(ui, SURFACE, false)
+    }
+
+    /// The claim the whole change rests on: a login screen nobody is touching
+    /// is the same picture one turn of the loop later, so there is nothing to
+    /// draw.
+    #[test]
+    fn a_screen_on_which_nothing_moved_has_the_same_signature() {
+        let ui = state();
+        assert_eq!(sig(&ui), sig(&ui.clone()));
+    }
+
+    #[test]
+    fn a_keystroke_is_a_frame() {
+        let before = state();
+        let mut after = before.clone();
+        after.push('x');
+        assert_ne!(sig(&before), sig(&after));
+    }
+
+    /// The reason the field goes in as what is *drawn* and not as a character
+    /// count. At the username stage the name is on the screen verbatim, and a
+    /// backspace followed by another key can both land in one turn of the
+    /// loop — `dispatch` hands over everything that arrived. A count would
+    /// call `dire` the same picture as `dirk`.
+    #[test]
+    fn a_backspace_and_a_key_in_one_turn_are_a_frame() {
+        let mut before = UiState::new(Vec::new(), &LastLogin::default());
+        before.stage = Stage::AskingUser;
+        before.username = "dirk".into();
+        let mut after = before.clone();
+        after.backspace();
+        after.push('e');
+        assert_eq!(after.username, "dire");
+        assert_ne!(
+            sig(&before),
+            sig(&after),
+            "two names of the same length are not the same picture"
+        );
+    }
+
+    /// The username line is drawn above the field at *every* stage, so it is
+    /// in the signature on its own account and not only as the thing the
+    /// field happens to hold while you are typing it. The two overlap at the
+    /// username stage by design: the list is what is drawn, and arguing that
+    /// one entry makes another unreachable is how a list of this kind goes
+    /// wrong.
+    #[test]
+    fn the_username_line_counts_at_a_stage_that_cannot_type_it() {
+        let mut a = state();
+        a.username = "dirk".into();
+        let mut b = a.clone();
+        b.username = "dirkie".into();
+        assert_eq!(a.stage, Stage::Answering);
+        assert_ne!(sig(&a), sig(&b));
+    }
+
+    /// An echo-on prompt — greetd's `visible` — puts its answer on the screen
+    /// as text, so two answers of the same length are two pictures. This is
+    /// the entry a character count would quietly break.
+    #[test]
+    fn an_echoed_answer_is_in_it_as_its_text() {
+        let mut a = state();
+        a.secret = false;
+        a.typed = "ab".into();
+        let mut b = a.clone();
+        b.typed = "ba".into();
+        assert_ne!(sig(&a), sig(&b));
+    }
+
+    /// What the notice says, not merely that there is one. The console
+    /// sitting's worst finding was an error that reached the model and never
+    /// reached a frame; the error replacing an info with different words has
+    /// to be a frame.
+    #[test]
+    fn a_different_message_is_a_frame() {
+        let mut a = state();
+        a.notice = Some(Notice {
+            text: "an extra PAM step is in this stack".into(),
+            kind: NoticeKind::Info,
+        });
+        let mut b = a.clone();
+        b.notice = Some(Notice {
+            text: "pam_exec said something else".into(),
+            kind: NoticeKind::Info,
+        });
+        assert_ne!(sig(&a), sig(&b));
+        assert_ne!(sig(&a), sig(&state()), "and so is a notice appearing");
+    }
+
+    /// Deliberate, and the other half of the rule above: a hidden field
+    /// contributes its length and nothing else, so two passwords of the same
+    /// length are one picture — which they are, because what is drawn is
+    /// dots. The signature is held in memory and compared, but a login
+    /// screen's idea of "what is on screen" is not a place to keep a
+    /// password even for that long.
+    #[test]
+    fn a_hidden_field_contributes_its_length_and_not_its_text() {
+        let mut a = state();
+        a.typed = "hunter2".into();
+        let mut b = a.clone();
+        b.typed = "swordfi".into();
+        assert_eq!(sig(&a), sig(&b));
+        assert!(!sig(&a).contains("hunter2"));
+    }
+
+    /// R1: the greeter draws whatever the conversation asks, and one prompt
+    /// replacing another with nothing typed yet is the whole of what changes
+    /// on the screen. The OATH prompt arriving after `Password:` on
+    /// 2026-11-08 is exactly this case.
+    #[test]
+    fn one_prompt_replacing_another_is_a_frame() {
+        let mut before = state();
+        before.typed.clear();
+        before.prompt = "Password:".into();
+        let mut after = before.clone();
+        after.prompt = "One-time password (OATH) :".into();
+        assert_ne!(sig(&before), sig(&after));
+    }
+
+    /// Tab cycles the session, and the label at the bottom of the screen is
+    /// the only thing that says which one is selected.
+    #[test]
+    fn cycling_the_session_is_a_frame() {
+        let sessions = vec![session("hyprland"), session("hyprland-uwsm")];
+        let mut ui = UiState::new(sessions, &LastLogin::default());
+        ui.clock = "23:26".into();
+        let before = sig(&ui);
+        ui.cycle_session(true);
+        assert_ne!(before, sig(&ui));
+    }
+
+    /// `tick_clock` runs every turn and formats a string; the minute changing
+    /// has to survive the comparison or the clock stops.
+    #[test]
+    fn the_minute_rolling_over_is_a_frame() {
+        let before = state();
+        let mut after = before.clone();
+        after.clock = "23:27".into();
+        assert_ne!(sig(&before), sig(&after));
+
+        let mut tomorrow = before.clone();
+        tomorrow.date = "Sunday, 8 November".into();
+        assert_ne!(sig(&before), sig(&tomorrow), "and so is the date");
+    }
+
+    /// R9's decode lands some time after start, with no state change behind
+    /// it. Nothing else would tell the loop that the screen is now different.
+    #[test]
+    fn the_background_arriving_is_a_frame() {
+        let ui = state();
+        assert_ne!(
+            signature(&ui, SURFACE, false),
+            signature(&ui, SURFACE, true)
+        );
+    }
+
+    /// A resize is a different picture of the same state, which is also how a
+    /// mode change on a VT shows up.
+    #[test]
+    fn a_resize_is_a_frame() {
+        let ui = state();
+        assert_ne!(
+            signature(&ui, (W, H), false),
+            signature(&ui, (1920, 1080), false)
+        );
+    }
+
+    /// The notice is drawn in the error colour or the text colour, and the
+    /// field's outline changes with it, so the kind is as visible as the
+    /// words. The console sitting on 2026-11-08 ended with an error that
+    /// reached the model and never reached a frame; a signature that compared
+    /// only the text would be a second way for that to happen.
+    #[test]
+    fn the_same_words_as_an_error_and_as_an_info_are_two_frames() {
+        let mut err = state();
+        err.notice = Some(Notice {
+            text: "Authentication failure".into(),
+            kind: NoticeKind::Error,
+        });
+        let mut info = err.clone();
+        info.notice = Some(Notice {
+            text: "Authentication failure".into(),
+            kind: NoticeKind::Info,
+        });
+        assert_ne!(sig(&err), sig(&info));
+    }
+
+    #[test]
+    fn caps_lock_and_the_stage_are_frames() {
+        let before = state();
+        let mut caps = before.clone();
+        caps.caps_lock = true;
+        assert_ne!(sig(&before), sig(&caps));
+
+        let mut starting = before.clone();
+        starting.stage = Stage::Starting;
+        assert_ne!(sig(&before), sig(&starting));
     }
 }
