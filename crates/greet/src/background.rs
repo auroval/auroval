@@ -89,7 +89,11 @@ impl std::fmt::Display for Problem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "background {} unavailable, falling back to the solid colour: {}",
+            // Not "falling back to the solid colour": since #58 there may
+            // be another candidate, and saying the colour when a still is
+            // about to appear is a log line that contradicts the screen.
+            // What is certain here is that this one is not being shown.
+            "background {} unavailable: {}",
             self.path.display(),
             self.reason
         )
@@ -401,8 +405,18 @@ impl Background {
             return;
         }
         if let State::Video(v) = &self.state {
-            for p in v.problems() {
+            let said = v.drain();
+            for p in said.warnings {
                 self.problems.push(format!("[background] {p}"));
+            }
+            if let Some(reason) = said.fatal {
+                // A video that played and then stopped is as much a failure
+                // of that candidate as one that never started, and R9 does
+                // not distinguish them. Dropping the `Video` here is what
+                // stops the pipeline: without it `playbin3` keeps retrying,
+                // which is what it did before this branch existed.
+                self.failed(reason);
+                self.try_next();
             }
             return;
         }
@@ -440,7 +454,14 @@ impl Background {
     /// function: stderr for the journal, and the list for whatever surface
     /// ends up showing problems to the person at the keyboard.
     fn fell_back(&mut self, p: Problem) {
-        let line = p.to_string();
+        // Said here rather than in `Problem`, because only this side knows
+        // whether anything is left to try -- and "what happens now" is the
+        // half of R9's "logged, not silent" that a reader actually needs.
+        let next = match self.rest.front() {
+            Some(n) => format!("trying {}", n.display()),
+            None => "falling back to the solid colour".to_string(),
+        };
+        let line = format!("{p}; {next}");
         eprintln!("[background] {line}");
         self.problems.push(line);
     }
@@ -699,9 +720,24 @@ mod tests {
             said.contains("definitely-not-here.png"),
             "R9: the log names the file — got {said}"
         );
+        // What happens *instead* is no longer `Problem`'s to say: since the
+        // chain landed it depends on whether anything is left to try, which
+        // only `Background` knows. Asserted below, in both shapes.
+        let mut last = Background::start(&[p.to_path_buf()]);
+        last.fell_back(decode(p).expect_err("still missing"));
         assert!(
-            said.contains("solid colour"),
-            "R9: the log says what happens instead — got {said}"
+            last.problems()[0].contains("falling back to the solid colour"),
+            "R9: with nothing left, the log says the colour — got {:?}",
+            last.problems()[0]
+        );
+
+        let next = PathBuf::from("/var/lib/auroval/second.png");
+        let mut more = Background::start(&[p.to_path_buf(), next.clone()]);
+        more.fell_back(decode(p).expect_err("still missing"));
+        assert!(
+            more.problems()[0].contains("trying /var/lib/auroval/second.png"),
+            "R9: with a candidate left, the log names it — got {:?}",
+            more.problems()[0]
         );
         assert!(
             !problem.reason.is_empty(),

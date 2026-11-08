@@ -77,6 +77,15 @@ struct Held {
     _mapped: gst_gl::GLVideoFrame<gst_gl::gl_video_frame::Readable>,
 }
 
+/// What `Video::drain` found on the bus.
+#[derive(Debug, Default)]
+pub struct Drained {
+    /// Things worth saying that do not end the video.
+    pub warnings: Vec<String>,
+    /// The error that ended it, if one has. R9's cue to move on.
+    pub fatal: Option<String>,
+}
+
 pub struct Video {
     pipeline: gst::Pipeline,
     latest: Arc<Mutex<Option<Held>>>,
@@ -393,24 +402,37 @@ impl Video {
             .clone()
     }
 
-    /// Anything the pipeline has complained about since the last call.
+    /// Everything the pipeline has said since the last call, with the
+    /// warnings and the one thing that ends it kept apart.
     ///
-    /// Errors are drained rather than raised: R9 says the greeter falls back
-    /// and logs, and a decoder that dies half way through a login is a
-    /// fallback, not a failure to log in.
-    pub fn problems(&self) -> Vec<String> {
+    /// They are different kinds of news and the caller does different things
+    /// with them, which an earlier version did not notice: it folded both
+    /// into a list of strings, and the only caller appended them to its own
+    /// problems and carried on. So a video that *constructed* and then failed
+    /// to decode -- a file whose codec has no plugin, which is R9's whole
+    /// case -- never declared a fallback and never moved to the next
+    /// candidate. `playbin3` was left retrying, and the one measurement of it
+    /// counted 3624 fresh `qtdemux` instances in five seconds, about seven
+    /// hundred lines of journal a second, for as long as the greeter was up.
+    ///
+    /// The frame on screen was right only by accident: a `State::Video` with
+    /// no texture to hand over draws the solid colour anyway, so it looked
+    /// like a fallback while being a loop.
+    pub fn drain(&self) -> Drained {
         let Some(bus) = self.pipeline.bus() else {
-            return Vec::new();
+            return Drained::default();
         };
-        let mut out = Vec::new();
+        let mut out = Drained::default();
         while let Some(msg) = bus.pop() {
             match msg.view() {
-                gst::MessageView::Error(e) => out.push(format!(
-                    "{}: {}",
-                    e.src().map(|s| s.path_string()).unwrap_or_default(),
-                    e.error()
-                )),
-                gst::MessageView::Warning(w) => out.push(format!(
+                gst::MessageView::Error(e) => {
+                    // The first one is the cause; the ones after it are that
+                    // cause arriving again through other elements.
+                    if out.fatal.is_none() {
+                        out.fatal = Some(e.error().to_string());
+                    }
+                }
+                gst::MessageView::Warning(w) => out.warnings.push(format!(
                     "{}: {}",
                     w.src().map(|s| s.path_string()).unwrap_or_default(),
                     w.error()
