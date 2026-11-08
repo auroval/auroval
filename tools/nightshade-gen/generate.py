@@ -70,10 +70,27 @@ STYLE = (
 # than about what nightshade looks like. A desktop wallpaper has no clock on
 # it and inherits none of that.
 GREETER_CONSTANT = [
-    "one subject, centred, filling the upper-middle of the frame, against darkness",
+    # §4.1 says "one subject, CENTRED, filling the upper-middle of the frame".
+    # That is changed here, and the reason is arithmetic rather than taste.
+    #
+    # scene_check's ui_regions puts the clock at cy-220, the date at cy-130,
+    # the username at cy-40 and the input field at cy+40. The UI occupies the
+    # middle of the frame from well above centre to just below it. §2.2 then
+    # asks for that same region to be dark enough to read white text on, and
+    # §4.1 asks for a lit subject to be exactly there. Across eighteen
+    # candidates generated 2026-11-08 the two clauses were never both met, and
+    # the one that finally passed composition (pond-warm-b-s11, 1.74% above
+    # 0.25) still demanded a 90% scrim, because its subject sits where the
+    # username does.
+    #
+    # A subject off to one side costs the composition nothing and hands the UI
+    # an empty column. It is also what the maintainer said a login background
+    # wants, before any of this was measured.
+    "one subject placed well off to one side of the frame, never in the middle",
+    "the subject high in its half of the picture, against darkness",
+    "the whole central band of the frame empty near-black space from top to bottom",
     "rim light and glow only, sourced from behind or beside the subject, no frontal key light",
     "saturated neon chroma, magenta and cyan and violet",
-    "near-black field below and around the subject",
     "visible film grain",
     "16:9",
 ]
@@ -91,8 +108,11 @@ GREETER_CONSTANT = [
 # Every one of these exists to protect a UI element, so none of them applies
 # to a wallpaper.
 GREETER_NEGATIVE_AS_POSITIVE = [
-    # "No bright element in the centre of the frame" — the fatal one.
-    "the centre of the frame is unlit and empty, the brightest areas are confined to the top of the image",
+    # "No bright element in the centre of the frame" — the fatal one. With the
+    # subject moved off-centre this stops fighting the clause above it: the
+    # bright areas are allowed to be anywhere except the middle, rather than
+    # being squeezed into the top of a frame whose subject is centred.
+    "the centre of the frame is unlit and empty, every bright area confined to one side",
     # "No horizon line through the middle."
     "no ground plane and no horizon, only darkness behind and below the subject",
     # "Nothing important in the lower centre."

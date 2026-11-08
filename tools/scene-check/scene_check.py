@@ -643,13 +643,26 @@ def evaluate(
 
     sf = measure_safe_field(frame)
     res.safe_field = sf
-    mean_lum, bright = sf.surround
+    # Gated on the CENTRAL COLUMN, which is where the UI sits and where
+    # §4.1.2 now forbids the subject to be.
+    #
+    # This measure was moved twice in one day and the history is the
+    # argument. It began on the whole safe field, where it never passed,
+    # because §4.1 asked for a lit subject in the same rectangle §2.2 wanted
+    # dark. It was then split -- gate the surround, exclude the subject's
+    # column -- which made the failure legible but kept the contradiction.
+    # §4.1.2 removed the contradiction instead, by moving the greeter's
+    # subject off centre, and once the subject is not in the middle the
+    # middle is simply the thing to measure. Simpler than either previous
+    # version, and it is the clause §4.2's first bullet always stated: "no
+    # bright element in the centre of the frame".
+    mean_lum, bright = sf.column
     comp_ok = mean_lum <= SAFE_MEAN_LUM_MAX and bright <= SAFE_BRIGHT_FRAC_MAX
     if surface == "greeter":
         res.clauses.append(
             Clause(
                 "§2.2",
-                "composition (around subject)",
+                "composition (centre dark)",
                 comp_ok,
                 f"mean luminance {mean_lum:.4f} (≤ {SAFE_MEAN_LUM_MAX}), "
                 f"{bright * 100:.2f}% above {SAFE_BRIGHT_LEVEL} (≤ {SAFE_BRIGHT_FRAC_MAX * 100:.0f}%)",
@@ -658,17 +671,18 @@ def evaluate(
                 else "no scrim on its own: this is a look clause, not a legibility one",
             )
         )
-        # Reported, never gated: the subject is supposed to be the lit thing,
-        # so a number here is context for the one above rather than a verdict.
-        # It earns its place by catching the opposite failure -- a subject
-        # that has gone so bright the surround stays dark only because
-        # everything else is.
+        # Reported, never gated: this is where the subject now lives, and it
+        # is supposed to be the lit thing. A number here is context for the
+        # one above. It earns its place by catching a frame that passes only
+        # because it is dark everywhere -- nightshade wants a subject, not an
+        # empty screen, and A8 already noted that scrim alone rewards
+        # emptiness.
         res.clauses.append(
             Clause(
                 "§4.1",
-                "subject column (not gated)",
+                "flanks, where the subject is (not gated)",
                 True,
-                f"mean {sf.column[0]:.4f}, {sf.column[1] * 100:.2f}% above {SAFE_BRIGHT_LEVEL}"
+                f"mean {sf.surround[0]:.4f}, {sf.surround[1] * 100:.2f}% above {SAFE_BRIGHT_LEVEL}"
                 f"   ·   whole field {sf.whole[0]:.4f}, {sf.whole[1] * 100:.2f}%",
                 "",
             )
@@ -968,11 +982,17 @@ def self_test() -> int:
         print("\n  self-test\n")
         res = evaluate(hard, tmp, hue_override=320.0)
 
-        mean_lum, _ = res.safe_field.surround
+        mean_lum, _ = res.safe_field.column
+        # Still passes, now that the clause is gated on the centre rather than
+        # on the surround, and for the reason §5.2 gives: "an average over a
+        # large safe field hides a small bright thing". This disc reads 0.0167
+        # over the column against a 0.06 limit while sitting at 0.99 on the
+        # date line itself. Inverting this assertion was tried when the gating
+        # moved and the test refused it, correctly.
         check(
             "composition passes, so only legibility can catch this",
             mean_lum < SAFE_MEAN_LUM_MAX,
-            f"mean {mean_lum:.4f} < {SAFE_MEAN_LUM_MAX}",
+            f"centre mean {mean_lum:.4f} < {SAFE_MEAN_LUM_MAX}",
         )
         date_lum, date_scrim = res.regions["date"]
         check(
@@ -1040,15 +1060,21 @@ def self_test() -> int:
         def comp(r: Result) -> bool:
             return all(c.met for c in r.clauses if c.name.startswith("composition"))
 
+        # These two are the inverse of what they said earlier the same day,
+        # and the inversion is the point. The clause then gated the surround,
+        # because §4.1 put the subject in the middle and the middle therefore
+        # had to be excluded. §4.1.2 moved the greeter's subject off centre,
+        # so the middle is now the thing being protected and light there is
+        # the failure.
         check(
-            "light in the subject column passes",
-            comp(rc),
-            f"surround mean {rc.safe_field.surround[0]:.4f}",
+            "light in the centre fails, because that is where the UI goes",
+            not comp(rc),
+            f"centre mean {rc.safe_field.column[0]:.4f}",
         )
         check(
-            "the same light beside the subject fails",
-            not comp(ro),
-            f"surround mean {ro.safe_field.surround[0]:.4f}",
+            "the same light off to one side passes",
+            comp(ro),
+            f"centre mean {ro.safe_field.column[0]:.4f}",
         )
         # A wallpaper has no clock on it. Reporting a composition miss and a
         # 90% scrim against one is not an extra number, it is a failure that

@@ -90,6 +90,44 @@ the thesis names, arriving through the back door.
 > violet. Near-black field below and around the subject. Visible film grain.
 > 16:9. No text, no logos, no watermark.
 
+#### 4.1.2 "Centred" is wrong for the greeter, and it is arithmetic
+
+The blockquote above asks for *"one subject, centred, filling the
+upper-middle of the frame"*. `tools/nightshade-gen/generate.py` no longer
+says that, and the disagreement is deliberate and recorded here rather than
+left to be discovered.
+
+`scene_check.py`'s `ui_regions` places the clock at `cy-220`, the date at
+`cy-130`, the username at `cy-40` and the input field at `cy+40`. The UI
+occupies the middle of the frame from well above centre to just below it.
+§2.2 asks for that region to be dark enough to read white text on. §4.1 asks
+for a lit subject to be exactly there.
+
+They are the same rectangle, and across eighteen candidates generated on
+2026-11-08 the two were never both satisfied. §5.3's split made the failure
+legible — it is confined to the subject's own column — and the candidate that
+finally passed composition, `pond-warm-b-s11` at 1.74% above 0.25, still
+demanded a **90% scrim**, because its subject sits where the username does.
+
+A subject placed off to one side costs the composition nothing and hands the
+UI an empty column. So the greeter's constant part now reads:
+
+> one subject placed well off to one side of the frame, never in the middle.
+> the subject high in its half of the picture, against darkness. the whole
+> central band of the frame empty near-black space from top to bottom.
+
+and §4.2's first bullet, which used to confine every bright area to the top
+of a frame whose subject was centred, now confines them to one side instead —
+which is the same prohibition without the self-contradiction.
+
+**This does not apply to the desktop**, which has no UI on it and whose
+constant part is unchanged.
+
+**It also means scene-02's candidates cannot be reproduced from this
+document.** Their prompts used the previous wording. They are recoverable
+because every run writes the string it actually used (§3), which is the first
+time that provision has earned its keep.
+
 **This paragraph is a greeter brief, and §4.2 entirely so.** §1 says why
 without quite saying the consequence: *"A scene is not a wallpaper; it is the
 thing a clock, a date, a username and a password field sit on top of."* Three
@@ -323,7 +361,7 @@ They were one number and should not have been:
 A candidate that passes legibility but fails composition is the interesting
 case: it will work, and it is not nightshade.
 
-#### 5.3.1 Composition is measured around the subject, not through it
+#### 5.3.1 Composition is measured in the centre, where the UI goes
 
 The composition clause first averaged over the whole central 60×70%, and in
 that form it never passed. Not once, across every candidate of every scene.
@@ -341,10 +379,25 @@ within noise — and they are **opposites**: the master's light is entirely in
 its subject and its surround is near-black, the loop's surround is the bright
 part. A measure that calls those two the same is measuring the wrong region.
 
-So a centred column of 40% of the safe field's width — 24% of the frame — is
-excluded, and the clause is gated on what is left. The column and the whole
-field are still reported, because a subject that has grown too bright is a
-real failure and the column is where it shows.
+So a centred column of 40% of the safe field's width — 24% of the frame — was
+excluded, and the clause gated on what was left.
+
+**That lasted an afternoon, and §4.1.2 replaced it with something simpler.**
+The split made the failure legible without removing its cause: §4.1 still
+asked for a lit subject in the rectangle §2.2 wanted dark. Moving the
+greeter's subject off centre removes the cause, and once the subject is not in
+the middle, the middle is simply the thing to measure — which is the clause
+§4.2's first bullet always stated, *"no bright element in the centre of the
+frame"*.
+
+The clause is therefore **gated on the central column** and the flanks are
+reported. The flank figure is not decoration: it catches a frame that passes
+only because it is dark everywhere, and A8 already noted that scrim alone
+rewards emptiness.
+
+The table below is kept as it was measured, under the split, because it is
+what justified the change of subject placement rather than the change of
+gating.
 
 | | whole field | subject column | surround (gated) |
 |---|---|---|---|
@@ -353,9 +406,19 @@ real failure and the column is where it shows.
 | scene-02 `shrine-b-s7` | 0.0992 | 0.1726 | **0.0503** |
 | scene-02 `shrine-s1` | 0.1653 | 0.1700 | **0.1623** |
 
-The split is covered by `--self-test`, which builds two frames carrying the
-same light in the same safe field at different places, and asserts that the
-whole-field number cannot separate them while the surround number does.
+`--self-test` builds two frames carrying the same light in the same safe field
+at different places, and asserts that the whole-field number cannot separate
+them while the gated number does. Those two assertions were inverted when the
+gating moved, which is the clearest statement of what changed: light in the
+centre used to pass and now fails, light off to one side used to fail and now
+passes.
+
+A third assertion was **not** inverted, and the test refused the attempt. A
+small bright disc on the date line still passes composition, reading 0.0167
+over the column against a 0.06 limit while sitting at 0.99 on the date line
+itself. That is §5.2's lesson intact — *"an average over a large safe field
+hides a small bright thing"* — and it is why legibility is measured per
+element and not inferred from this clause.
 
 **On the bright-fraction threshold, written and then corrected the same day.**
 
