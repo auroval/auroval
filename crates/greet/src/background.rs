@@ -829,8 +829,21 @@ mod tests {
         assert_eq!((still.width, still.height), (256, 256));
 
         // And nothing further arrives: one decode per run, not one per frame.
+        //
+        // `recv_timeout` rather than `try_recv`, and either error accepted.
+        // The first version demanded `Disconnected`, which is a race it won
+        // on a developer's machine and lost on a CI runner: between the
+        // receiver taking the value and the decode thread actually ending,
+        // the channel is `Empty` and not yet disconnected. Neither of those
+        // is a second decode, which is the only thing this is asserting.
         match &bg.state {
-            State::Pending(rx) => assert!(matches!(rx.try_recv(), Err(TryRecvError::Disconnected))),
+            State::Pending(rx) => {
+                let second = rx.recv_timeout(Duration::from_millis(500));
+                assert!(
+                    second.is_err(),
+                    "a second background arrived; the decode ran more than once"
+                );
+            }
             _ => unreachable!(),
         }
         std::fs::remove_dir_all(&dir).ok();
