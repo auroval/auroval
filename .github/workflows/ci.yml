@@ -40,6 +40,12 @@ jobs:
               - 'rust-toolchain.toml'
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
+              # The system package list, which the composite action installs.
+              # It lives under .devcontainer/ only because that is the Docker
+              # build context, so it would otherwise reach just the
+              # devcontainer job -- and a wrong list shows up as failing
+              # render tests in `test`, which is the job that has to rerun.
+              - '.devcontainer/system-deps.txt'
             docs:
               - '**/*.md'
               - '.github/scripts/check-doc-links.py'
