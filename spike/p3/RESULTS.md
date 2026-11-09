@@ -196,9 +196,73 @@ The display argument is the nested compositor's socket, which is the one in
 `$env.XDG_RUNTIME_DIR` that was not there before. **The script refuses to run
 against `$env.WAYLAND_DISPLAY`**, and `auroval-lock rehearse` refuses to start
 at all without `AUROVAL_LOCK_REHEARSAL=1`, and the harness always passes
-`AUROVAL_LOCK_SECONDS` so that a mistake releases itself. Those three are
-there because `ext-session-lock-v1` fails closed and the person most likely to
-lock their own screen with this is whoever is least expecting it.
+`AUROVAL_LOCK_SECONDS` so that a run is bounded with nobody at the keyboard.
+Since L9 that deadline **exits without unlocking**, so what bounds is the run
+and not the lock: the nested compositor is left locked and §6 is how it is
+handed back. Those three are there because `ext-session-lock-v1` fails closed
+and the person most likely to lock their own screen with this is whoever is
+least expecting it.
 
 `auroval-lock probe` is safe anywhere: it binds the manager global and never
 sends `lock`.
+
+## 6. The failure round — what happens when the things around it break
+
+```nu
+nu spike/p3/failure-round.nu wayland-2
+```
+
+P3c's unattended half, run 2026-11-09 against a nested Hyprland 0.57.1 at
+1259x678 scale 1. Five cases, each asserting that the locker **says what
+broke, falls back, reaches `locked` and presents a frame**:
+
+| case | requirement | what it did |
+|---|---|---|
+| config with a syntax error | L6 | named the file and the line, used defaults, locked at 5229 ms |
+| config absent | L6 | said `No such file or directory`, used defaults, locked at 5000 ms |
+| config unreadable, mode 000 | L6 | said `Permission denied`, used defaults, locked at 5000 ms |
+| no GStreamer plugins | L5 | `no glsinkbin`, fell to the still, decoded it in 58 ms, locked |
+| clip truncated mid-playback | L5 | played, then `Stream contains no data.`, fell to the still **while holding the lock**, did not panic |
+
+The clip case **truncates rather than deletes**, and the difference is the
+whole test: unlinking an open file changes nothing a reader can see, so a
+round that deleted it would have proved only that Linux works.
+
+**What this round cannot show is that any of these screens unlocks**, because
+unlocking needs a password typed by a person. It does not type one: L10
+forbids retrying, `pam_faillock` counts to three, and a wrong password left
+behind by a harness is a tally nobody asked for. The script prints the
+attended step instead.
+
+### The recovery path, which is the compositor's and not ours
+
+The question the round was really run to answer: **what gets you back in when
+the locker dies holding the screen?** Asked by killing it with `SIGKILL` on a
+held nested lock.
+
+- Hyprland does **not** leave a black screen. It draws its own page — *"it
+  looks like you locked your screen but the lockscreen app died"* — and names
+  the way out: `hyprctl --instance 0 eval 'hl.clear_crashed_lockscreen()'`
+  from another tty.
+- That call **works**. The lock is released and the desktop comes back.
+- A second `auroval-lock` **cannot take over**. Started against a compositor
+  still holding the dead client's lock, it is sent `finished` and locks
+  nothing.
+
+That last one settles a design question before anything was built for it: **a
+supervisor that restarts the binary on a crash is not a way out.** It would
+restart a process the compositor refuses. The way out is the compositor's, it
+is one command, and it needs a second tty — which is the same shape as the
+greeter's rollback in `deploy/TRIAL.md`, and the reason the locker can be
+dogfooded at all.
+
+### One bug, found by asserting the obvious
+
+L8 asks that a withdrawn or refused lock be *"reported, and exits non-zero"*.
+It reported, and exited **0**. The same run printed `cpu 130.3% of one core`
+and `R7 ceiling — OVER BUDGET` for a run that had been declined the lock and
+presented no frames at all: 0.03 s of startup over a wall clock that had
+barely started. Both are fixed — `finished` now exits **3**, and a run with no
+frames in it gets no budget verdict — and both are the shape of the summary
+that denied its own unlock a day earlier: a line that was true once, stated as
+a constant, with nothing reading it back.

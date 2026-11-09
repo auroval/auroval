@@ -99,10 +99,15 @@ const USAGE: &str = "usage: auroval-lock <probe|rehearse>
   rehearse  bring up a real ext-session-lock surface, play the background on
             it, draw the clock and the date, and report the present cost.
 
-THIS BINARY CANNOT UNLOCK A SESSION. There is no PAM code in it and no
-authentication of any kind -- the input field is drawn, and what you type
-into it goes nowhere. See the module doc comment for why, and
-docs/prd/lock.md for what is still missing.
+THIS BINARY UNLOCKS A SESSION, as of 2026-11-09. The paragraph here used to
+say the opposite -- `no PAM code in it and no authentication of any kind` --
+which was true of the skeleton and false from the commit that added
+crates/lock/src/pam.rs, while the text below went on to document
+AUROVAL_LOCK_PAM_SERVICE two paragraphs later. What you type is handed to
+the PAM stack named below, once per deliberate submission (L10).
+
+exit codes: 0 locked and released, 1 a failure of this program,
+2 a refusal to start, 3 the compositor declined the lock (L8).
 
 `rehearse` LOCKS YOUR SCREEN. ext-session-lock-v1 fails closed: if this
 process dies while the session is locked, the session stays locked. So:
@@ -306,8 +311,17 @@ fn rehearse() {
     eprintln!("auroval-lock: There is NO escape key. Your password unlocks it; nothing else does.");
     eprintln!("auroval-lock: No signal unlocks it either -- not even SIGKILL (L11).");
     let cfg = load_config();
-    if let Err(e) = lock::run(cfg) {
-        eprintln!("auroval-lock: {e}");
-        std::process::exit(1);
+    match lock::run(cfg) {
+        Err(e) => {
+            eprintln!("auroval-lock: {e}");
+            std::process::exit(1);
+        }
+        // L8 asks that a withdrawn or refused lock be reported *and* exit
+        // non-zero. It reported and exited 0 until `spike/p3/failure-round.nu`
+        // asked. Its own code rather than 1, because the two mean different
+        // things to anything that starts this: 1 is a locker that broke, 3 is
+        // a compositor that would not have it.
+        Ok(lock::Outcome::Declined) => std::process::exit(3),
+        Ok(lock::Outcome::Locked) => {}
     }
 }

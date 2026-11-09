@@ -123,9 +123,11 @@ def main [display: string, seconds: int = 40] {
             proc: "auroval-lock"
             cmd: "./target/release/auroval-lock"
             args: ["rehearse"]
-            # Its own deadline, so it releases the lock on the way out
-            # instead of leaving the nested session locked for whatever runs
-            # next. `timeout` is only the backstop behind it.
+            # Its own deadline, which since L9 ends the process WITHOUT
+            # unlocking -- so the nested compositor is left locked and the
+            # locker runs last on purpose. `timeout` is only the backstop
+            # behind it. (This comment said the deadline "releases the lock
+            # on the way out" for a day after that stopped being true.)
             extra: {AUROVAL_LOCK_REHEARSAL: "1", AUROVAL_LOCK_SECONDS: ($seconds | into string)}
             timeout: ($seconds + 15)
         }

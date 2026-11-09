@@ -189,6 +189,24 @@ struct Screen {
 /// PAM stack or a password. The case that matters is `(true, n)`: the line it
 /// replaced said no unlock was possible, and printed that two lines after the
 /// run had unlocked.
+/// What the closing summary says about R7's ceiling.
+///
+/// A free function, and conditional on a frame, because the run that found
+/// this printed `cpu 130.3% of one core` and `OVER BUDGET` for a run that
+/// was declined the lock and never presented anything at all: 0.03 s of
+/// startup over a wall clock that had barely started. A budget verdict on a
+/// run with no frames in it is noise that reads like a finding.
+fn r7_verdict(presented: bool, pct: f64) -> String {
+    if !presented {
+        return "no verdict — nothing was presented".into();
+    }
+    if pct <= 50.0 {
+        "50% of one core — within budget".into()
+    } else {
+        "50% of one core — OVER BUDGET".into()
+    }
+}
+
 fn unlock_summary(accepted: bool, denials: usize) -> String {
     match (accepted, denials) {
         (true, 0) => "authenticated and unlocked".into(),
@@ -266,6 +284,10 @@ pub struct Lock {
     /// True once `unlock` has been called, so it is not called twice: the
     /// protocol makes a second `unlock_and_destroy` an error.
     released: bool,
+    /// True once `finished` arrived: the compositor declined the lock. Read
+    /// by `run` to end with `Outcome::Declined`, so the exit code says what
+    /// the two printed lines already said.
+    declined: bool,
 
     /// How many submissions PAM denied, and whether one was ever accepted.
     ///
@@ -344,6 +366,7 @@ impl Lock {
             locale: auroval_ui::clock::locale_from_env(),
             done: false,
             released: false,
+            declined: false,
             denials: 0,
             accepted: false,
             // probe locks nothing, so these are inert by construction: it
@@ -394,7 +417,23 @@ fn own_cpu_seconds() -> f64 {
 }
 
 /// Lock the session and draw on it until something releases the lock.
-pub fn run(cfg: Config) -> Result<(), String> {
+/// How a run ended, for callers that must exit differently.
+///
+/// Added because a run that locked nothing exited 0. L8 asks that a
+/// `finished` be *"reported, and exits non-zero"*, and the report was there
+/// while the exit code said the run had gone fine -- which is the same class
+/// of mistake as a summary that denies its own unlock, one layer further
+/// out: `spike/p3/failure-round.nu` asserts it now, and the assertion failed
+/// the first time it was asked.
+pub enum Outcome {
+    /// The compositor locked the session and this process held it.
+    Locked,
+    /// `finished`: the compositor declined or withdrew the lock. Nothing was
+    /// ever locked and nothing was drawn.
+    Declined,
+}
+
+pub fn run(cfg: Config) -> Result<Outcome, String> {
     let conn = Connection::connect_to_env().map_err(|e| format!("no Wayland display: {e}"))?;
     let (globals, queue) =
         registry_queue_init::<Lock>(&conn).map_err(|e| format!("registry: {e}"))?;
@@ -467,6 +506,7 @@ pub fn run(cfg: Config) -> Result<(), String> {
         locale: auroval_ui::clock::locale_from_env(),
         done: false,
         released: false,
+        declined: false,
         denials: 0,
         accepted: false,
         service: service.clone(),
@@ -543,7 +583,10 @@ pub fn run(cfg: Config) -> Result<(), String> {
     // this is how an unlock that was requested still leaves a locked screen.
     let _ = conn.roundtrip();
     lock.summarise();
-    Ok(())
+    if lock.declined {
+        return Ok(Outcome::Declined);
+    }
+    Ok(Outcome::Locked)
 }
 
 impl Lock {
@@ -791,7 +834,9 @@ impl Lock {
                 "auroval-lock: memory       {}",
                 match n {
                     Some(true) => "GLMemory — the frame was already a texture here",
-                    Some(false) => "NOT GLMemory — copied through system memory; R7 is at risk",
+                    Some(false) if self.first_frame.is_some() =>
+                        "NOT GLMemory — copied through system memory; R7 is at risk",
+                    Some(false) => "NOT GLMemory — and nothing was presented through it",
                     None => "— (no video in the chain)",
                 }
             );
@@ -806,12 +851,8 @@ impl Lock {
             wall
         );
         eprintln!(
-            "auroval-lock: R7 ceiling   50% of one core — {}",
-            if 100.0 * cpu / wall.max(0.001) <= 50.0 {
-                "within budget"
-            } else {
-                "OVER BUDGET"
-            }
+            "auroval-lock: R7 ceiling   {}",
+            r7_verdict(self.first_frame.is_some(), 100.0 * cpu / wall.max(0.001))
         );
         eprintln!(
             "auroval-lock: unlock       {}",
@@ -848,6 +889,7 @@ impl SessionLockHandler for Lock {
     fn finished(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _lock: SessionLock) {
         eprintln!("auroval-lock: `finished` — the compositor declined or withdrew the lock.");
         eprintln!("auroval-lock:   another client may already hold one. Nothing was locked.");
+        self.declined = true;
         // Not `release()`: calling `unlock_and_destroy` without having had
         // `locked` is a protocol error. Dropping the last clone reaches
         // sctk's `Drop`, which sends `destroy` — the correct request here,
@@ -1181,6 +1223,27 @@ mod tests {
             }
         }
         assert_eq!(attempts, 1);
+    }
+
+    /// The regression `r7_verdict` exists for: a run the compositor had
+    /// declined reported `cpu 130.3% of one core` and `OVER BUDGET`, from
+    /// 0.03 s of startup over a wall clock that had barely begun. It had
+    /// presented no frames at all, so there was no present path to be over
+    /// anything.
+    #[test]
+    fn a_run_with_no_frames_gets_no_budget_verdict() {
+        assert_eq!(
+            r7_verdict(false, 130.3),
+            "no verdict — nothing was presented"
+        );
+        assert_eq!(r7_verdict(false, 0.1), "no verdict — nothing was presented");
+    }
+
+    #[test]
+    fn a_run_that_drew_is_judged_against_the_ceiling() {
+        assert!(r7_verdict(true, 17.3).ends_with("within budget"));
+        assert!(r7_verdict(true, 50.0).ends_with("within budget"));
+        assert!(r7_verdict(true, 50.1).ends_with("OVER BUDGET"));
     }
 
     /// The regression this function exists for: the first real rehearsal, on
