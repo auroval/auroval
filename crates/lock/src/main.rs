@@ -69,7 +69,7 @@
 //! here results in us failing secure."*
 //!
 //! The honest summary: run `rehearse` in a nested compositor, which is what
-//! `spike/p3/nested.conf` is for. On the session you are sitting in it will
+//! `spike/p3/nested.lua` is for. On the session you are sitting in it will
 //! lock your screen, and now the only way back is the right password —
 //! there is no key and no timer. If PAM is misconfigured there is no way back
 //! at all except killing the compositor from another VT, which ends the

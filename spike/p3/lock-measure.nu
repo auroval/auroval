@@ -28,13 +28,15 @@
 # at the end of a run and has to be closed. The measurement is unaffected:
 # this script waits for the process to exit, which it still does.
 #
-# even a mistake releases itself.
+# What that costs the operator: close the nested compositor's window when the
+# run is done. What it would cost on the wrong compositor is the session, so
+# the refusal below is the part of this script to keep working.
 #
 # usage:
 #   nu spike/p3/lock-measure.nu <nested WAYLAND_DISPLAY> [seconds]
 #
 # Bring the nested compositor up first, from the session you are in:
-#   Hyprland -c spike/p3/nested.conf
+#   Hyprland -c spike/p3/nested.lua
 # and read its socket out of `ls $env.XDG_RUNTIME_DIR | where name =~ wayland`
 # -- it is the one that was not there before.
 

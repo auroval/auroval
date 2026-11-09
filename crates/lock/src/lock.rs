@@ -183,6 +183,20 @@ struct Screen {
     /// `view::signature` of the last frame drawn here. `None` forces a frame.
     last: Option<String>,
 }
+/// What the closing summary says about authentication, from what happened.
+///
+/// A free function so the four cases can be asserted without a compositor, a
+/// PAM stack or a password. The case that matters is `(true, n)`: the line it
+/// replaced said no unlock was possible, and printed that two lines after the
+/// run had unlocked.
+fn unlock_summary(accepted: bool, denials: usize) -> String {
+    match (accepted, denials) {
+        (true, 0) => "authenticated and unlocked".into(),
+        (true, n) => format!("authenticated and unlocked after {n} denied"),
+        (false, 0) => "never attempted — this run ended without a submission".into(),
+        (false, n) => format!("still locked — {n} denied, none accepted"),
+    }
+}
 
 /// Whether a Return should become a `pam_authenticate` call.
 ///
@@ -253,6 +267,18 @@ pub struct Lock {
     /// protocol makes a second `unlock_and_destroy` an error.
     released: bool,
 
+    /// How many submissions PAM denied, and whether one was ever accepted.
+    ///
+    /// These exist because the closing summary used to end with a line
+    /// claiming `unlock NONE — nothing here can authenticate anybody`, which
+    /// was true of the skeleton and became a lie the moment PAM landed: the
+    /// first real rehearsal printed it two lines after `authenticated;
+    /// unlocking`. A report that contradicts the run it is reporting on is
+    /// worse than no report, so the summary now reads these rather than a
+    /// constant.
+    denials: usize,
+    accepted: bool,
+
     /// The PAM service name. `auroval-lock`, written by pc-setup, which is
     /// `auth include login` and deliberately has no `account` stanza --
     /// see `pam.rs` for why nothing here calls `pam_acct_mgmt`.
@@ -318,6 +344,8 @@ impl Lock {
             locale: auroval_ui::clock::locale_from_env(),
             done: false,
             released: false,
+            denials: 0,
+            accepted: false,
             // probe locks nothing, so these are inert by construction: it
             // never reaches `submit`, and `release` is unreachable without a
             // `session_lock`. The service and user are still the real ones so
@@ -439,6 +467,8 @@ pub fn run(cfg: Config) -> Result<(), String> {
         locale: auroval_ui::clock::locale_from_env(),
         done: false,
         released: false,
+        denials: 0,
+        accepted: false,
         service: service.clone(),
         user: user.clone(),
         auth: Auth::Typing,
@@ -568,6 +598,7 @@ impl Lock {
                     eprintln!("auroval-lock: pam: {i}");
                 }
                 eprintln!("auroval-lock: authenticated; unlocking");
+                self.accepted = true;
                 self.release();
             }
             pam::Outcome::Denied { reason, info } => {
@@ -575,6 +606,7 @@ impl Lock {
                     eprintln!("auroval-lock: pam: {i}");
                 }
                 eprintln!("auroval-lock: denied: {reason}");
+                self.denials += 1;
                 self.ui.notice = Some(auroval_ui::ui::Notice {
                     text: reason,
                     kind: auroval_ui::ui::NoticeKind::Error,
@@ -781,7 +813,10 @@ impl Lock {
                 "OVER BUDGET"
             }
         );
-        eprintln!("auroval-lock: unlock       NONE — nothing here can authenticate anybody");
+        eprintln!(
+            "auroval-lock: unlock       {}",
+            unlock_summary(self.accepted, self.denials)
+        );
     }
 }
 
@@ -1146,5 +1181,42 @@ mod tests {
             }
         }
         assert_eq!(attempts, 1);
+    }
+
+    /// The regression this function exists for: the first real rehearsal, on
+    /// 2026-11-09, denied one password and accepted the next, and then printed
+    /// `unlock NONE — nothing here can authenticate anybody` as its closing
+    /// line. Whatever the summary says, it may not contradict the run.
+    #[test]
+    fn the_summary_does_not_deny_an_unlock_that_happened() {
+        assert_eq!(unlock_summary(true, 0), "authenticated and unlocked");
+        assert_eq!(
+            unlock_summary(true, 1),
+            "authenticated and unlocked after 1 denied"
+        );
+        for denials in 0..4 {
+            assert!(
+                !unlock_summary(true, denials).contains("NONE"),
+                "a run that unlocked must not be reported as unable to"
+            );
+        }
+    }
+
+    /// And the other side of it: a run that never unlocked must not read as
+    /// though it did. The locker is left holding the screen in that case,
+    /// which is the state the operator has to be told about.
+    #[test]
+    fn the_summary_does_not_claim_an_unlock_that_did_not_happen() {
+        assert_eq!(
+            unlock_summary(false, 0),
+            "never attempted — this run ended without a submission"
+        );
+        assert_eq!(
+            unlock_summary(false, 2),
+            "still locked — 2 denied, none accepted"
+        );
+        for denials in 0..4 {
+            assert!(!unlock_summary(false, denials).contains("unlocked"));
+        }
     }
 }
