@@ -39,6 +39,19 @@
 //! than broken, and the untidiness is recorded instead of hidden. A locker
 //! constructs `UiState` with an empty session list; see N3 in
 //! `docs/prd/lock.md` for what to do about it, and when.
+//!
+//! **`rotation` is the mirror case: it stayed in `crates/greet` on purpose.**
+//! It picks between R9's background candidates and remembers its place in
+//! `/var/lib/auroval/last-background`, beside R4's login memory. That
+//! directory is `drwxr-x--- greeter greeter`, so a locker running as the
+//! logged-in user cannot read the index, never mind advance it — the module
+//! would compile here and then fail for everyone who called it. It reads
+//! nothing from this crate but [`config::Config::background`]'s type, which
+//! is a plain `Vec<Vec<PathBuf>>` and needs no crate in common. So the line
+//! between the two crates is not "what draws" against "what logs in": it is
+//! **what the lock screen's own user ID can reach**. `sessions` is here
+//! because a type dependency forced it; `rotation` is not, because a file
+//! mode forbade it. See N7 in `docs/prd/lock.md`.
 
 pub mod background;
 pub mod clock;

@@ -183,18 +183,31 @@ fn probe() {
                     .replace("locale ", "locale       ")
             );
             println!("config       {}", config_path().display());
-            println!(
-                "background   {}",
-                if cfg.background.is_empty() {
-                    "none configured — the solid colour is all R9 has left".to_string()
-                } else {
-                    cfg.background
-                        .iter()
-                        .map(|p| p.display().to_string())
-                        .collect::<Vec<_>>()
-                        .join(" -> ")
+            // The pool, and which rung of which candidate this binary would
+            // actually show. `greet probe` prints the same pool with the
+            // rotation state beside it; this one deliberately cannot, because
+            // the state is unreadable to the user this process runs as. What
+            // it prints instead is the truth for a locker: candidate 0.
+            match cfg.background.len() {
+                0 => println!("background   none configured — the solid colour is all R9 has left"),
+                n => {
+                    println!(
+                        "background   {n} candidate{}, this binary shows the first and never rotates",
+                        if n == 1 { "" } else { "s" }
+                    );
+                    for (i, chain) in cfg.background.iter().enumerate() {
+                        println!(
+                            "  [{i}]{}       {}",
+                            if i == 0 { " shown" } else { "      " },
+                            chain
+                                .iter()
+                                .map(|p| p.display().to_string())
+                                .collect::<Vec<_>>()
+                                .join(" -> ")
+                        );
+                    }
                 }
-            );
+            }
             println!("unlock       NONE — this binary cannot authenticate anybody");
             println!(
                 "result       {}",

@@ -320,7 +320,17 @@ pub fn run(cfg: Config) -> Result<(), String> {
     // R9's chain, started before the lock is asked for so the first locked
     // frame has something on it. The solid colour shows until the decode
     // lands, exactly as in the greeter.
-    let background = Background::start(&cfg.background);
+    //
+    // THE FIRST CANDIDATE, NOT A ROTATED ONE. `background` is a pool of
+    // chains since #66, and `greet` picks between them with `rotation`, which
+    // remembers its place in `/var/lib/auroval/last-background`. That
+    // directory is `drwxr-x--- greeter greeter`: a locker runs as the
+    // logged-in user and cannot read it, never mind advance it. So the pool's
+    // first candidate is what a locker shows, every time, and the two screens
+    // agree only when the greeter happens to be on candidate 0. Whether a
+    // locker should rotate at all, and against what state, is N1 in the PRD.
+    let chain: &[std::path::PathBuf] = cfg.background.first().map_or(&[], |c| c.as_slice());
+    let background = Background::start(chain);
     for p in background.problems() {
         eprintln!("auroval-lock: {p}");
     }

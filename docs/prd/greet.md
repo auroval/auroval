@@ -242,8 +242,8 @@ readback, has not been measured on that hardware. That is a P4 question.
 Reproduce with `spike/p0/greeter-decode-test.nu`; full output in
 `spike/p0/RESULTS.md`.
 
-**C15 — the greeter has nowhere to cache, and it costs about 0.9 s of every
-login.** greetd's greeter user has `HOME=/`, which is not writable. GStreamer
+**C15 — the greeter has nowhere to cache, and two cold caches cost 1.9 s of
+the first login.** greetd's greeter user has `HOME=/`, which is not writable. GStreamer
 therefore cannot persist its plugin registry and rescans every plugin on every
 start; fontconfig reports *"No writable cache directories"* for the same reason.
 Measured from process start to GStreamer ready, as the `greeter` user:
@@ -253,6 +253,42 @@ Measured from process start to GStreamer ready, as the `greeter` user:
 | no writable cache (the default) | **1018 ms** |
 | writable cache, registry absent | 1011 ms |
 | writable cache, registry warm | **93 ms** |
+
+**Measured again 2026-11-09 on the greeter's own path, and it is worse than
+the figures above — and it is two caches, not one.** R16's harness under
+`cage` on a real VT, after the media path landed: **cold first frame 1874 ms,
+warm 19 ms**.
+
+That 1874 ms is not a fourth row of the table and must not be read as one. The
+table is process start to *GStreamer ready*; this is process start to *first
+presented frame*, which is the number a person experiences.
+
+A second run with the shader cache warm and the registry cleared came out at
+**835 ms**, which splits it:
+
+| | | |
+|---|---|---|
+| GStreamer plugin registry | `/var/cache/auroval/gst-registry.bin` | ~816 ms |
+| nvidia GL shader cache | `/var/cache/auroval/nvidia/GLCache` | ~1039 ms |
+| the greeter itself | | 19 ms |
+
+**The registry half is deployment, and is fixed.** `deploy/install.nu` warms
+it as `greeter` at install time, so a fresh install does not pay the scan.
+
+**The shader half cannot be warmed there, and that is measured rather than
+assumed.** With a fresh cache each time, `auroval-greet videoprobe` compiles
+two GL programs and 60 KB, `snapshot` compiles the same two, and both of them
+together still compile two — while the real greeter under `cage` compiles
+**three, and 352 KB**. The third program accounts for 292 KB of that, and both
+headless commands render off-screen while the greeter renders to a real DRM
+surface through cage's own GL display. The expensive program is the one that
+needs the surface, so nothing available at install time can compile it. Running
+`cage` from a unit before `greetd.service` is two things fighting over DRM
+master, not a fix.
+
+Both caches persist across reboots, so this is a cost per invalidation —
+a driver update, a gstreamer update — and not per boot. **Accepted as such,
+provisionally, 2026-11-09.** Issue #77 holds it.
 
 **C16 — the greeter cannot reach a sound device at all, today.** Checked on
 the target machine on 2026-11-07, because R23 asks for ambient audio and this
@@ -449,7 +485,7 @@ rendering and plumbing only.
 |---|---|---|---|
 | R7 | MUST | Play a looping video background, hardware-decoded, at the output's native resolution and refresh rate. | A 1440p H.264 loop holds the output's refresh rate with no dropped frames over 60s, measured. **Budget, revised 2026-11-07 after Q5.** *Decode:* no more than 5% of one core; P0 measured 2.5% with frames in `memory:CUDAMemory`, and a software decode of the same clip costs 36%. That ceiling stands. *The whole present path, decode included:* **no more than 50% of one core at 1440p60**, with frames never leaving the GPU. Measured under `cage` on a free VT — the greeter's own context — over five alternating pairs at a held 60 fps: the GL path averages **33.7%** (26.2–41.7) and a `wl_shm` readback averages **68.8%** (67.4–69.3). So the ceiling sits above the worst observed GL run with room, and the readback path fails it, which is the point. The ratio matters more than either figure: presentation costs more than an order of magnitude beyond the 2.5% decode above it, so a decode-only budget constrains the cheap half. An earlier draft set this same 50% from a measurement taken inside a live desktop session and it was withdrawn, because the same binary read 44% there on a quiet machine and 60% on a busy one. See [`spike/q5/RESULTS.md`](../../spike/q5/RESULTS.md). |
 | R8 | MUST | Loop without a visible seam. | Frame-to-frame diff across the loop boundary is no larger than between two ordinary consecutive frames. |
-| R9 | MUST | Fall back, in order, to still image then solid colour, when decode is unavailable. | With GStreamer plugins made unavailable, the greeter still renders and still logs in; the fallback is logged, not silent. **The chain is expressed as a list**, settled 2026-11-08: `background` takes a path or a list of paths, tried in order, and an empty list — or one whose every entry fails — is the solid colour. A second `background_still` key was the alternative and was rejected: two keys can drift out of step with each other, and a list reads in the order this requirement states and generalises past two without inventing a third key. A bare string is read as a list of one, so a theme written before this still loads. |
+| R9 | MUST | Fall back, in order, to still image then solid colour, when decode is unavailable. | With GStreamer plugins made unavailable, the greeter still renders and still logs in; the fallback is logged, not silent. **The chain is expressed as a list**, settled 2026-11-08: `background` takes a path or a list of paths, tried in order, and an empty list — or one whose every entry fails — is the solid colour. A second `background_still` key was the alternative and was rejected: two keys can drift out of step with each other, and a list reads in the order this requirement states and generalises past two without inventing a third key. A bare string is read as a list of one, so a theme written before this still loads. **A pool of candidates, settled 2026-11-08:** an entry of `background` may itself be a list, which makes it a *candidate* rather than a rung, and `rotation` picks one candidate per launch. The two dimensions are deliberately different in kind -- a chain is ordered by degradation, so appending a background to a working chain never shows it, while a pool is ordered by nothing. Rotating over a chain would promote a still above a video, which is this requirement read backwards. R9 is untouched inside a candidate: each one still falls back along its own rungs to the solid colour. **`probe` reports the choice, settled 2026-11-09:** the pool, each rung's presence, which candidate was shown last, which comes next, and whether the rotation memory is writable. Read rather than chosen -- a diagnostic that advances the thing it reports cannot be run twice, and would change what the next real login shows. Writability is asked by creating and removing a sibling file, because on a machine that has never rotated there is no index to write back and inventing one would answer the question by changing it. |
 | R10 | MUST | Render one surface per output at that output's scale. | On two outputs of differing scale, text is sharp on both and neither is letterboxed or cropped. |
 | R11 | MUST | Reproduce hyprlock's geometry and typography — MesloLGS Nerd Font, the large clock, and the rounded input field at the desktop's own corner radius and rounding power. Colour comes from the active theme's palette, not from a fixed scheme. | Side-by-side with hyprlock at the same resolution, the font, the clock size and the input field's size and position are identical. **The corner deliberately is not**, and the old wording of this criterion ('size and rounding are identical') contradicted the requirement above it: the field takes the *desktop's* `rounding_power = 4`, and hyprlock v0.9.7 cannot express that at all — its binary contains no such option, only `dots_rounding`. Matching hyprlock's corner would mean failing R11's own words. Palette values match the active theme's table and are byte-identical across greeter, lock and desktop. **Measured 2026-11-08** against one capture of each at 2560x1440: field 340x56 at x 1110..1449, y 732..787 in both, to the half-pixel; clock first glyph 67 px wide against 68, cap height 109 against 110, vertical midpoint 497.0 against 497.5. Getting there cost three fixes — `font_size` is points and not pixels, centring counted the ascent and not the descent, and the date was not localised. The palette half is not measured yet. |
 | R12 | SHOULD | Support time-of-day or light/dark background variants (C9). | A config naming two sources renders the one matching the current time, verified by faking the clock. **Confirmed as Should by Q1**, which chose video loops as the subject: this is the clock making a moving background stay interesting, not a substitute for motion. A build that shipped only this and no loop would fail tenet 2. |
@@ -477,7 +513,7 @@ theme may require of itself more than the greeter requires of every theme.
 | R22 | MUST | Theme code must not be able to prevent login. A theme that errors, loops forever, allocates without bound, or tries to touch the filesystem, network or a process is stopped and the greeter continues on defaults, with the reason logged. | Four themes, each misbehaving in one of those ways, each yield a usable login. A theme calling `io.open`, `os.execute` or `require` fails at the call rather than succeeding. A theme looping forever is terminated by the instruction ceiling and does not delay the first prompt. |
 | R14 | MUST | In lock mode, fail closed. | `SIGKILL` while locked leaves the session locked, per C5. Verified deliberately, with a second TTY open. |
 | R15 | MUST | No media path reads from a user's home directory (C10). | With `/home/<user>` at mode 700, the configured background still renders. |
-| R16 | SHOULD | Appear within a budget of first frame after launch. | Measured from process start to first presented frame. **Budget: 500 ms** with a warm GStreamer registry. **Settled 2026-11-07, on a real VT:** `spike/p1e/cage-measure.nu` under `cage` on tty3, surface **2560×1440**, nvidia, kernel 7.3.1-1-cachyos — **median 8 ms over ten warm runs, worst 9 ms, cold 8 ms**. Receipt in `spike/p1e/cage-run-2026-11-07-2326.txt`. The budget holds with roughly sixty times the room. The number it replaces (243 ms, P0) was not a slow version of this measurement but a different one: a nested `cage` at 1255×674 inside a running Hyprland session was measuring the nesting. Two things this number does **not** cover. It is the still background only, so a video wallpaper and R23's audio are both outside it, and both pull in GStreamer. And C15's ~0.9 s registry rescan does not appear in it for exactly that reason: nothing on this path starts GStreamer yet, so the cold run came out at 8 ms — the same as warm, which is not a cheap rescan but a rescan that never happened. C15 therefore remains a deployment requirement held on P0's figures, not on this measurement; when the media path lands this has to be taken again, and the cold run is the one that tests C15. **Regression floor:** on this same path, anything over 100 ms is a fault worth finding, long before the 500 ms a user would notice — the spread across ten runs was 8–9 ms, so this floor is twelve times the observed worst case and will not fire on noise. |
+| R16 | SHOULD | Appear within a budget of first frame after launch. | Measured from process start to first presented frame. **Budget: 500 ms** with a warm GStreamer registry. **Settled 2026-11-07, on a real VT:** `spike/p1e/cage-measure.nu` under `cage` on tty3, surface **2560×1440**, nvidia, kernel 7.3.1-1-cachyos — **median 8 ms over ten warm runs, worst 9 ms, cold 8 ms**. Receipt in `spike/p1e/cage-run-2026-11-07-2326.txt`. The budget holds with roughly sixty times the room. The number it replaces (243 ms, P0) was not a slow version of this measurement but a different one: a nested `cage` at 1255×674 inside a running Hyprland session was measuring the nesting. Two things this number does **not** cover. It is the still background only, so a video wallpaper and R23's audio are both outside it, and both pull in GStreamer. And C15's registry rescan did not appear in it for exactly that reason: nothing on that path started GStreamer yet, so the cold run came out at 8 ms — the same as warm, which is not a cheap rescan but a rescan that never happened. **Taken again 2026-11-09, with the media path landed, and this time the cold run does test C15:** same script, same VT, same 2560×1440, kernel 7.3.3-1-cachyos, after the gstreamer 0.25 bump was installed — **warm median 19 ms over ten runs, worst 19 ms; cold first frame 1874 ms**. Receipts in `spike/p1e/cage-run-2026-11-09-0952.txt` and `-1019.txt`. **The budget governs the warm path, and that is a scope rather than a loosening.** Warm is every start except the first after a cache is invalidated, it holds with twenty-six times the room, and the 11 ms the media path costs is cheaper than C15's 93 ms figure suggested. The cold path is **over budget and accepted as such, provisionally, 2026-11-09**, because it is paid once per invalidation and not per boot: both caches live outside any home and survive reboots. Measured split, from a second run with the shader cache warm and the registry cleared — 835 ms — against the first with both cold: **plugin scan ~816 ms, GL shader compilation ~1039 ms, the greeter itself 19 ms.** `deploy/install.nu` warms the registry, so the scan is gone from a fresh install; the shader half cannot be warmed there and C15 says why. Issue #77 stays open on it. This row quotes both numbers rather than the median alone, because the median was never the number that could fail. **Regression floor:** on this same path, anything over 100 ms is a fault worth finding, long before the 500 ms a user would notice — the spread across ten runs was 8–9 ms, so this floor is twelve times the observed worst case and will not fire on noise. |
 | R23 | SHOULD | Play a short ambient sound while the login screen is up, supplied and configured by the theme, and silent by default. | With a theme that names a sound, it plays within a second of the first frame and stops when the session starts. With a theme that names none, nothing is opened and no device is held. The greeter still logs in when the sound device is absent, busy or unreadable, and says so in the log rather than failing. **Gated on C16:** the greeter currently cannot open a sound device at all, so this requirement is unbuildable until Q10 is answered. |
 
 ### WON'T (v1)
@@ -516,7 +552,7 @@ Each phase is independently useful and answers the question the next one needs.
   answered: hardware decode works as the greeter's own user with no session,
   at 1440p60, for 2.5% of one core, with 9.2× headroom. **P2 is cheap.** The
   spike also corrected C6's first half (the path is NVDEC, not VA-API), found
-  C15 (the greeter cannot cache, costing ~0.9 s per login), set the budgets in
+  C15 (the greeter cannot cache, costing 1.9 s on a first login with both caches cold), set the budgets in
   R7 and R16, and settled Q2. Code in `crates/`, receipts in `spike/p0/`.
 - **P1 — daily driver (weeks).** Still background, hyprlock's look, multi-output
   surfaces, session list, last-user memory. At the end of P1, SDDM comes off the

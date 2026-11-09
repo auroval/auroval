@@ -243,43 +243,6 @@ def subject_column_box(w: int, h: int) -> tuple[int, int, int, int]:
     return cx - cw // 2, y0, cx - cw // 2 + cw, y1
 
 
-def lower_centre_box(w: int, h: int) -> tuple[int, int, int, int]:
-    """The part of the subject column that sits below every UI element.
-
-    §4.2 is at its most specific about this region -- *"nothing important in
-    the lower centre"*, *"the lower middle of the frame is empty near-black
-    space"* -- and until this box existed nothing read it. The composition
-    clause excludes the whole subject column, legibility measures only where
-    UI lands and there is none down here, so a frame that was nothing but a
-    bright disc at 72% of the height cleared every clause the tool had.
-
-    It is measured and **not gated**, for a reason worth stating because the
-    obvious fix is the wrong one. Gating it rejects the reference: scene-01's
-    `master.png` reads 0.4329 mean and 55.12% bright here, the brightest
-    region of the picture, because its subject does not stop at the input
-    field -- it falls away into darkness below the *frame*, not below the UI.
-    Every scene-01 candidate fails this region; only scene-05 passes. So
-    either §4.2's sentence is not true of the artwork the theme is built on,
-    or the region needs a different threshold from the surround's. That is a
-    maintainer decision of the same kind as A8 and A10, and open item A12
-    carries the numbers.
-
-    Folding it into the surround instead was tried and is worse: it moves
-    `master.png` from 0.0561 to 0.1381 and undoes exactly what §5.3.1
-    achieved, which is one number no longer averaging two requirements that
-    want opposite things.
-
-    The top edge is the bottom of the lowest UI element, taken from
-    `ui_regions` so the two cannot drift. That element is the input field,
-    whose box is the field's own size rather than font metrics, so this bound
-    does not move with the font.
-    """
-    bottom = safe_field_box(w, h)[3]
-    cx0, _, cx1, _ = subject_column_box(w, h)
-    top = max(box[3] for box in ui_regions(w, h).values())
-    return cx0, min(top, bottom), cx1, bottom
-
-
 def ui_regions(W: int, H: int) -> dict[str, tuple[int, int, int, int]]:
     """The boxes the greeter's own text and input field occupy.
 
@@ -338,9 +301,6 @@ class SafeField:
     whole: tuple[float, float]
     column: tuple[float, float]
     surround: tuple[float, float]
-    # The part of the column below the UI: §4.2's region, which nothing else
-    # reads. See `lower_centre_box` for why it is reported and not gated.
-    lower: tuple[float, float]
 
 
 def measure_safe_field(img: Image.Image) -> SafeField:
@@ -351,15 +311,13 @@ def measure_safe_field(img: Image.Image) -> SafeField:
     whole = lum[y0:y1, x0:x1]
     column = lum[y0:y1, cx0:cx1]
     surround = np.concatenate([lum[y0:y1, x0:cx0], lum[y0:y1, cx1:x1]], axis=1)
-    lx0, ly0, lx1, ly1 = lower_centre_box(w, h)
-    lower = lum[ly0:ly1, lx0:lx1]
 
     def pair(a: np.ndarray) -> tuple[float, float]:
         if a.size == 0:
             return 0.0, 0.0
         return float(a.mean()), float((a > SAFE_BRIGHT_LEVEL).mean())
 
-    return SafeField(pair(whole), pair(column), pair(surround), pair(lower))
+    return SafeField(pair(whole), pair(column), pair(surround))
 
 
 def hue_via_matugen(src: Path, frame: Image.Image, tmp: Path) -> tuple[float, str, str] | None:
@@ -685,13 +643,26 @@ def evaluate(
 
     sf = measure_safe_field(frame)
     res.safe_field = sf
-    mean_lum, bright = sf.surround
+    # Gated on the CENTRAL COLUMN, which is where the UI sits and where
+    # §4.1.2 now forbids the subject to be.
+    #
+    # This measure was moved twice in one day and the history is the
+    # argument. It began on the whole safe field, where it never passed,
+    # because §4.1 asked for a lit subject in the same rectangle §2.2 wanted
+    # dark. It was then split -- gate the surround, exclude the subject's
+    # column -- which made the failure legible but kept the contradiction.
+    # §4.1.2 removed the contradiction instead, by moving the greeter's
+    # subject off centre, and once the subject is not in the middle the
+    # middle is simply the thing to measure. Simpler than either previous
+    # version, and it is the clause §4.2's first bullet always stated: "no
+    # bright element in the centre of the frame".
+    mean_lum, bright = sf.column
     comp_ok = mean_lum <= SAFE_MEAN_LUM_MAX and bright <= SAFE_BRIGHT_FRAC_MAX
     if surface == "greeter":
         res.clauses.append(
             Clause(
                 "§2.2",
-                "composition (around subject)",
+                "composition (centre dark)",
                 comp_ok,
                 f"mean luminance {mean_lum:.4f} (≤ {SAFE_MEAN_LUM_MAX}), "
                 f"{bright * 100:.2f}% above {SAFE_BRIGHT_LEVEL} (≤ {SAFE_BRIGHT_FRAC_MAX * 100:.0f}%)",
@@ -700,34 +671,19 @@ def evaluate(
                 else "no scrim on its own: this is a look clause, not a legibility one",
             )
         )
-        # Reported, never gated: the subject is supposed to be the lit thing,
-        # so a number here is context for the one above rather than a verdict.
-        # It earns its place by catching the opposite failure -- a subject
-        # that has gone so bright the surround stays dark only because
-        # everything else is.
+        # Reported, never gated: this is where the subject now lives, and it
+        # is supposed to be the lit thing. A number here is context for the
+        # one above. It earns its place by catching a frame that passes only
+        # because it is dark everywhere -- nightshade wants a subject, not an
+        # empty screen, and A8 already noted that scrim alone rewards
+        # emptiness.
         res.clauses.append(
             Clause(
                 "§4.1",
-                "subject column (not gated)",
+                "flanks, where the subject is (not gated)",
                 True,
-                f"mean {sf.column[0]:.4f}, {sf.column[1] * 100:.2f}% above {SAFE_BRIGHT_LEVEL}"
+                f"mean {sf.surround[0]:.4f}, {sf.surround[1] * 100:.2f}% above {SAFE_BRIGHT_LEVEL}"
                 f"   ·   whole field {sf.whole[0]:.4f}, {sf.whole[1] * 100:.2f}%",
-                "",
-            )
-        )
-        # §4.2's lower centre. Reported, not gated, and `lower_centre_box`
-        # says why at length: gating it rejects scene-01's own master. Before
-        # this line the region had no reader at all -- the composition clause
-        # excludes the column it sits in and no UI lands down there.
-        lm, lb = sf.lower
-        quiet = lm <= SAFE_MEAN_LUM_MAX and lb <= SAFE_BRIGHT_FRAC_MAX
-        res.clauses.append(
-            Clause(
-                "§4.2",
-                "lower centre (not gated)",
-                True,
-                f"mean {lm:.4f}, {lb * 100:.2f}% above {SAFE_BRIGHT_LEVEL}"
-                f"   ·   {'empty, as §4.2 asks' if quiet else 'lit — see A12'}",
                 "",
             )
         )
@@ -1026,11 +982,17 @@ def self_test() -> int:
         print("\n  self-test\n")
         res = evaluate(hard, tmp, hue_override=320.0)
 
-        mean_lum, _ = res.safe_field.surround
+        mean_lum, _ = res.safe_field.column
+        # Still passes, now that the clause is gated on the centre rather than
+        # on the surround, and for the reason §5.2 gives: "an average over a
+        # large safe field hides a small bright thing". This disc reads 0.0167
+        # over the column against a 0.06 limit while sitting at 0.99 on the
+        # date line itself. Inverting this assertion was tried when the gating
+        # moved and the test refused it, correctly.
         check(
             "composition passes, so only legibility can catch this",
             mean_lum < SAFE_MEAN_LUM_MAX,
-            f"mean {mean_lum:.4f} < {SAFE_MEAN_LUM_MAX}",
+            f"centre mean {mean_lum:.4f} < {SAFE_MEAN_LUM_MAX}",
         )
         date_lum, date_scrim = res.regions["date"]
         check(
@@ -1115,15 +1077,21 @@ def self_test() -> int:
         def comp(r: Result) -> bool:
             return all(c.met for c in r.clauses if c.name.startswith("composition"))
 
+        # These two are the inverse of what they said earlier the same day,
+        # and the inversion is the point. The clause then gated the surround,
+        # because §4.1 put the subject in the middle and the middle therefore
+        # had to be excluded. §4.1.2 moved the greeter's subject off centre,
+        # so the middle is now the thing being protected and light there is
+        # the failure.
         check(
-            "light in the subject column passes",
-            comp(rc),
-            f"surround mean {rc.safe_field.surround[0]:.4f}",
+            "light in the centre fails, because that is where the UI goes",
+            not comp(rc),
+            f"centre mean {rc.safe_field.column[0]:.4f}",
         )
         check(
-            "the same light beside the subject fails",
-            not comp(ro),
-            f"surround mean {ro.safe_field.surround[0]:.4f}",
+            "the same light off to one side passes",
+            comp(ro),
+            f"centre mean {ro.safe_field.column[0]:.4f}",
         )
         # A wallpaper has no clock on it. Reporting a composition miss and a
         # 90% scrim against one is not an extra number, it is a failure that
@@ -1148,31 +1116,26 @@ def self_test() -> int:
             f"scrim {res.scrim_alpha * 100:.0f}%",
         )
 
-        # §4.2's lower centre, which had no reader until it got its own box.
-        # A single bright disc below every UI element: the gated surround sees
-        # nothing (it is inside the excluded column), legibility sees nothing
-        # (no UI is down there), and the old whole-field measure did catch it
-        # at 4.60% bright. So this is the one reading that separates it.
+        # §4.2's lower centre, which on §2.2's previous shape had no reader at
+        # all. Gating the surround and excluding the full-height column meant
+        # a bright disc below every UI element passed composition at 0.00%
+        # bright, passed legibility because no UI is down there, and needed
+        # no scrim -- while the whole-field measure it replaced had failed it
+        # at 4.60%. §4.1.2 settled it by moving the subject off centre, which
+        # makes the centre the thing to measure and puts the lower centre
+        # inside the gated region. This is that guarantee, pinned.
         below = tmp / "lit-below.png"
         lit_at(0.50, 0.72).save(below)
         rb = evaluate(below, tmp, hue_override=200.0)
         check(
-            "a bright lower centre is invisible to every gated clause",
-            all(c.met for c in rb.clauses if not c.name.startswith("composition"))
-            and all(c.met for c in rb.clauses if c.name.startswith("composition"))
-            and rb.scrim_alpha == 0.0,
-            f"surround {rb.safe_field.surround[0]:.4f}/{rb.safe_field.surround[1] * 100:.2f}%, "
-            f"scrim {rb.scrim_alpha * 100:.0f}%",
+            "a bright lower centre fails, the region §4.2 is about",
+            not all(c.met for c in rb.clauses if c.name.startswith("composition")),
+            f"centre {rb.safe_field.column[0]:.4f}, {rb.safe_field.column[1] * 100:.2f}% bright",
         )
         check(
-            "and the lower-centre reading is what sees it",
-            rb.safe_field.lower[1] > SAFE_BRIGHT_FRAC_MAX,
-            f"lower {rb.safe_field.lower[0]:.4f}, {rb.safe_field.lower[1] * 100:.2f}% bright",
-        )
-        check(
-            "a dark lower centre reads as empty",
-            r2.safe_field.lower[1] <= SAFE_BRIGHT_FRAC_MAX,
-            f"lower {r2.safe_field.lower[0]:.4f} on the all-dark frame",
+            "and it is the look clause that catches it, not legibility",
+            rb.scrim_alpha == 0.0 and all(c.met for c in rb.clauses if c.name.startswith("legib")),
+            "no UI lands down there, so nothing else could",
         )
 
         check(
@@ -1272,7 +1235,6 @@ def main() -> int:
                             "whole": res.safe_field.whole,
                             "column": res.safe_field.column,
                             "surround": res.safe_field.surround,
-                            "lower": res.safe_field.lower,
                         },
                         "palette": res.palette,
                         "notes": res.notes,
