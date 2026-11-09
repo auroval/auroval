@@ -28,7 +28,9 @@
 # at the end of a run and has to be closed. The measurement is unaffected:
 # this script waits for the process to exit, which it still does.
 #
-# even a mistake releases itself.
+# What that costs the operator: close the nested compositor's window when the
+# run is done. What it would cost on the wrong compositor is the session, so
+# the refusal below is the part of this script to keep working.
 #
 # usage:
 #   nu spike/p3/lock-measure.nu <nested WAYLAND_DISPLAY> [seconds]
