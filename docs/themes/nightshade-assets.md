@@ -82,13 +82,40 @@ That split is tenet 1 at the level of artwork. A theme whose scenes disagree
 about how they are drawn is the *"four programs that have never met"* failure
 the thesis names, arriving through the back door.
 
-### 4.1 The constant part
+### 4.1 The constant part — for the greeter
 
 > One subject, centred, filling the upper-middle of the frame, against
 > darkness. Rim light and glow only, sourced from behind or beside the
 > subject — no frontal key light. Saturated neon chroma: magenta, cyan,
 > violet. Near-black field below and around the subject. Visible film grain.
 > 16:9. No text, no logos, no watermark.
+
+**This paragraph is a greeter brief, and §4.2 entirely so.** §1 says why
+without quite saying the consequence: *"A scene is not a wallpaper; it is the
+thing a clock, a date, a username and a password field sit on top of."* Three
+of the clauses above and all four of §4.2's exist to keep a rectangle clear
+for UI, and §3.1 nonetheless has the same scenes rotating daily as the
+desktop wallpaper, where there is no UI to keep clear.
+
+Applied to a wallpaper they are not merely unnecessary. "Near-black field
+below and around the subject" and §4.2's "nothing important in the lower
+centre" produce a frame that is two-thirds empty, which on a desktop reads as
+a login screen missing its login form — because that is exactly what it is.
+Six scene-02 candidates were generated this way on 2026-11-08 before anyone
+noticed, and nothing in the brief or the tool could have caught it.
+
+So the two surfaces take different constant parts, both recorded in
+`tools/nightshade-gen/generate.py`, and a brief must name its `surface`. What
+is shared is what nightshade *is*: the rendering style of §4.1.1, neon rim
+light and glow, deep darkness, grain, 16:9, no marks. What differs is the
+framing — the greeter's subject sits in cleared darkness, the wallpaper's
+fills the frame and the dark sits between the forms instead of instead of
+them.
+
+**Open, and it belongs to §3.1 rather than here.** If one scene is to serve
+both surfaces, it has to be generated twice, or the daily rotation has to
+draw from a wallpaper set that is not the greeter set. Neither is written
+down.
 
 #### 4.1.1 Rendering style — one theme, one style
 
@@ -266,7 +293,7 @@ ls candidates/*.png | each { |f| python3 tools/scene-check/scene_check.py $f.nam
 |---|---|
 | Format | codec and profile, colour primaries, declared range, pixel format |
 | Geometry | resolution, aspect |
-| Composition | mean luminance and bright fraction over the central 60×70% |
+| Composition | mean luminance and bright fraction **around** the subject, inside the central 60×70% (§5.3.1); the subject column and the lower centre are reported beside it, ungated (§5.3.2) |
 | **Legibility** | the background behind **each UI element separately** |
 | Loop | duration, and the seam against an ordinary frame step |
 | Palette | the derived palette, plus assertions that it holds its floors |
@@ -295,6 +322,92 @@ They were one number and should not have been:
 
 A candidate that passes legibility but fails composition is the interesting
 case: it will work, and it is not nightshade.
+
+#### 5.3.1 Composition is measured around the subject, not through it
+
+The composition clause first averaged over the whole central 60×70%, and in
+that form it never passed. Not once, across every candidate of every scene.
+
+It could not. §2.2 asks for mean luminance ≤ 0.06 over that rectangle while
+§4.1 asks for "one subject, centred ... rim light and glow only" — **in the
+same rectangle**. The two clauses want opposite things and §4.1 wins every
+time, because the glow is what makes the picture. §4.1's own wording says
+where the darkness is supposed to be, and it is not "everywhere": *"near-black
+field below and **around** the subject"*.
+
+The symptom was that the measure stopped telling images apart. scene-01's
+master and its `v5-nacre` loop scored 0.1901 and 0.1873 — the same number, to
+within noise — and they are **opposites**: the master's light is entirely in
+its subject and its surround is near-black, the loop's surround is the bright
+part. A measure that calls those two the same is measuring the wrong region.
+
+So a centred column of 40% of the safe field's width — 24% of the frame — is
+excluded, and the clause is gated on what is left. The column and the whole
+field are still reported, because a subject that has grown too bright is a
+real failure and the column is where it shows.
+
+| | whole field | subject column | surround (gated) |
+|---|---|---|---|
+| scene-01 `master` | 0.1901 | 0.3915 | **0.0561** |
+| scene-01 `v5-nacre` | 0.1873 | 0.1204 | **0.2319** |
+| scene-02 `shrine-b-s7` | 0.0992 | 0.1726 | **0.0503** |
+| scene-02 `shrine-s1` | 0.1653 | 0.1700 | **0.1623** |
+
+The split is covered by `--self-test`, which builds two frames carrying the
+same light in the same safe field at different places, and asserts that the
+whole-field number cannot separate them while the surround number does.
+
+#### 5.3.2 The lower centre had no reader at all
+
+Excluding the subject column closed one hole and opened another, and the
+second one was wider. The column runs the full height of the safe field, so
+it also excludes the region §4.2 is at its most specific about: *"nothing
+important in the lower centre"*, *"the lower middle of the frame is empty
+near-black space"*. Nothing measured it. The composition clause excludes it
+by construction, legibility measures only where UI lands and the greeter's
+lowest element stops at 56% of the height, and the safe field's bottom edge
+is at 85%.
+
+A frame built to show this — a 2560x1440 field of near-black with one bright
+disc at 72% of the height and nothing else — cleared **every clause the tool
+had**: composition passed with a surround reading 0.00% bright, legibility
+passed because no UI is down there, and it needed no scrim. The whole-field
+measure it replaced had failed it at 4.60%.
+
+**The obvious fix is wrong, and that is the interesting part.** Bounding the
+excluded column at the bottom of the UI stack, so the lower centre falls back
+into the gated surround, moves scene-01's `master.png` from 0.0561 to 0.1381
+and fails the one image §5.3.1 had finally made measurable. Measured on the
+candidates:
+
+| | surround | lower centre |
+|---|---|---|
+| scene-01 `master` | 0.0561 / 7.62% | **0.4329 / 55.12%** |
+| scene-01 `v5-nacre` | 0.2319 / 29.13% | 0.1339 / 18.93% |
+| scene-01 `v2-moths` | 0.0161 / 2.58% | 0.1435 / 19.49% |
+| scene-05 `lantern-s11` | 0.0407 / 6.77% | 0.0022 / 0.08% |
+| the synthetic disc above | 0.0014 / 0.00% | 0.2458 / 27.52% |
+
+scene-01's subject does not stop at the input field. It falls away into
+darkness below the *frame*, not below the UI, so the lower centre is the
+brightest part of the reference image. Every scene-01 candidate fails that
+region and only scene-05 passes it. Either §4.2's sentence is not true of the
+artwork this theme is built on, or the region wants a threshold of its own.
+
+So the region is **reported and not gated**, which is the same stance §5.3.1
+takes on the bright-fraction threshold and for the same reason: the tool has
+found a disagreement between the contract and the reference, and which of the
+two is wrong is not the tool's call. A12 carries it.
+
+**The bright-fraction threshold is still met by nothing**, and that is a
+separate question from this one. The mean threshold is now reachable — two of
+the eight candidates measured meet it — but ≤ 2% above 0.25 is not met even by
+an image whose surround is near-black: scene-01's master sits at 7.6% and the
+best scene-02 candidate at 7.8%. Those two are the ones that look right, so
+the threshold is calibrated against an idea rather than against the reference,
+and it should be recalibrated against the reference or dropped. Left as it
+stands rather than quietly retuned, because what counts as the nightshade look
+is the maintainer's call and not the tool's.
 
 ### 5.4 The palette, and a trap worth knowing
 
@@ -599,6 +712,9 @@ re-runs the first of these and fails loudly if matugen's behaviour changes.
 | ~~A7~~ | ~~nightshade's rendering style~~ **Settled 2026-11-07: ink-and-wash (sumi-e), recorded in §4.1.1.** Chosen from six candidates generated from an identical subject and seed. The paired finding went into §4.5: the style is traditional, the subject matter must not be. | Settled |
 | A8 | A4's scrim threshold now looks like the wrong axis on its own. Measured: the only candidate with correct composition scored 0.275, just *above* the 25% guess, while a candidate with **no subject** scored 0.000. Scrim alone rewards emptiness, so the reject rule needs a second term — minimum subject extent, or ornament density — or gate 1 will systematically prefer duller images. | Maintainer |
 | A9 | The generator obeys instruction about style and subject and ignores instruction about structure (§10). Is that FLUX.2 [klein] specifically, a 4B-parameter limit, or every model? Decides whether the filter stage can ever shrink. | Maintainer |
+| A10 | The composition clause's bright-fraction threshold (≤ 2% above 0.25) is met by no image ever generated, including the reference, whose surround sits at 7.6% and looks right (§5.3.1). Recalibrate against the reference or drop the term. Not changed by the split, deliberately -- what counts as the look is a maintainer decision. | Maintainer |
+| A12 | §4.2 asks the lower centre to be "empty near-black space" and scene-01's own master reads 0.4329 mean, 55.12% bright there — the brightest region of the reference image (§5.3.2). Every scene-01 candidate fails it; scene-05 passes. Either the clause does not describe the accepted artwork, or the region needs its own threshold. Reported and not gated until that is decided. | Maintainer |
+| A11 | Hue is not stable across seeds of one brief: six scene-02 candidates, one subject, gave 344.9°, 57.9°, 355.7°, 306.4°, 2.6°, 7.3°. If tone and chroma are the theme's and hue is the media's (N1), the accent is decided by which candidate is accepted rather than by the scene, and acceptance becomes an unrecorded palette decision. | Maintainer |
 
 ---
 
