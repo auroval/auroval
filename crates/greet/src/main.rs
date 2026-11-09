@@ -128,6 +128,21 @@ fn main() {
 /// Say what the greeter can see, in the context it is run in. The P0 spike
 /// had the same mode and it earned its keep: nearly everything surprising
 /// about a greeter is about what it can and cannot reach.
+/// One candidate's R9 chain, with each entry's presence stated. Whether the
+/// file is there is the whole question a fallback chain exists to answer, and
+/// a chain whose first entry is missing still works — silently, one rung
+/// down. Printing it is how that stays visible.
+fn print_chain(index: Option<usize>, chain: &[std::path::PathBuf]) {
+    for (j, path) in chain.iter().enumerate() {
+        let label = match (index, j) {
+            (Some(i), 0) => format!("[{i}]"),
+            _ => "   ".to_string(),
+        };
+        let present = if path.is_file() { "ok     " } else { "missing" };
+        println!("  {label} {present} {}", path.display());
+    }
+}
+
 fn probe() {
     let cfg = load_config(false);
     for p in &cfg.problems {
@@ -152,6 +167,41 @@ fn probe() {
             Err(e) => format!("no — {e}"),
         }
     );
+
+    // Which background this launch would get. Reported rather than chosen:
+    // see `rotation::last_shown`. A greeter that picks between candidates and
+    // says nothing about it in its own diagnostic leaves the one thing that
+    // varies per launch invisible, which is how an untagged colour range went
+    // unnoticed for a week.
+    let state_path = rotation::state_beside(&cfg.state_path);
+    match cfg.background.len() {
+        0 => println!("background   none — the solid colour"),
+        1 => {
+            println!("background   1 candidate, nothing to rotate");
+            print_chain(None, &cfg.background[0]);
+        }
+        n => {
+            let last = rotation::last_shown(&state_path);
+            let next = rotation::next_after(last, n);
+            println!(
+                "background   {n} candidates, last shown {}, next {}",
+                last.map(|i| i.to_string()).unwrap_or_else(|| "—".into()),
+                next.map(|i| i.to_string())
+                    .unwrap_or_else(|| "— (from the clock)".into()),
+            );
+            for (i, chain) in cfg.background.iter().enumerate() {
+                print_chain(Some(i), chain);
+            }
+            println!("  state file   {}", state_path.display());
+            println!(
+                "  writable     {}",
+                match rotation::can_write(&state_path) {
+                    Ok(()) => "yes".to_string(),
+                    Err(e) => format!("no — {e}"),
+                }
+            );
+        }
+    }
 
     let state = ui::UiState::new(found, &last);
     println!(

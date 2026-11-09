@@ -37,6 +37,41 @@ pub fn state_beside(state_path: &Path) -> PathBuf {
     }
 }
 
+/// Which candidate was shown last, without choosing or advancing.
+///
+/// `probe` needs this and must not use [`choose`]: a diagnostic that advances
+/// the thing it reports on is one you cannot run twice, and running it would
+/// change what the next real login shows.
+pub fn last_shown(state: &Path) -> Option<usize> {
+    read_index(state)
+}
+
+/// Which candidate the next launch will get, given a pool size. `None` when
+/// there is nothing remembered, because then the choice is made from the
+/// clock and predicting it here would be a guess dressed as a fact.
+pub fn next_after(last: Option<usize>, n: usize) -> Option<usize> {
+    match (last, n) {
+        (_, 0) | (_, 1) => None,
+        (Some(last), n) => Some((last + 1) % n),
+        (None, _) => None,
+    }
+}
+
+/// Whether the rotation memory could be written, asked without writing it.
+///
+/// A sibling file is created and removed rather than the real one rewritten:
+/// on a machine that has never rotated there is no index to write back, and
+/// inventing one would answer the question by changing the answer. The
+/// directory is what the permission actually hangs on.
+pub fn can_write(state: &Path) -> std::io::Result<()> {
+    let probe = state.with_extension("probe");
+    if let Some(dir) = probe.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::File::create(&probe)?;
+    std::fs::remove_file(&probe)
+}
+
 /// Which candidate to show, and what to say about it.
 pub struct Choice<'a> {
     /// The R9 chain for this launch. Empty when the pool is empty, which is
@@ -244,6 +279,52 @@ mod tests {
         let p = pool(3);
         assert!(choose(&p, &state).index.unwrap() < 3);
         let _ = std::fs::remove_file(&state);
+    }
+
+    #[test]
+    fn the_probe_predicts_the_next_launch_only_when_there_is_memory() {
+        // With nothing remembered the choice comes from the clock, so a
+        // predicted index would be a guess printed as a fact.
+        assert_eq!(next_after(None, 3), None);
+        assert_eq!(next_after(Some(0), 3), Some(1));
+        assert_eq!(next_after(Some(2), 3), Some(0));
+        // A pool that cannot rotate has no next, remembered or not. This is
+        // the same silence `choose` keeps for a single candidate.
+        assert_eq!(next_after(Some(0), 1), None);
+        assert_eq!(next_after(Some(0), 0), None);
+        // The stale index `choose` wraps, the probe must wrap too, or the two
+        // disagree about what is coming.
+        assert_eq!(next_after(Some(97), 2), Some(0));
+    }
+
+    #[test]
+    fn reporting_the_last_shown_candidate_does_not_advance_it() {
+        let state = tmp("readonly");
+        let p = pool(3);
+        let first = choose(&p, &state).index.unwrap();
+        for _ in 0..5 {
+            assert_eq!(
+                last_shown(&state),
+                Some(first),
+                "a diagnostic that moves what it reports cannot be run twice"
+            );
+        }
+        let _ = std::fs::remove_file(&state);
+    }
+
+    #[test]
+    fn writability_is_asked_without_inventing_a_memory() {
+        let state = tmp("canwrite");
+        assert!(can_write(&state).is_ok());
+        assert!(
+            !state.exists(),
+            "asking the question must not answer it by changing it"
+        );
+        assert!(
+            !state.with_extension("probe").exists(),
+            "and must leave nothing of its own behind"
+        );
+        assert!(can_write(Path::new("/proc/auroval-rotation/last-background")).is_err());
     }
 
     #[test]
