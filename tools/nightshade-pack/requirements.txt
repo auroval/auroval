@@ -1,0 +1,8 @@
+# nightshade-pack imports tools/scene-check, so its dependencies are that
+# tool's, plus nothing. Install with:
+#     python3 -m pip install -r tools/scene-check/requirements.txt
+#
+# This file exists to say that rather than to duplicate the list: a second
+# copy of a dependency set is a second thing to forget to update, and the
+# whole point of this tool is that it has one source for its numbers.
+-r ../scene-check/requirements.txt

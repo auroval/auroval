@@ -90,6 +90,44 @@ the thesis names, arriving through the back door.
 > violet. Near-black field below and around the subject. Visible film grain.
 > 16:9. No text, no logos, no watermark.
 
+#### 4.1.2 "Centred" is wrong for the greeter, and it is arithmetic
+
+The blockquote above asks for *"one subject, centred, filling the
+upper-middle of the frame"*. `tools/nightshade-gen/generate.py` no longer
+says that, and the disagreement is deliberate and recorded here rather than
+left to be discovered.
+
+`scene_check.py`'s `ui_regions` places the clock at `cy-220`, the date at
+`cy-130`, the username at `cy-40` and the input field at `cy+40`. The UI
+occupies the middle of the frame from well above centre to just below it.
+§2.2 asks for that region to be dark enough to read white text on. §4.1 asks
+for a lit subject to be exactly there.
+
+They are the same rectangle, and across eighteen candidates generated on
+2026-11-08 the two were never both satisfied. §5.3's split made the failure
+legible — it is confined to the subject's own column — and the candidate that
+finally passed composition, `pond-warm-b-s11` at 1.74% above 0.25, still
+demanded a **90% scrim**, because its subject sits where the username does.
+
+A subject placed off to one side costs the composition nothing and hands the
+UI an empty column. So the greeter's constant part now reads:
+
+> one subject placed well off to one side of the frame, never in the middle.
+> the subject high in its half of the picture, against darkness. the whole
+> central band of the frame empty near-black space from top to bottom.
+
+and §4.2's first bullet, which used to confine every bright area to the top
+of a frame whose subject was centred, now confines them to one side instead —
+which is the same prohibition without the self-contradiction.
+
+**This does not apply to the desktop**, which has no UI on it and whose
+constant part is unchanged.
+
+**It also means scene-02's candidates cannot be reproduced from this
+document.** Their prompts used the previous wording. They are recoverable
+because every run writes the string it actually used (§3), which is the first
+time that provision has earned its keep.
+
 **This paragraph is a greeter brief, and §4.2 entirely so.** §1 says why
 without quite saying the consequence: *"A scene is not a wallpaper; it is the
 thing a clock, a date, a username and a password field sit on top of."* Three
@@ -310,6 +348,46 @@ box, at the **90th percentile** rather than the mean, because the bright part of
 a region is what breaks legibility, not its average. Required scrim is computed
 per element and the worst one wins.
 
+#### 5.2.1 The four boxes are four, and the greeter draws five things
+
+The session label is the fifth, and it is measured by nothing. Found on
+2026-11-09 by looking at the login screen, which was the only reader it had.
+
+It sits 64 px from the bottom edge, which is **129 px below the safe field**,
+so §2.2's composition clause cannot reach it and §5.2's legibility clauses
+cover only the four boxes above. Measured behind it on scene-01, at the same
+90th percentile this section uses:
+
+| | background p90 | contrast | |
+|---|---|---|---|
+| as deployed | 0.8773 | **1.97:1** | against a 4.5:1 floor |
+| with a plate | 0.0140 | 7.37:1 | |
+
+Both numbers read off a rendered frame rather than reasoned about. The first
+attempt at the second one came out at 3.04:1, because the measurement box
+contained the label's own glyphs and the 90th percentile found them: on a
+rendered frame, unlike on a candidate, the text is in the picture.
+
+**A colour cannot fix it and neither can translucency.** The alpha needed to
+reach the floor is 0.951, so the input field's own 0.8 gets to 2.05:1 — on a
+near-white background, translucency buys almost nothing. The brighter palette
+roles are worse rather than better, because they are lighter, and a darker
+text colour fails on scene-05, whose background at that spot is 0.0175. With
+§3.1's pool rotating between the two there is no single colour that works.
+
+So the greeter draws an opaque plate, and the artwork is **not** judged on
+this element — adding it to the measured boxes would reject scene-01 for a
+problem the plate has already solved, and at 83–90% required scrim it would
+fail §6's gate 1 outright. The invariant moves into the greeter's own tests
+instead, where `the_session_label_sits_on_a_plate` renders a frame and reads
+the pixels back.
+
+The general point is worth more than the fix. The contract measures the
+elements it knows about, and the greeter grew one it did not. Any element
+drawn outside the safe field is invisible to this document by construction,
+which is a thing to check when one is added rather than to discover on the
+screen.
+
 ### 5.3 Composition and legibility are different clauses
 
 They were one number and should not have been:
@@ -323,7 +401,7 @@ They were one number and should not have been:
 A candidate that passes legibility but fails composition is the interesting
 case: it will work, and it is not nightshade.
 
-#### 5.3.1 Composition is measured around the subject, not through it
+#### 5.3.1 Composition is measured in the centre, where the UI goes
 
 The composition clause first averaged over the whole central 60×70%, and in
 that form it never passed. Not once, across every candidate of every scene.
@@ -341,10 +419,25 @@ within noise — and they are **opposites**: the master's light is entirely in
 its subject and its surround is near-black, the loop's surround is the bright
 part. A measure that calls those two the same is measuring the wrong region.
 
-So a centred column of 40% of the safe field's width — 24% of the frame — is
-excluded, and the clause is gated on what is left. The column and the whole
-field are still reported, because a subject that has grown too bright is a
-real failure and the column is where it shows.
+So a centred column of 40% of the safe field's width — 24% of the frame — was
+excluded, and the clause gated on what was left.
+
+**That lasted an afternoon, and §4.1.2 replaced it with something simpler.**
+The split made the failure legible without removing its cause: §4.1 still
+asked for a lit subject in the rectangle §2.2 wanted dark. Moving the
+greeter's subject off centre removes the cause, and once the subject is not in
+the middle, the middle is simply the thing to measure — which is the clause
+§4.2's first bullet always stated, *"no bright element in the centre of the
+frame"*.
+
+The clause is therefore **gated on the central column** and the flanks are
+reported. The flank figure is not decoration: it catches a frame that passes
+only because it is dark everywhere, and A8 already noted that scrim alone
+rewards emptiness.
+
+The table below is kept as it was measured, under the split, because it is
+what justified the change of subject placement rather than the change of
+gating.
 
 | | whole field | subject column | surround (gated) |
 |---|---|---|---|
@@ -353,32 +446,64 @@ real failure and the column is where it shows.
 | scene-02 `shrine-b-s7` | 0.0992 | 0.1726 | **0.0503** |
 | scene-02 `shrine-s1` | 0.1653 | 0.1700 | **0.1623** |
 
-The split is covered by `--self-test`, which builds two frames carrying the
-same light in the same safe field at different places, and asserts that the
-whole-field number cannot separate them while the surround number does.
+`--self-test` builds two frames carrying the same light in the same safe field
+at different places, and asserts that the whole-field number cannot separate
+them while the gated number does. Those two assertions were inverted when the
+gating moved, which is the clearest statement of what changed: light in the
+centre used to pass and now fails, light off to one side used to fail and now
+passes.
 
-#### 5.3.2 The lower centre had no reader at all
+A third assertion was **not** inverted, and the test refused the attempt. A
+small bright disc on the date line still passes composition, reading 0.0167
+over the column against a 0.06 limit while sitting at 0.99 on the date line
+itself. That is §5.2's lesson intact — *"an average over a large safe field
+hides a small bright thing"* — and it is why legibility is measured per
+element and not inferred from this clause.
 
-Excluding the subject column closed one hole and opened another, and the
-second one was wider. The column runs the full height of the safe field, so
-it also excludes the region §4.2 is at its most specific about: *"nothing
-important in the lower centre"*, *"the lower middle of the frame is empty
-near-black space"*. Nothing measured it. The composition clause excludes it
-by construction, legibility measures only where UI lands and the greeter's
-lowest element stops at 56% of the height, and the safe field's bottom edge
-is at 85%.
+**On the bright-fraction threshold, written and then corrected the same day.**
 
-A frame built to show this — a 2560x1440 field of near-black with one bright
-disc at 72% of the height and nothing else — cleared **every clause the tool
-had**: composition passed with a surround reading 0.00% bright, legibility
-passed because no UI is down there, and it needed no scrim. The whole-field
-measure it replaced had failed it at 4.60%.
+What stood here said that ≤ 2% above 0.25 was met by nothing, that the best
+images sat at 7.6% and 7.8%, and that the threshold was therefore calibrated
+against an idea rather than against the reference — filed as A10, proposing
+recalibration.
 
-**The obvious fix is wrong, and that is the interesting part.** Bounding the
-excluded column at the bottom of the UI stack, so the lower centre falls back
-into the gated surround, moves scene-01's `master.png` from 0.0561 to 0.1381
-and fails the one image §5.3.1 had finally made measurable. Measured on the
-candidates:
+That was a conclusion drawn from the eight images that existed at the time,
+and scene-04 falsified it a few hours later. `pond-warm-b-s11` measures
+**0.0353 mean and 1.74% above 0.25**, and passes §2.2's composition clause
+outright — the first candidate of any scene to do so.
+
+So the threshold is reachable and A10 is withdrawn. Acting on it would have
+loosened a limit that works, on the evidence that nothing had yet reached it,
+which is an argument from a small sample and not from the measure.
+
+What it took was not a tuning change. It was a brief that stated darkness as
+appearance rather than as lighting (§5.5.1): *"gone almost black with wet moss
+and shadow"*, *"everything that is not a fish sunk in deep shadow"*.
+
+#### 5.3.2 The lower centre, and why §4.1.2 was the fix
+
+Found by review of the split in §5.3.1, before §4.1.2 landed. Worth keeping,
+because the obvious repair was wrong and the one that worked did not touch
+this clause at all.
+
+Gating the surround and excluding the subject's column left the region §4.2
+is most specific about — *"nothing important in the lower centre"*, *"the
+lower middle of the frame is empty near-black space"* — read by nothing. The
+column ran the full height of the safe field, so composition excluded it by
+construction; legibility measures only where UI lands and the greeter's
+lowest element stops at 56% of the height, while the safe field reaches 85%.
+
+A frame of near-black with one bright disc at 72% of the height cleared
+**every clause the tool had**: composition passed with the surround at 0.00%
+bright, legibility passed because no UI is down there, and it needed no
+scrim. The whole-field measure it replaced had failed it at 4.60%.
+
+**Bounding the excluded column at the bottom of the UI stack was tried and
+is worse.** It moves scene-01's `master.png` from 0.0561 to 0.1381 and fails
+the one image the split had finally made measurable, because that subject
+does not stop at the input field — it falls away into darkness below the
+*frame*. Measured on the candidates of the time, with the lower centre as a
+region of its own:
 
 | | surround | lower centre |
 |---|---|---|
@@ -388,26 +513,22 @@ candidates:
 | scene-05 `lantern-s11` | 0.0407 / 6.77% | 0.0022 / 0.08% |
 | the synthetic disc above | 0.0014 / 0.00% | 0.2458 / 27.52% |
 
-scene-01's subject does not stop at the input field. It falls away into
-darkness below the *frame*, not below the UI, so the lower centre is the
-brightest part of the reference image. Every scene-01 candidate fails that
-region and only scene-05 passes it. Either §4.2's sentence is not true of the
-artwork this theme is built on, or the region wants a threshold of its own.
+Every scene-01 candidate fails that region and only scene-05 passes it, so
+gating it would have rejected the reference. The region was therefore briefly
+reported and not gated, filed as A12.
 
-So the region is **reported and not gated**, which is the same stance §5.3.1
-takes on the bright-fraction threshold and for the same reason: the tool has
-found a disagreement between the contract and the reference, and which of the
-two is wrong is not the tool's call. A12 carries it.
+**§4.1.2 dissolved it.** Moving the greeter's subject off centre means the
+centre is simply the thing to measure, the gated column runs the full height,
+and the lower centre is inside it — §4.2's first bullet, *"no bright element
+in the centre of the frame"*, measured literally. No separate region, no
+second threshold, nothing ungated. The disc above now fails composition at
+11.50% bright, and the self-test pins that.
 
-**The bright-fraction threshold is still met by nothing**, and that is a
-separate question from this one. The mean threshold is now reachable — two of
-the eight candidates measured meet it — but ≤ 2% above 0.25 is not met even by
-an image whose surround is near-black: scene-01's master sits at 7.6% and the
-best scene-02 candidate at 7.8%. Those two are the ones that look right, so
-the threshold is calibrated against an idea rather than against the reference,
-and it should be recalibrated against the reference or dropped. Left as it
-stands rather than quietly retuned, because what counts as the nightshade look
-is the maintainer's call and not the tool's.
+The lesson is the one A10 taught a few hours after it was filed: a measure
+that disagrees with the reference is a question, not a defect to patch. Both
+times the answer was upstream of the measure — in the brief for A10, in the
+composition for this one.
+
 
 ### 5.4 The palette, and a trap worth knowing
 
@@ -800,8 +921,8 @@ re-runs the first of these and fails loudly if matugen's behaviour changes.
 | ~~A7~~ | ~~nightshade's rendering style~~ **Settled 2026-11-07: ink-and-wash (sumi-e), recorded in §4.1.1.** Chosen from six candidates generated from an identical subject and seed. The paired finding went into §4.5: the style is traditional, the subject matter must not be. | Settled |
 | A8 | A4's scrim threshold now looks like the wrong axis on its own. Measured: the only candidate with correct composition scored 0.275, just *above* the 25% guess, while a candidate with **no subject** scored 0.000. Scrim alone rewards emptiness, so the reject rule needs a second term — minimum subject extent, or ornament density — or gate 1 will systematically prefer duller images. | Maintainer |
 | A9 | The generator obeys instruction about style and subject and ignores instruction about structure (§10). Is that FLUX.2 [klein] specifically, a 4B-parameter limit, or every model? Decides whether the filter stage can ever shrink. | Maintainer |
-| A10 | The composition clause's bright-fraction threshold (≤ 2% above 0.25) is met by no image ever generated, including the reference, whose surround sits at 7.6% and looks right (§5.3.1). Recalibrate against the reference or drop the term. Not changed by the split, deliberately -- what counts as the look is a maintainer decision. | Maintainer |
-| A12 | §4.2 asks the lower centre to be "empty near-black space" and scene-01's own master reads 0.4329 mean, 55.12% bright there — the brightest region of the reference image (§5.3.2). Every scene-01 candidate fails it; scene-05 passes. Either the clause does not describe the accepted artwork, or the region needs its own threshold. Reported and not gated until that is decided. | Maintainer |
+| A10 | **Withdrawn the day it was filed.** Proposed recalibrating the composition clause's bright-fraction threshold (≤ 2% above 0.25) because no image had met it. `pond-warm-b-s11` then measured 1.74% and passed the clause outright (§5.3.1), so the threshold is reachable and loosening it would have removed a working limit on the evidence of a small sample. What it took was a brief stating darkness as appearance rather than as lighting (§5.5.1). | Withdrawn |
+| ~~A12~~ | ~~§4.2's lower centre is read by nothing~~ **Settled 2026-11-09 by §4.1.2.** The surround-gated split left the lower centre unmeasured by any clause, and a frame that was one bright disc at 72% of the height cleared all of them (§5.3.2). Bounding the excluded column would have failed scene-01's own master. Moving the subject off centre made the centre the gated region, which contains it. | Settled |
 | A11 | Hue is not stable across seeds of one brief: six scene-02 candidates, one subject, gave 344.9°, 57.9°, 355.7°, 306.4°, 2.6°, 7.3°. If tone and chroma are the theme's and hue is the media's (N1), the accent is decided by which candidate is accepted rather than by the scene, and acceptance becomes an unrecorded palette decision. | Maintainer |
 
 ---
@@ -912,3 +1033,78 @@ a later line referenced a variable that did not exist.
 
 **An edit that cannot fail loudly will eventually fail quietly.** Anchor edits
 on something that will raise if it is missing.
+
+### 10.9 A tag left unset is a decision, taken by the reader
+
+Every loop this project had made came back from `scene_check` as
+`colour primaries / range: unset / unset`, the deployed greeter background
+included — and the deployed file was worse than that, because it was a
+hand-run H.264 transcode of the HEVC render and carried no tag at all on any
+of the four fields.
+
+Undeclared is not neutral. §2 says the import assumes limited range because it
+is the safer guess, so an untagged full-range file is silently crushed. The
+pixels were always bt709/limited; nothing but the declaration was missing, and
+the declaration is the half a reader can actually see.
+
+Two things made it stay missing:
+
+* **ffmpeg's own colour flags are half the fix.** libx26x writes its own VUI
+  and `ffprobe` reads that rather than the container tags. With
+  `-color_primaries`/`-color_trc`/`-colorspace` alone the HEVC file came back
+  `color_space=bt709` but `color_primaries=unknown` — half-tagged, still a
+  §2.1 miss. `-x265-params colorprim=…:transfer=…:colormatrix=…:range=…` is
+  the other half, and x264 spells the range differently (`range=tv` against
+  x265's `range=limited`), so the two cannot share one string.
+* **The deployed format was not something the tool could produce.** The
+  greeter's measured hardware path is `nvh264dec`, so what ships is H.264,
+  while the renderer only emitted HEVC. The gap was closed by hand, once, and
+  a hand step carries no contract. `render.py --codec {hevc,h264}` now emits
+  both, tagged.
+
+Re-rendered scene-01 on both paths: §2.1 passes, and **matugen returns the
+same 215.9° and the same seven colours**, so nothing downstream of the palette
+moves. The seam improved from 1.40× to 1.23× (H.264) and 1.13× (HEVC) — the
+old file's seam was partly the transcode's.
+
+**A clause that reports "unset" for every artefact is not measuring the
+artefacts; it is measuring a missing step.**
+
+### 10.10 A pool and a chain are not the same list
+
+Asked to put a second scene *into rotation* on the login screen rather than
+*in place of* the first, the obvious move was to append it to R9's
+`background` list. That list already held two paths and took more.
+
+It would never have been seen. R9's list is **ordered by degradation**: the
+first entry that works wins, and the ones behind it exist for when it does
+not. A second scene appended to a working chain is dead text.
+
+A pool is **ordered by nothing** — its entries are equals, and one is chosen
+per launch. Rotating over a chain would promote a still above a video, which
+is R9 read backwards. So they are nested rather than merged: the outer list is
+the pool, each entry a chain, and R9 is untouched inside a candidate.
+
+Two consequences worth having measured:
+
+* **The choice advances, it is not drawn.** With two candidates a fair coin
+  shows the same one twice running half the time, which does not read as
+  rotation. Advancing costs one integer remembered across launches, in
+  `/var/lib/auroval/last-background` beside R4's login memory — the same
+  directory, for C10's reason. The file is advisory: unreadable means "start
+  somewhere", and somewhere comes from the clock rather than being fixed at 0,
+  because a machine that cannot keep the file would otherwise pin to the first
+  candidate on every boot, which is the behaviour rotation exists to avoid.
+* **Rotation and the derived palette pull against each other.** Candidates
+  have their own hues — 215.9° for scene-01, 69.3° for scene-05, 146° apart —
+  and §4.3 derives the UI accent from *the* scene's hue. One static palette
+  therefore matches at most one candidate. Measured both ways round: each
+  scene clears all four legibility clauses under the *other* scene's palette,
+  so this is an aesthetic mismatch and not a safety one. It is also latent
+  rather than live, because `greet.lua` currently ships no palette table at
+  all and the greeter uses its defaults. It becomes real the moment §4.4's
+  packaging reaches the greeter, and the honest shape is then a palette *per
+  candidate*, not a second key parallel to the pool — see N9.
+
+**A list whose order means something cannot also be a list whose order means
+nothing.**

@@ -157,6 +157,11 @@ jobs:
       # transcription can drift from its source. A drift would fail nothing --
       # it would just quietly produce a scene that does not read as nightshade.
       - run: python .github/scripts/check-style-constant.py
+      # nightshade-pack renders one derivation twice -- a TOML record and a
+      # Lua table the desktop reads. Separate functions, one Result, and an
+      # edit to either is exactly the change that silently desyncs them. Its
+      # self-test asserts they still carry the same colours.
+      - run: python tools/nightshade-pack/pack.py --self-test
 
   devcontainer:
     name: devcontainer builds

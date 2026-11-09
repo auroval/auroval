@@ -149,9 +149,29 @@ pub fn run(cfg: Config, ui: UiState, preview: bool) -> Result<(), String> {
         );
         return Err("state path is inside a home directory".into());
     }
+    // Which candidate this launch gets, before R9's chain inside it. The
+    // state file is a sibling of `state_path`, so the C10 check just above
+    // covers it: both live in the one directory outside every home.
+    let chosen = crate::rotation::choose(
+        &cfg.background,
+        &crate::rotation::state_beside(&cfg.state_path),
+    );
+    for p in &chosen.problems {
+        eprintln!("auroval-greet: {p}");
+    }
+    if let Some(i) = chosen.index {
+        // Logged because a rotating background makes "it showed the wrong
+        // picture" a real report, and the reader needs to know which of the
+        // candidates was even in play.
+        eprintln!(
+            "auroval-greet: background candidate {} of {}",
+            i + 1,
+            cfg.background.len()
+        );
+    }
     // R9. The decode runs on its own thread; the solid colour shows until it
     // lands, and every fallback says which file and why.
-    let background = Background::start(&cfg.background);
+    let background = Background::start(chosen.chain);
     for p in background.problems() {
         eprintln!("auroval-greet: {p}");
     }
