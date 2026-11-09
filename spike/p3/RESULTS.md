@@ -49,6 +49,13 @@ it, which is why `probe` exists as its own mode and prints the answer.
 | Draw rate | 30/s against a 30 fps clip, i.e. one present per delivered frame |
 | Clip | `/usr/local/share/auroval/nightshade-01.mp4`, R9 chain with `nightshade-01.png` behind it |
 
+**Re-checked after the glib/gstreamer stack moved to 0.25** (#75, merged into
+this branch): `greet videoprobe` through `auroval-ui`'s renderer still reports
+`video/x-raw(memory:GLMemory)`, byte-for-byte the same caps string, with the
+first frame at 240 ms warm and 28.8-29.0 frames/s over five runs. The first
+run of a freshly linked binary read 256 ms and is dynamic-linker warm-up, not
+a regression -- warm the binary before trusting a number here.
+
 `memory:GLMemory` on a lock surface is the result worth having. Q5 settled
 that `nvh264dec` negotiates it against a shared GL context and
 `greet videoprobe` confirmed it against the greeter's own EGL context — but

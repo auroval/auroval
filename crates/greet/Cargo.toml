@@ -17,9 +17,9 @@ path = "src/main.rs"
 # own doc comment; what is left here is the greetd half and nothing else.
 auroval-ui = { path = "../auroval-ui" }
 greetd-proto = { path = "../greetd-proto" }
-# The surfaces and the seat. `greet` runs on wlr-layer-shell; the locker runs
-# on ext-session-lock, which is why this dependency did not move into the
-# library with the renderer.
+# The surfaces and the seat. `greet` is an `xdg_shell` toplevel under `cage`;
+# the locker is `ext-session-lock`, which is why this dependency did not move
+# into the library with the renderer.
 smithay-client-toolkit = "0.20"
 wayland-client = "0.31"
 # The clock, for the one call that formats the time on each turn of the loop.

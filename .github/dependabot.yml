@@ -3,7 +3,7 @@ updates:
   # Rust dependencies. Grouped so a week of patch bumps is one pull request
   # rather than nine: tenet 4 means review time is the scarce resource here.
   #
-  # Two things learned the hard way, on the first Dependabot run:
+  # Three things learned the hard way, the third of them twice:
   #
   # 1. The gstreamer crates must move in lockstep. Ungrouped, Dependabot
   #    opened separate PRs for `gstreamer-app`, `gstreamer-video` and
@@ -16,6 +16,30 @@ updates:
   #    minor bumps as routine meant 0.24 -> 0.25 arrived looking like
   #    housekeeping. The catch-all group is therefore patch-only, so a
   #    breaking 0.x bump shows up as its own PR and gets read.
+  #
+  # 3. Lesson 1 was encoded too narrowly. The group was named `gstreamer` and
+  #    matched only `["gstreamer", "gstreamer-*"]`, and the second run broke
+  #    through it on 2026-11-09:
+  #
+  #      #71  "in the gstreamer group"   bumped `gstreamer` and nothing else
+  #      #69                             bumped `gstreamer-gl` alone
+  #      #70                             bumped `gstreamer-gl-egl` alone
+  #      #73                             bumped `glib` alone
+  #
+  #    Each of the four put `glib 0.22` *beside* `glib 0.21` in the lock file
+  #    and failed with the same two dozen trait errors — `IsA<Element> is not
+  #    implemented for AppSink`, `no method named set_gl_display`. Bumped
+  #    together the whole stack compiles with no source change at all: clippy
+  #    clean, 84 tests green, zero lines of Rust touched. So every one of
+  #    those errors was the split, not the 0.25 API.
+  #
+  #    `glib` is the half that can be named with certainty: it is a direct
+  #    dependency, gstreamer 0.25 requires 0.22, and it matched no pattern, so
+  #    even a group holding every gstreamer crate would still have split it
+  #    off. Why the gstreamer crates also went their own way is not visible
+  #    from the pull requests themselves. The patterns below are now wide
+  #    enough that it cannot matter; if a split happens again, the Dependabot
+  #    run logs are the place to look.
   - package-ecosystem: cargo
     directory: /
     schedule:
@@ -23,9 +47,9 @@ updates:
       day: monday
     open-pull-requests-limit: 5
     groups:
-      gstreamer:
+      glib-stack:
         applies-to: version-updates
-        patterns: ["gstreamer", "gstreamer-*"]
+        patterns: ["gstreamer*", "glib*", "gio*", "gobject*"]
         update-types: ["major", "minor", "patch"]
       patch:
         applies-to: version-updates
