@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/greetd-proto", "crates/spike-p0", "crates/spike-q5", "crates/greet"]
+members = ["crates/greetd-proto", "crates/auroval-ui", "crates/spike-p0", "crates/spike-q5", "crates/greet", "crates/lock"]
 resolver = "2"
 
 [workspace.package]

@@ -536,6 +536,23 @@ impl Background {
     pub fn has_image(&self) -> bool {
         matches!(self.state, State::Ready { .. })
     }
+
+    /// Whether the video in this chain negotiated `memory:GLMemory`, or
+    /// `None` when the chain settled on something that is not a video.
+    ///
+    /// R7's budget is a no-readback budget, and `greet videoprobe` asks this
+    /// question of a pipeline it built itself. A front end that gets its
+    /// video through the fallback chain cannot reach the `Video` inside, so
+    /// it had no way to say whether the frames on screen were textures or
+    /// copies — and "the video plays" is not the claim R7 makes. This is a
+    /// read-only accessor for a receipt; nothing draws differently because
+    /// of it.
+    pub fn negotiated_gl_memory(&self) -> Option<bool> {
+        match &self.state {
+            State::Video(v) => Some(v.negotiated().gl_memory),
+            _ => None,
+        }
+    }
 }
 
 /// Hand the rows to the driver, once.

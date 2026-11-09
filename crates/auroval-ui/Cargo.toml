@@ -1,0 +1,51 @@
+[package]
+name = "auroval-ui"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+description = "The half of auroval's login screen that is not about logging in: renderer, view, config, background."
+
+[lib]
+name = "auroval_ui"
+path = "src/lib.rs"
+
+[dependencies]
+smithay-client-toolkit = "0.20"
+wayland-client = "0.31"
+wayland-egl = "0.32"
+khronos-egl = { version = "6", features = ["dynamic"] }
+glow = "0.18"
+fontdue = "0.9"
+# Local time, for the clock and the date line (R11). default-features off
+# keeps this to what the greeter needs and nothing else chrono can do.
+# MIT OR Apache-2.0, like the rest of the graph.
+#
+# `unstable-locales` is what makes the date line read in the machine's own
+# language. hyprlock runs `date +"%A, %-d %B"`, which honours LC_TIME; this
+# greeter formatted with chrono's built-in English and said "Sunday" where
+# the lock screen said "zondag" -- found by putting the two side by side on
+# 2026-11-08. The feature's name is chrono's own warning that its API may
+# move; the alternative is libc's setlocale, which is global mutable state in
+# a process that draws from several places, so this is the smaller risk.
+chrono = { version = "0.4", default-features = false, features = [
+    "clock",
+    "unstable-locales",
+] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# R7: the animated background. The spike settled the hard part -- `nvh264dec`
+# negotiates `memory:GLMemory` when it is given a GL context to share, so
+# NVDEC frames land in an OpenGL texture with no CUDA interop written here
+# (docs/decisions/q5-renderer.md). What is left is the plumbing, and these are
+# the crates it needs: `gstreamer-gl` with its `egl` feature is what wraps the
+# greeter's own EGL context so GStreamer can negotiate against it.
+gstreamer = "0.25"
+gstreamer-app = "0.25"
+gstreamer-video = "0.25"
+gstreamer-gl = "0.25"
+gstreamer-gl-egl = "0.25"
+# Q4: Lua in a restricted interpreter. `vendored` builds Lua 5.4 from source so
+# the sandbox is not at the mercy of whatever liblua the host happens to ship.
+mlua = { version = "0.12", features = ["lua54", "vendored"] }

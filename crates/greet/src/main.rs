@@ -10,19 +10,20 @@
 //!     about what it can and cannot reach.
 
 mod auth;
-mod background;
-mod clock;
-mod config;
-mod dump;
-mod render;
+// R9's pool of candidates, and the one integer it remembers between launches.
+// This did NOT move into `auroval-ui` with the renderer, and the reason is a
+// file mode rather than a preference: the index lives beside R4's login
+// memory in `/var/lib/auroval`, which is `drwxr-x--- greeter greeter`, so a
+// locker running as the logged-in user cannot read it, let alone advance it.
+// `crates/lock` therefore takes the first candidate and does not rotate. See
+// N1 in docs/prd/lock.md.
 mod rotation;
-mod sessions;
 mod shell;
-mod store;
-mod theme;
-mod ui;
-mod video;
-mod view;
+
+// Everything this binary draws with now lives in `auroval-ui`, so that the
+// locker can draw the same screen without linking greetd. See that crate's
+// doc comment for where the line was drawn and why.
+use auroval_ui::{background, clock, config, render, sessions, store, ui, video, view};
 
 use config::Config;
 use store::Store;
