@@ -45,7 +45,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 gstreamer = "0.24"
 gstreamer-app = "0.24"
 gstreamer-video = "0.24"
-gstreamer-gl = "0.24"
+gstreamer-gl = "0.25"
 gstreamer-gl-egl = "0.24"
 # Q4: Lua in a restricted interpreter. `vendored` builds Lua 5.4 from source so
 # the sandbox is not at the mercy of whatever liblua the host happens to ship.
