@@ -3,7 +3,24 @@
 Run on 2026-11-08 on the target machine: CachyOS, kernel 7.3.3-1-cachyos,
 Hyprland 0.57.1 (`v0.57.1`, commit `acc1aa0`), NVIDIA, Dell S3220DGF.
 Reproduce with [`lock-measure.nu`](lock-measure.nu); nested compositor config
-in [`nested.conf`](nested.conf).
+in [`nested.lua`](nested.lua).
+
+> **The CPU figures below were taken against a compositor that was running on
+> its defaults, not on the config this file cites.** The nested config was
+> `nested.conf`, in hyprlang, and Hyprland 0.57.1 reads a `-c` file as Lua:
+> every `#` comment was a syntax error, the config was abandoned whole, and
+> the compositor came up in emergency mode with animations and blur ON. The
+> error is drawn as an overlay on the nested window and does not reach the
+> log, so nothing here showed it; it was found on 2026-11-09 by the operator
+> reading his own screen. The file is Lua now and parses.
+>
+> How much this moves the numbers is **not known and is not assumed**. The
+> figures are each process's own CPU out of `/proc`, so a compositor
+> animating its own windows is not directly in them — but it shares a GPU and
+> it sets the frame pacing both front ends answer to. The pairing in §4 is
+> the part that survives regardless, because both front ends ran against the
+> same broken compositor. **Any absolute figure below should be re-measured
+> before it is quoted.**
 
 **What this answers.** Three of issue #67's premises, and no more than three:
 that `ext-session-lock-v1` is available here, that `crates/auroval-ui`'s
@@ -150,7 +167,7 @@ cargo build --workspace --release
 ```
 
 ```nu
-Hyprland -c spike/p3/nested.conf
+Hyprland -c spike/p3/nested.lua
 ```
 
 ```nu

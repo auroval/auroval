@@ -36,7 +36,7 @@
 #   nu spike/p3/lock-measure.nu <nested WAYLAND_DISPLAY> [seconds]
 #
 # Bring the nested compositor up first, from the session you are in:
-#   Hyprland -c spike/p3/nested.conf
+#   Hyprland -c spike/p3/nested.lua
 # and read its socket out of `ls $env.XDG_RUNTIME_DIR | where name =~ wayland`
 # -- it is the one that was not there before.
 
