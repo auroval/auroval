@@ -331,7 +331,7 @@ ls candidates/*.png | each { |f| python3 tools/scene-check/scene_check.py $f.nam
 |---|---|
 | Format | codec and profile, colour primaries, declared range, pixel format |
 | Geometry | resolution, aspect |
-| Composition | mean luminance and bright fraction **around** the subject, inside the central 60×70% (§5.3.1) |
+| Composition | mean luminance and bright fraction **around** the subject, inside the central 60×70% (§5.3.1); the subject column and the lower centre are reported beside it, ungated (§5.3.2) |
 | **Legibility** | the background behind **each UI element separately** |
 | Loop | duration, and the seam against an ordinary frame step |
 | Palette | the derived palette, plus assertions that it holds its floors |
@@ -439,6 +439,56 @@ which is an argument from a small sample and not from the measure.
 What it took was not a tuning change. It was a brief that stated darkness as
 appearance rather than as lighting (§5.5.1): *"gone almost black with wet moss
 and shadow"*, *"everything that is not a fish sunk in deep shadow"*.
+
+#### 5.3.2 The lower centre, and why §4.1.2 was the fix
+
+Found by review of the split in §5.3.1, before §4.1.2 landed. Worth keeping,
+because the obvious repair was wrong and the one that worked did not touch
+this clause at all.
+
+Gating the surround and excluding the subject's column left the region §4.2
+is most specific about — *"nothing important in the lower centre"*, *"the
+lower middle of the frame is empty near-black space"* — read by nothing. The
+column ran the full height of the safe field, so composition excluded it by
+construction; legibility measures only where UI lands and the greeter's
+lowest element stops at 56% of the height, while the safe field reaches 85%.
+
+A frame of near-black with one bright disc at 72% of the height cleared
+**every clause the tool had**: composition passed with the surround at 0.00%
+bright, legibility passed because no UI is down there, and it needed no
+scrim. The whole-field measure it replaced had failed it at 4.60%.
+
+**Bounding the excluded column at the bottom of the UI stack was tried and
+is worse.** It moves scene-01's `master.png` from 0.0561 to 0.1381 and fails
+the one image the split had finally made measurable, because that subject
+does not stop at the input field — it falls away into darkness below the
+*frame*. Measured on the candidates of the time, with the lower centre as a
+region of its own:
+
+| | surround | lower centre |
+|---|---|---|
+| scene-01 `master` | 0.0561 / 7.62% | **0.4329 / 55.12%** |
+| scene-01 `v5-nacre` | 0.2319 / 29.13% | 0.1339 / 18.93% |
+| scene-01 `v2-moths` | 0.0161 / 2.58% | 0.1435 / 19.49% |
+| scene-05 `lantern-s11` | 0.0407 / 6.77% | 0.0022 / 0.08% |
+| the synthetic disc above | 0.0014 / 0.00% | 0.2458 / 27.52% |
+
+Every scene-01 candidate fails that region and only scene-05 passes it, so
+gating it would have rejected the reference. The region was therefore briefly
+reported and not gated, filed as A12.
+
+**§4.1.2 dissolved it.** Moving the greeter's subject off centre means the
+centre is simply the thing to measure, the gated column runs the full height,
+and the lower centre is inside it — §4.2's first bullet, *"no bright element
+in the centre of the frame"*, measured literally. No separate region, no
+second threshold, nothing ungated. The disc above now fails composition at
+11.50% bright, and the self-test pins that.
+
+The lesson is the one A10 taught a few hours after it was filed: a measure
+that disagrees with the reference is a question, not a defect to patch. Both
+times the answer was upstream of the measure — in the brief for A10, in the
+composition for this one.
+
 
 ### 5.4 The palette, and a trap worth knowing
 
@@ -744,6 +794,7 @@ re-runs the first of these and fails loudly if matugen's behaviour changes.
 | A8 | A4's scrim threshold now looks like the wrong axis on its own. Measured: the only candidate with correct composition scored 0.275, just *above* the 25% guess, while a candidate with **no subject** scored 0.000. Scrim alone rewards emptiness, so the reject rule needs a second term — minimum subject extent, or ornament density — or gate 1 will systematically prefer duller images. | Maintainer |
 | A9 | The generator obeys instruction about style and subject and ignores instruction about structure (§10). Is that FLUX.2 [klein] specifically, a 4B-parameter limit, or every model? Decides whether the filter stage can ever shrink. | Maintainer |
 | A10 | **Withdrawn the day it was filed.** Proposed recalibrating the composition clause's bright-fraction threshold (≤ 2% above 0.25) because no image had met it. `pond-warm-b-s11` then measured 1.74% and passed the clause outright (§5.3.1), so the threshold is reachable and loosening it would have removed a working limit on the evidence of a small sample. What it took was a brief stating darkness as appearance rather than as lighting (§5.5.1). | Withdrawn |
+| ~~A12~~ | ~~§4.2's lower centre is read by nothing~~ **Settled 2026-11-09 by §4.1.2.** The surround-gated split left the lower centre unmeasured by any clause, and a frame that was one bright disc at 72% of the height cleared all of them (§5.3.2). Bounding the excluded column would have failed scene-01's own master. Moving the subject off centre made the centre the gated region, which contains it. | Settled |
 | A11 | Hue is not stable across seeds of one brief: six scene-02 candidates, one subject, gave 344.9°, 57.9°, 355.7°, 306.4°, 2.6°, 7.3°. If tone and chroma are the theme's and hue is the media's (N1), the accent is decided by which candidate is accepted rather than by the scene, and acceptance becomes an unrecorded palette decision. | Maintainer |
 
 ---

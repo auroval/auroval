@@ -296,7 +296,7 @@ def measure_regions(img: Image.Image) -> dict[str, float]:
 
 @dataclass
 class SafeField:
-    """Three readings of the same rectangle. Only `surround` is gated."""
+    """Four readings of the same rectangle. Only `surround` is gated."""
 
     whole: tuple[float, float]
     column: tuple[float, float]
@@ -1043,17 +1043,34 @@ def self_test() -> int:
         # Built as two frames carrying the same amount of light in the same
         # safe field, placed differently. The surround clause must separate
         # them; a measure that passes or fails both has lost what it is for.
-        def lit(cx_frac: float) -> Image.Image:
+        def lit_at(cx_frac: float, cy_frac: float) -> Image.Image:
             im = Image.new("RGB", (W, H), (8, 3, 10))
             dd = ImageDraw.Draw(im)
             r = 150
-            cx, cy = int(W * cx_frac), H // 2
+            cx, cy = int(W * cx_frac), int(H * cy_frac)
             dd.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(245, 240, 255))
             return im
 
+        def lit(cx_frac: float) -> Image.Image:
+            return lit_at(cx_frac, 0.5)
+
         centred, offset = tmp / "lit-centre.png", tmp / "lit-flank.png"
         lit(0.50).save(centred)
-        lit(0.32).save(offset)  # inside the safe field, outside the column
+        lit(0.32).save(offset)
+        # The flank disc's whole point is that it is inside the safe field and
+        # clear of the excluded column, and it clears that column by 4 px.
+        # Asserted rather than left in a comment: §5.3.1 and A10 both say
+        # SAFE_SUBJECT_COL was calibrated against the eight candidates that
+        # existed, so it is a number that will be revisited, and widening it
+        # would slide the boundary over this disc. The check below would then
+        # fail as though the measure had broken.
+        COL, SF = subject_column_box(W, H), safe_field_box(W, H)
+        fx0, fx1 = int(W * 0.32) - 150, int(W * 0.32) + 150
+        check(
+            "the flank disc is in the safe field and clear of the column",
+            fx0 >= SF[0] and fx1 <= COL[0],
+            f"disc x {fx0}..{fx1}, safe field from {SF[0]}, column from {COL[0]}",
+        )
         rc = evaluate(centred, tmp, hue_override=200.0)
         ro = evaluate(offset, tmp, hue_override=200.0)
 
@@ -1097,6 +1114,28 @@ def self_test() -> int:
             "while the same pixels as a greeter background do",
             res.scrim_alpha > 0.0,
             f"scrim {res.scrim_alpha * 100:.0f}%",
+        )
+
+        # §4.2's lower centre, which on §2.2's previous shape had no reader at
+        # all. Gating the surround and excluding the full-height column meant
+        # a bright disc below every UI element passed composition at 0.00%
+        # bright, passed legibility because no UI is down there, and needed
+        # no scrim -- while the whole-field measure it replaced had failed it
+        # at 4.60%. §4.1.2 settled it by moving the subject off centre, which
+        # makes the centre the thing to measure and puts the lower centre
+        # inside the gated region. This is that guarantee, pinned.
+        below = tmp / "lit-below.png"
+        lit_at(0.50, 0.72).save(below)
+        rb = evaluate(below, tmp, hue_override=200.0)
+        check(
+            "a bright lower centre fails, the region §4.2 is about",
+            not all(c.met for c in rb.clauses if c.name.startswith("composition")),
+            f"centre {rb.safe_field.column[0]:.4f}, {rb.safe_field.column[1] * 100:.2f}% bright",
+        )
+        check(
+            "and it is the look clause that catches it, not legibility",
+            rb.scrim_alpha == 0.0 and all(c.met for c in rb.clauses if c.name.startswith("legib")),
+            "no UI lands down there, so nothing else could",
         )
 
         check(
