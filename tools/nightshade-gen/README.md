@@ -90,9 +90,22 @@ scene-01 predates it and used `0.42.0.dev0` from git main, so a version pin
 was not available then and a commit hash would have been the best possible
 record; it is now, and this is the stronger one.
 
+`transformers` is pinned too, and that was a hole in the argument above rather
+than an extra. It runs the text encoder that turns the prompt into embeddings,
+so a change to tokenization or padding moves the image from an identical
+brief, seed and weight revision — pinned weights beside unpinned code, one
+layer further in. It was neither pinned nor recorded until 2026-11-09.
+
 `torch` is deliberately left unpinned, and `requirements.txt` says why: its
 CUDA build must match the installed driver, and it is not what decides how the
-image looks. The resolved version goes into every `run.json`.
+image looks. `accelerate` is unpinned on the same grounds — it places modules
+on devices and has no say in the pixels.
+
+Every `run.json` now records **all** of them, pinned or not: diffusers,
+transformers, accelerate, torch, CUDA, the device, and numpy, OpenCV and
+Pillow. The last three cannot change the image but can change the file —
+numpy does the quantisation to 16 bit, OpenCV writes the master and Pillow the
+preview. A pin says what should be installed; `run.json` says what was.
 
 Needs a CUDA GPU. `enable_model_cpu_offload()` rather than `.to("cuda")`: a 4B
 transformer and its text encoder at 2560×1440 do not fit a consumer card
@@ -104,3 +117,10 @@ else.
 It does not judge. `tools/scene-check/scene_check.py` measures a candidate
 against the contract, and gates 2 and 3 — an hour behind the real greeter, and
 two weeks of living with it — are not measurements at all.
+
+It also does not pretend to have written a file it did not. `cv2.imwrite`
+answers an unwritable directory with `False` rather than an exception, and the
+Pillow save and the `run.json` write that follow it would both succeed — so a
+run could once print `wrote <stem>-master16.png` and exit 0 having written no
+master, leaving a `run.json` that claims a reproducible record for a file that
+is not there. The return value is checked.
