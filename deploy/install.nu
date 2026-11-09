@@ -64,10 +64,40 @@ def main [
     # can be set is the script greetd itself runs, which is why this is a
     # flag here rather than something to remember on the console.
     if $frame_dump != "" {
-        let line = $"\n# --frame-dump: staged for one sitting. Not for a deployed greeter.\nAUROVAL_FRAME_DUMP=($frame_dump)\nexport AUROVAL_FRAME_DUMP\n"
+        # Checked and quoted, because this string is written into a file that
+        # root installs and `greeter` then executes on every start. It used to
+        # be interpolated bare: `--frame-dump '/tmp/x; curl ... | sh'` put that
+        # semicolon straight into the startup script. A debugging flag is still
+        # a flag somebody types in a hurry, and the blast radius here is the
+        # login path.
+        if ($frame_dump !~ '^/[A-Za-z0-9._/@+-]*$') {
+            print "         --frame-dump must be an absolute path of letters,"
+            print "         digits and . _ / @ + - — this one is not, and it"
+            print "         would be written into a root-installed script."
+            exit 2
+        }
+        let line = $"\n# --frame-dump: staged for one sitting. Not for a deployed greeter.\nAUROVAL_FRAME_DUMP='($frame_dump)'\nexport AUROVAL_FRAME_DUMP\n"
         let body = (open --raw $"($stage)/auroval-greet.sh")
+        # The anchor is checked, because it stopped matching and nothing said
+        # so. This was `str replace "exec cage"`, and on 2026-11-08 the
+        # startup script gained `systemd-cat` in front of cage -- so the line
+        # became `exec systemd-cat --identifier=auroval-greet \` and the
+        # replacement silently matched nothing. `--frame-dump` has been
+        # accepting a path, printing that it was baked in, and doing nothing
+        # at all ever since. A substitution that cannot find its anchor must
+        # fail, not shrug: that is the same class of bug as a constant that
+        # used to be true, and it is three lines to make impossible.
+        let anchor = ($body | lines | where ($it | str starts-with "exec ") | length)
+        if $anchor != 1 {
+            print $"         cannot stage --frame-dump: deploy/auroval-greet.sh has ($anchor)"
+            print "         lines starting with `exec `, and this needs exactly one to"
+            print "         insert before. Fix the script or this flag, not both."
+            exit 2
+        }
         $body
-        | str replace "exec cage" $"($line)\nexec cage"
+        | lines
+        | each {|l| if ($l | str starts-with "exec ") { $"($line)\n($l)" } else { $l } }
+        | str join "\n"
         | save -f $"($stage)/auroval-greet.sh"
     }
     cp $"($deploy)/auroval.tmpfiles.conf" $"($stage)/auroval.tmpfiles.conf"
@@ -164,6 +194,42 @@ def main [
 
     print $"  5/($total)  root script"
     let root_sh = $"($repo)/target/auroval-install-root.sh"
+
+    # Digests, taken NOW, of exactly what was staged above.
+    #
+    # The window this closes was found by an adversarial review on
+    # 2026-11-09, and it is structural rather than a slip: this script is
+    # written as the maintainer and run as root, and between those two moments
+    # root's inputs sit in `target/auroval-stage`, which is `drwxr-xr-x
+    # dirk dirk`. Anything already running as the maintainer -- a `build.rs`
+    # from a dependency, for one, which step 1/5 runs by the hundred -- could
+    # append a line to the staged tmpfiles config, and `systemd-tmpfiles
+    # --create` would then run it as uid 0. The root script stayed
+    # byte-identical, so the reading the maintainer is told to do found
+    # nothing.
+    #
+    # WHAT THIS IS AND IS NOT. It is not a fix. An attacker who can write the
+    # stage can usually write this script too, and could edit both. What it
+    # buys is that a silent edit of a data file is no longer enough: the
+    # tampering has to reach the one artefact the maintainer is told to read,
+    # and the digests are printed to the terminal as well so the two can be
+    # compared without trusting either alone. The real fix is a root-owned
+    # staging directory, which needs root before root runs, and that is the
+    # open half.
+    let staged_files = [
+        "auroval.tmpfiles.conf"
+        "auroval-greet"
+        "auroval-greet.sh"
+        "greetd-auroval.toml"
+    ]
+    let digests = ($staged_files | each {|f|
+        {name: $f, sha: (open --raw $"($stage)/($f)" | hash sha256)}
+    })
+    print "         digests of what was staged:"
+    for d in $digests {
+        print $"           ($d.sha)  ($d.name)"
+    }
+
     [
         "#!/bin/sh"
         "# Written by deploy/install.nu. Read it before you run it."
@@ -172,18 +238,40 @@ def main [
         "# stop, disable or reconfigure SDDM."
         "set -eux"
         ""
+        "# Nothing below this block runs if anything in the staging directory"
+        "# has changed since install.nu wrote this file. The directory belongs"
+        "# to the maintainer and this script runs as root; see install.nu for"
+        "# what that window is and what this does and does not close."
+        "auroval_verify() {"
+        '    printf "%s  %s\n" "$2" "$1" | sha256sum -c --status && return 0'
+        '    echo "auroval: $1 is not what install.nu staged. REFUSING." >&2'
+        '    echo "auroval: nothing has been installed. Re-run deploy/install.nu." >&2'
+        "    exit 3"
+        "}"
+        ""
+        "# Collected rather than printed where they happen: see the end."
+        "auroval_notes=\"\""
+        "auroval_note() {"
+        '    echo "$1"'
+        '    auroval_notes="$auroval_notes  - $1'
+        '"'
+        "}"
+    ]
+    | append ($digests | each {|d| $"auroval_verify \"($stage)/($d.name)\" ($d.sha)" })
+    | append [
+        ""
         "# C15 and R4: the two directories the greeter owns."
-        $"install -m 0644 ($stage)/auroval.tmpfiles.conf /etc/tmpfiles.d/auroval.conf"
+        $"install -m 0644 \"($stage)/auroval.tmpfiles.conf\" /etc/tmpfiles.d/auroval.conf"
         "systemd-tmpfiles --create /etc/tmpfiles.d/auroval.conf"
         ""
         "# The greeter and its startup path."
         "install -d -m 0755 /usr/local/lib/auroval"
-        $"install -m 0755 ($stage)/auroval-greet    /usr/local/lib/auroval/auroval-greet"
-        $"install -m 0755 ($stage)/auroval-greet.sh /usr/local/lib/auroval/auroval-greet.sh"
+        $"install -m 0755 \"($stage)/auroval-greet\"    /usr/local/lib/auroval/auroval-greet"
+        $"install -m 0755 \"($stage)/auroval-greet.sh\" /usr/local/lib/auroval/auroval-greet.sh"
         ""
         "# greetd's config for auroval, alongside its own, never replacing it."
         "install -d -m 0755 /etc/greetd"
-        $"install -m 0644 ($stage)/greetd-auroval.toml /etc/greetd/auroval.toml"
+        $"install -m 0644 \"($stage)/greetd-auroval.toml\" /etc/greetd/auroval.toml"
         ""
         "# C15, and issue #77: warm the plugin registry here, as `greeter`, so"
         "# that the first login does not pay for it."
@@ -208,9 +296,9 @@ def main [
         "    runuser -u greeter -- env XDG_CACHE_HOME=/var/cache/auroval \\"
         "        GST_REGISTRY=/var/cache/auroval/gst-registry.bin \\"
         "        gst-inspect-1.0 >/dev/null \\"
-        '        || echo "registry not warmed; the first login pays ~1.9 s once"'
+        '        || auroval_note "registry not warmed; the first login pays ~1.9 s once"'
         "else"
-        '    echo "gst-inspect-1.0 not found; registry not warmed"'
+        '    auroval_note "gst-inspect-1.0 not found; registry not warmed"'
         "fi"
         ""
         "# R7/Q5, asked by the user who will actually be doing it. videoprobe"
@@ -271,9 +359,32 @@ def main [
         # decode path "is not a thing to assume", had never once run.
         '        /usr/local/lib/auroval/auroval-greet videoprobe "$v" 1 \'
         "        | grep -E '^memory|^result' \\"
-        '        || echo "videoprobe failed as greeter; the decode path is unverified"'
+        '        || auroval_note "videoprobe failed as greeter; the decode path is unverified"'
         "    break"
         "done"
+        ""
+        "# Said once more, at the end, with the tracing off.",
+        "#"
+        "# Everything above that can fail without breaking an install says so"
+        "# and carries on, which is right -- an unwarmed registry is a slow"
+        "# first login and an unverified decode path is a question, neither is"
+        "# a broken system. But `set -x` means those messages scroll past in"
+        "# two hundred lines of tracing, and the one time this step actually"
+        "# ran and failed (2026-11-09) it was noticed only because the"
+        "# maintainer pasted the whole output to be read. A note nobody sees"
+        "# is not a note."
+        "set +x"
+        'if [ -n "$auroval_notes" ]; then'
+        '    echo ""'
+        '    echo "auroval: installed, with notes:"'
+        '    printf "%s\n" "$auroval_notes"'
+        '    echo ""'
+        '    echo "auroval: the install itself succeeded; the lines above are"'
+        '    echo "auroval: things that could not be checked, not failures of it."'
+        "else"
+        '    echo ""'
+        '    echo "auroval: installed, nothing to report."'
+        "fi"
     ] | append "" | str join "\n" | save -f $root_sh
     ^chmod 0755 $root_sh
     print $"         ($root_sh)"
