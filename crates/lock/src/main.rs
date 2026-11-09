@@ -103,8 +103,10 @@ THIS BINARY UNLOCKS A SESSION, as of 2026-11-09. The paragraph here used to
 say the opposite -- `no PAM code in it and no authentication of any kind` --
 which was true of the skeleton and false from the commit that added
 crates/lock/src/pam.rs, while the text below went on to document
-AUROVAL_LOCK_PAM_SERVICE two paragraphs later. What you type is handed to
-the PAM stack named below, once per deliberate submission (L10).
+an override of the PAM service two paragraphs later. What you type is handed
+to the stack in /etc/pam.d/auroval-lock, once per deliberate submission (L10).
+That stack is a compiled-in constant: the override was removed on 2026-11-09
+because it could point authentication at `pam_permit`.
 
 exit codes: 0 locked and released, 1 a failure of this program,
 2 a refusal to start, 3 the compositor declined the lock (L8).
@@ -129,9 +131,6 @@ AUROVAL_CONFIG overrides /etc/auroval/greet.lua.
 AUROVAL_LOCK_SECONDS=<n> makes rehearse exit after n seconds WITHOUT
   unlocking. For the measurement harness, which should not depend on anyone
   being at the keyboard. The session is left locked on purpose -- see L9.
-AUROVAL_LOCK_PAM_SERVICE=<name> overrides the PAM service, default
-  `auroval-lock`. For trying a stack of your own without editing
-  /etc/pam.d; it cannot make authentication weaker than that file is.
 AUROVAL_LOG_DRAWS logs one line a second: frames presented, turns of the
   loop that drew nothing, and this process's CPU as a share of one core.
   This is R7's 50%-of-one-core ceiling, asked on a lock surface.";
@@ -242,22 +241,15 @@ fn probe() {
             match pam::own_username() {
                 Ok(u) => println!(
                     "unlock       PAM service `{}`, user `{}` (not contacted)",
-                    std::env::var("AUROVAL_LOCK_PAM_SERVICE")
-                        .unwrap_or_else(|_| "auroval-lock".into()),
+                    pam::SERVICE,
                     u
                 ),
                 Err(e) => println!("unlock       NO USER — {e}"),
             }
             println!(
                 "             /etc/pam.d/{} {}",
-                std::env::var("AUROVAL_LOCK_PAM_SERVICE").unwrap_or_else(|_| "auroval-lock".into()),
-                if std::path::Path::new(&format!(
-                    "/etc/pam.d/{}",
-                    std::env::var("AUROVAL_LOCK_PAM_SERVICE")
-                        .unwrap_or_else(|_| "auroval-lock".into())
-                ))
-                .exists()
-                {
+                pam::SERVICE,
+                if std::path::Path::new(&format!("/etc/pam.d/{}", pam::SERVICE)).exists() {
                     "exists"
                 } else {
                     "IS MISSING — rehearse would lock a screen nothing can unlock"
@@ -295,8 +287,7 @@ fn rehearse() {
     // took away the escape key and the timer's unlock, the only way out
     // would be killing the compositor from another VT and losing the
     // session. So this is checked before the lock is asked for, not after.
-    let service =
-        std::env::var("AUROVAL_LOCK_PAM_SERVICE").unwrap_or_else(|_| "auroval-lock".into());
+    let service = pam::SERVICE;
     let stack = format!("/etc/pam.d/{service}");
     if !std::path::Path::new(&stack).exists() {
         eprintln!("auroval-lock: {stack} does not exist, so nothing could unlock this screen.");

@@ -472,8 +472,7 @@ pub fn run(cfg: Config) -> Result<Outcome, String> {
     // nowhere else. Fatal if it cannot be determined -- a locker that does
     // not know whose screen it is holding has no business holding it.
     let user = pam::own_username()?;
-    let service =
-        std::env::var("AUROVAL_LOCK_PAM_SERVICE").unwrap_or_else(|_| "auroval-lock".into());
+    let service = pam::SERVICE.to_string();
     eprintln!("auroval-lock: pam service {service}, user {user}");
     let (auth_tx, auth_rx) = std::sync::mpsc::channel();
 
@@ -608,7 +607,12 @@ impl Lock {
             return;
         }
         let mut secret = std::mem::replace(&mut self.secret, pam::Secret::new());
-        self.ui.typed.clear();
+        // `clear_field`, not `typed.clear()`. This locker's stage never
+        // leaves `AskingUser`, so `UiState::push` has been filling
+        // `username` -- and clearing `typed` cleared nothing. Every denial
+        // left the previous attempt's placeholders on screen and the field
+        // grew with each try.
+        self.ui.clear_field();
         self.ui.notice = None;
         self.auth = Auth::InFlight;
 

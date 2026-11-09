@@ -40,6 +40,25 @@
 
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
 
+/// The one PAM stack this locker will ever use.
+///
+/// A constant and not a variable, since 2026-11-09. It used to be
+/// `AUROVAL_LOCK_PAM_SERVICE`, so a stack could be tried without editing
+/// `/etc/pam.d`, and `main.rs` asserted that the override *"cannot make
+/// authentication weaker than that file is"*. That was false, and an
+/// adversarial review traced it end to end: the only check was that
+/// `/etc/pam.d/<name>` **existed**, never what was in it. This machine ships
+/// `sddm-greeter`, `sddm-autologin` and `system-services`, each carrying an
+/// `auth ... pam_permit.so` line that accepts anything at all, and a
+/// leftover spike stack that accepts one fixed word. One `env =` line in a
+/// user-writable `hyprland.conf` or `hypridle.conf`, and the next lock opened
+/// on a single keystroke with no delay and no faillock tally.
+///
+/// The convenience was real and it cost the entire authentication. A
+/// developer who wants another stack edits this line and rebuilds — which is
+/// something an attacker with a text editor cannot do to a running system.
+pub const SERVICE: &str = "auroval-lock";
+
 // ── the ABI, from /usr/include/security/_pam_types.h ──────────────────────
 //
 // Transcribed rather than bound, so the line numbers are the check: struct

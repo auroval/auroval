@@ -72,7 +72,20 @@ impl UiState {
             stage: Stage::AskingUser,
             username: last.user.clone().unwrap_or_default(),
             prompt: String::new(),
-            secret: false,
+            // **True, not false, and the default is the point.** This was
+            // `false` until 2026-11-09, and `secret` only became true when a
+            // prompt arrived saying so. Between submitting a username and
+            // greetd's first prompt landing, the stage is already
+            // `Answering` and the field was therefore drawn in PLAIN TEXT --
+            // milliseconds on a warm path, longer on a slow PAM stack, and
+            // nobody waits for a prompt before typing a password they have
+            // typed a thousand times. Found by an adversarial review.
+            //
+            // A field is now secret unless something says otherwise, so the
+            // failure mode of a missing message is a hidden field rather than
+            // a visible password. `auth.rs` still sets it per prompt, which
+            // is what makes a `visible` prompt visible.
+            secret: true,
             typed: String::new(),
             notice: None,
             sessions,
@@ -175,6 +188,22 @@ impl UiState {
         }
     }
 
+    /// Empty whichever field `push` has been filling.
+    ///
+    /// Added because the locker cleared `typed` while its keystrokes were
+    /// going into `username`: its stage never leaves `AskingUser`, so every
+    /// denied attempt left its placeholder characters in the field and the
+    /// screen showed the running total of every password tried that sitting.
+    /// A length is not a secret, but it is not nothing either, and a field
+    /// that will not clear is a bug whichever way you look at it.
+    pub fn clear_field(&mut self) {
+        match self.stage {
+            Stage::AskingUser => self.username.clear(),
+            Stage::Answering => self.typed.clear(),
+            Stage::Starting => {}
+        }
+    }
+
     pub fn backspace(&mut self) {
         match self.stage {
             Stage::AskingUser => {
@@ -196,6 +225,37 @@ pub enum FieldDisplay<'a> {
 
 #[cfg(test)]
 mod tests {
+    /// The regression the default exists for: `secret` was `false` until a
+    /// prompt said otherwise, so the window between submitting a username
+    /// and greetd's first prompt drew the field in plain text — and nobody
+    /// waits for a prompt before typing a password they know by heart.
+    #[test]
+    fn a_field_is_secret_before_anything_says_so() {
+        let mut ui = UiState::new(Vec::new(), &crate::store::LastLogin::default());
+        ui.stage = Stage::Answering;
+        ui.push('a');
+        ui.push('b');
+        assert!(
+            matches!(ui.field_display(), FieldDisplay::Dots(2)),
+            "a field nothing has described yet must be hidden, not shown"
+        );
+    }
+
+    /// `clear_field` empties what `push` filled, in every stage. The locker
+    /// cleared `typed` while its keystrokes went into `username`, so the
+    /// field showed the running total of every attempt that sitting.
+    #[test]
+    fn clearing_a_field_empties_the_one_push_fills() {
+        for stage in [Stage::AskingUser, Stage::Answering] {
+            let mut ui = UiState::new(Vec::new(), &crate::store::LastLogin::default());
+            ui.stage = stage;
+            ui.push('x');
+            assert_eq!(ui.field().chars().count(), 1, "{stage:?}");
+            ui.clear_field();
+            assert!(ui.field().is_empty(), "{stage:?} did not clear");
+        }
+    }
+
     use super::*;
     use crate::sessions::Kind;
     use crate::store::LastLogin;
