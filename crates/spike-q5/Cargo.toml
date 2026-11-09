@@ -9,7 +9,7 @@ publish = false
 description = "Q5 spike: what does a real GL renderer cost against wl_shm? Throwaway."
 
 [dependencies]
-gstreamer = "0.24"
+gstreamer = "0.25"
 gstreamer-app = "0.24"
 gstreamer-video = "0.24"
 gstreamer-gl = "0.24"

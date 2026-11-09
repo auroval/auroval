@@ -42,7 +42,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 # (docs/decisions/q5-renderer.md). What is left is the plumbing, and these are
 # the crates it needs: `gstreamer-gl` with its `egl` feature is what wraps the
 # greeter's own EGL context so GStreamer can negotiate against it.
-gstreamer = "0.24"
+gstreamer = "0.25"
 gstreamer-app = "0.24"
 gstreamer-video = "0.24"
 gstreamer-gl = "0.24"
