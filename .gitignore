@@ -13,6 +13,13 @@ __pycache__/
 .mypy_cache/
 *.egg-info/
 
+# Build and check output. These are not a category the repository has needed
+# before; they are here because `check.log` and `verify.log` were committed to
+# main by accident on 2026-11-09, from a `git add -A` in a worktree where a
+# cargo run had been redirected to a file beside the manifest. Scratch output
+# belongs outside the tree, and when it is not, this catches it.
+*.log
+
 # Editor and OS droppings
 *.swp
 *~
