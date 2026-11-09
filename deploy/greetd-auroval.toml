@@ -1,11 +1,9 @@
 # auroval's greetd configuration — installed as /etc/greetd/auroval.toml.
 #
 # NOT /etc/greetd/config.toml. That file is greetd's default and the one the
-# `greetd.service` unit reads, and this project does not touch it. SDDM stays
-# the way into this machine until the last box of P1 is ticked, and until then
-# greetd is started by hand, in the foreground, on a spare VT:
-#
-#     sudo greetd --config /etc/greetd/auroval.toml
+# `greetd.service` unit reads unless a drop-in says otherwise, and this
+# project does not touch it. The day you want plain `agreety` back, it is
+# there and correct — which is the rollback deploy/TRIAL.md rests on.
 #
 # Nothing about this file enables greetd, and installing it changes no
 # behaviour on its own. That is deliberate: the P0 spike learned the hard way
@@ -13,13 +11,20 @@
 # FRESH greeter and switches the console back to its own VT. Run as a service
 # before you are ready, it will keep yanking you off whatever you were doing.
 #
-# `vt` must be a free console. 3 is the convention across this repo's spikes;
-# VT 1 and 2 belong to SDDM and your desktop session. Change it here if 3 is
-# taken, or pass --vt to spike/p1e/greetd-session.nu, which writes a copy of
-# this file with the number substituted.
+# `vt` is 1, and that is the deployed value rather than a spike's.
+# `greetd.service` carries `Conflicts=getty@tty1.service`, so the unit already
+# takes tty1 away from its getty in order to put a login screen there; a
+# config that then points somewhere else leaves tty1 with neither. The repo's
+# spikes use VT 3 because they run alongside a display manager that owns 1,
+# and they pass `--vt 3` for themselves — see spike/p1e/greetd-session.nu.
+#
+# This was 3 until 2026-11-09, and the day it mattered was the day somebody
+# ran `deploy/install.nu` without `--vt 1`: the file on disk said 3 while the
+# running greetd, started before that install, was still on 1. Nothing
+# compared them. install.nu does now.
 
 [terminal]
-vt = 3
+vt = 1
 
 [default_session]
 # deploy/auroval-greet.sh, installed. It sets the C15 cache variables and

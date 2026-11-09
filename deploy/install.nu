@@ -28,7 +28,7 @@
 
 def main [
     --no-build            # skip cargo, use whatever is in target/release
-    --vt: int = 3         # VT the staged greetd config points at
+    --vt: int = 1         # VT the staged greetd config points at
     --frame-dump: string = ""   # bake AUROVAL_FRAME_DUMP=<dir> into the startup script
 ] {
     let repo = ($env.FILE_PWD | path dirname)
@@ -71,8 +71,15 @@ def main [
         | save -f $"($stage)/auroval-greet.sh"
     }
     cp $"($deploy)/auroval.tmpfiles.conf" $"($stage)/auroval.tmpfiles.conf"
-    # The checked-in greetd config says vt = 3. Substitute rather than ask the
+    # The checked-in greetd config says vt = 1. Substitute rather than ask the
     # maintainer to edit a file he is about to copy with root privileges.
+    #
+    # The default is 1 because `greetd.service` carries
+    # `Conflicts=getty@tty1.service`: the unit takes tty1 from its getty in
+    # order to put a login screen there, and a config pointing elsewhere
+    # leaves tty1 with neither. It was 3, inherited from the spikes, which run
+    # alongside a display manager that owns 1 and pass `--vt 3` for
+    # themselves.
     open --raw $"($deploy)/greetd-auroval.toml"
     | str replace -r '(?m)^vt = \d+$' $"vt = ($vt)"
     | save -f $"($stage)/greetd-auroval.toml"
@@ -81,6 +88,25 @@ def main [
     if $frame_dump != "" {
         print $"         AUROVAL_FRAME_DUMP=($frame_dump) is baked in — re-run"
         print "         without --frame-dump to take it out again."
+    }
+
+    # What the installed config says today, if there is one. Compared rather
+    # than assumed, because the failure this catches is silent: on 2026-11-09
+    # an install without `--vt 1` staged vt = 3 over a file that said 1, while
+    # the greetd started before it went on serving tty1. The two disagreed for
+    # eleven hours and the only place it would have shown is a reboot.
+    let installed = "/etc/greetd/auroval.toml"
+    if ($installed | path exists) {
+        let now = (open --raw $installed | parse -r '(?m)^\s*vt\s*=\s*(\d+)' | get -o capture0.0)
+        if ($now | is-not-empty) and $now != ($vt | into string) {
+            print ""
+            print $"         ($installed) says vt = ($now); this stages vt = ($vt)."
+            print "         The root script below will overwrite it. If that is not what"
+            print $"         you meant, re-run with --vt ($now)."
+            print "         A running greetd keeps the VT it started with, so the two can"
+            print "         disagree until the next restart or reboot."
+            print ""
+        }
     }
 
     print $"  3/($total)  check the greeter user"
@@ -225,10 +251,23 @@ def main [
     print "Then, on a free VT \(Ctrl+Alt+F3, log in as yourself):"
     print "  auroval-vt"
     print ""
-    print "greetd is still not enabled. SDDM is still the way in. To see the"
-    print "greeter under greetd once it can draw:"
-    print "  sudo nu spike/p1e/greetd-session.nu --vt 3 --seconds 60"
-    print "  \(that one does need root — greetd opens a VT and talks to PAM —"
-    print "   but it starts greetd by hand with auroval's own config and stops"
-    print "   it again. It never enables the service and never touches SDDM.)"
+    # Asked rather than asserted. This paragraph said "greetd is still not
+    # enabled. SDDM is still the way in." unconditionally, which was true of
+    # every machine until one of them switched -- and then it was a line
+    # telling the maintainer the opposite of what his own machine was doing.
+    let enabled = ((^systemctl is-enabled greetd.service | complete).stdout | str trim)
+    if $enabled == "enabled" {
+        print "greetd is ENABLED on this machine: this greeter is the way in, and the"
+        print "files above have just been staged over the ones it will use next time it"
+        print "starts. A running greetd keeps what it read at startup, so nothing"
+        print "changes until it restarts or the machine reboots."
+        print "The way back out is deploy/TRIAL.md section 4."
+    } else {
+        print $"greetd is ($enabled). SDDM is still the way in. To see the"
+        print "greeter under greetd once it can draw:"
+        print "  sudo nu spike/p1e/greetd-session.nu --vt 3 --seconds 60"
+        print "  \(that one does need root — greetd opens a VT and talks to PAM —"
+        print "   but it starts greetd by hand with auroval's own config and stops"
+        print "   it again. It never enables the service and never touches SDDM.)"
+    }
 }

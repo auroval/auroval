@@ -22,7 +22,11 @@ Three things, and none of them touches SDDM's own configuration:
   untouched. That is deliberate: the day you want plain `agreety` back, it is
   there and correct.
 - The greeter runs on **VT 1**, which is what `greetd.service` already expects
-  — it carries `Conflicts=getty@tty1.service`. Install with `--vt 1`.
+  — it carries `Conflicts=getty@tty1.service`. That is now `install.nu`'s
+  default, and it was not on 2026-11-09: an install without `--vt 1` wrote
+  `vt = 3` over a file that said 1, while the greetd started before it went on
+  serving tty1. Nothing compared them, and the only place it would have shown
+  is the next reboot. `install.nu` now says so when the two differ.
 
 ## 2. The way out, before the way in
 
@@ -50,8 +54,8 @@ and roll back.
 ## 3. Switching over
 
 ```sh
-# The greeter itself, on VT 1 this time.
-#   nu deploy/install.nu --vt 1
+# The greeter itself, on VT 1 — now the default, so no flag is needed.
+#   nu deploy/install.nu
 sh /home/dirk/Documents/projects/auroval/target/auroval-install-root.sh
 
 # Point greetd at auroval's config. greetd's own config.toml is not touched.
