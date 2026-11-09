@@ -760,11 +760,11 @@ equivalent:
 | | exposure | the problem with it |
 |---|---|---|
 | The login screen | once per boot | thin, for a test about growing tired of something |
-| The lock screen | many times a day, seconds each | hyprlock cannot play a loop, so this waits on `auroval-lock` (issue #67) |
+| The lock screen | many times a day, seconds each | hyprlock cannot play a loop. `auroval-lock` can — P3 measured `memory:GLMemory` on an `ext-session-lock-v1` surface at one present per delivered frame, and the surface costs no more than the greeter's. What is missing is the unlock path, deliberately, so this waits on the second half of #67 rather than on an unknown. |
 | Its own standard | — | a login screen catches you at the moment you want to get in, which is harsh on a different axis than peripheral vision; nothing has been written for it |
 
 Filed as A13. Until it is settled, a greeter scene can reach "gates 1 and 2
-passed" and no further, which is where scene-05 now is.
+passed" and no further, which is where scene-05 now is. **The lock screen is the one to bet on**, because the hard part of it is already measured: the protocol is there at version 1, `crates/auroval-ui`'s renderer draws on a lock surface with nothing changed, and the loop stays on the GPU there. A locker you cannot unlock is not something you can live with, though, so the rehearsal harness does not count — this needs the real thing.
 
 Reject on any of:
 
