@@ -114,6 +114,33 @@ const PAM_MAX_NUM_MSG: c_int = 32;
 /// flag closes it for this service without touching the shared stack.
 const PAM_DISALLOW_NULL_AUTHTOK: c_int = 0x0001;
 
+/// Refuse to be core-dumped, before there is anything worth dumping.
+///
+/// `pam::Secret` keeps the one copy this process owns in a buffer it zeroes,
+/// which does nothing about a kernel that writes the whole address space to
+/// disk when the process crashes. This machine has `systemd-coredump` with
+/// `ulimit -c unlimited`, so a panic in the renderer while somebody was
+/// halfway through typing would have put that half on disk, readable later.
+/// Found by an adversarial review on 2026-11-09.
+///
+/// `PR_SET_DUMPABLE` to 0 also stops another process of the same user from
+/// attaching with `ptrace`, which is the same secret by a different route.
+///
+/// A warning rather than a refusal if it fails: a locker that will not start
+/// is worse than one whose crash dumps are not suppressed, and the caller is
+/// told so it is in the journal rather than in nobody's head.
+pub fn refuse_core_dumps() -> Result<(), String> {
+    // SAFETY: prctl with PR_SET_DUMPABLE takes an int and touches nothing of
+    // ours. The remaining arguments are ignored for this option and passed as
+    // zero, which is what the man page asks for.
+    let rc = unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0) };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error().to_string())
+    }
+}
+
 #[link(name = "pam")]
 unsafe extern "C" {
     fn pam_start(
@@ -330,9 +357,23 @@ pub fn own_username() -> Result<String, String> {
 /// a second line of defence rather than the only one.
 pub struct Secret(String);
 
+/// Room for a password without the buffer ever moving.
+///
+/// `String::new()` starts at capacity 0 and grows by reallocation, and a
+/// realloc copies the bytes to a new allocation and frees the old one
+/// **without clearing it**. So `zero` reached the live buffer and left a
+/// plaintext prefix of every earlier length behind in freed heap: `s`, `s3`,
+/// `s3cr`, and so on. Found by an adversarial review.
+///
+/// Reserving once, up front, means a secret of this length or less is never
+/// copied anywhere. It is not a guarantee for every possible input — a longer
+/// one still grows — but `pam_unix` reads at most `PAM_MAX_RESP_SIZE` (512)
+/// anyway, so this covers everything the stack below will look at.
+const SECRET_CAPACITY: usize = 512;
+
 impl Secret {
     pub fn new() -> Self {
-        Self(String::new())
+        Self(String::with_capacity(SECRET_CAPACITY))
     }
     pub fn push(&mut self, c: char) {
         self.0.push(c);
@@ -350,6 +391,12 @@ impl Secret {
     pub fn clear(&mut self) {
         zero(&mut self.0);
         self.0.clear();
+    }
+
+    /// The capacity a fresh one starts with, for the test below.
+    #[cfg(test)]
+    fn capacity(&self) -> usize {
+        self.0.capacity()
     }
 }
 
@@ -463,6 +510,42 @@ fn strerror(handle: *mut c_void, rc: c_int) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// `PR_SET_DUMPABLE` really is off afterwards, asked of the kernel rather
+    /// than assumed from a return code. The test process is dumpable by
+    /// default, so this also shows the call did something.
+    #[test]
+    fn core_dumps_are_actually_refused() {
+        // SAFETY: PR_GET_DUMPABLE reads one int and touches nothing of ours.
+        let before = unsafe { libc::prctl(libc::PR_GET_DUMPABLE, 0, 0, 0, 0) };
+        assert_eq!(before, 1, "the test process was expected to be dumpable");
+        super::refuse_core_dumps().expect("prctl refused");
+        let after = unsafe { libc::prctl(libc::PR_GET_DUMPABLE, 0, 0, 0, 0) };
+        assert_eq!(after, 0, "still dumpable after the call");
+    }
+
+    /// The regression `SECRET_CAPACITY` exists for: a `String` from capacity
+    /// 0 reallocates as it grows, and a realloc copies the bytes to a new
+    /// allocation and frees the old one without clearing it. `zero` reached
+    /// the live buffer and left a plaintext prefix of every earlier length
+    /// behind in freed heap.
+    ///
+    /// The property asserted is the one that matters: a password typed one
+    /// character at a time never moves.
+    #[test]
+    fn a_secret_does_not_move_while_it_is_typed() {
+        let mut s = Secret::new();
+        let before = s.capacity();
+        assert!(before >= SECRET_CAPACITY);
+        for c in "a-fairly-long-password-typed-one-key-at-a-time".chars() {
+            s.push(c);
+        }
+        assert_eq!(
+            s.capacity(),
+            before,
+            "the buffer reallocated, so an earlier prefix is in freed heap"
+        );
+    }
+
     use super::*;
 
     /// L1, the part of it that is reachable without a PAM stack: the
