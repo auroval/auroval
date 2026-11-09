@@ -1,0 +1,75 @@
+auroval P1/E — first frame under cage on a real VT (R16, C15)
+2026-11-09T10:19:36+01:00
+
+binary    /home/dirk/Documents/projects/auroval/target/release/auroval-greet
+cache     /home/dirk/.cache/auroval-p1e
+runs      10 warm, 1 cold
+budget    500 ms  (settled 2026-11-07: median 8 ms at 2560x1440)
+host      games-werkkamer  kernel 7.3.3-1-cachyos
+tty       /dev/tty3
+
+cache dir /home/dirk/.cache/auroval-p1e
+deployed  /var/cache/auroval exists
+
+── probe, outside cage, as you ──
+sessions     2
+  hyprland               Wayland  /usr/bin/start-hyprland
+  hyprland-uwsm          Wayland  uwsm start -e -D Hyprland hyprland.desktop
+state file   /var/lib/auroval/last-login
+  last user    —
+  last session —
+  writable     no — Permission denied (os error 13)
+background   2 candidates, last shown —, next — (from the clock)
+  [0] ok      /usr/local/share/auroval/nightshade-01.mp4
+      ok      /usr/local/share/auroval/nightshade-01.png
+  [1] ok      /usr/local/share/auroval/nightshade-05.mp4
+      ok      /usr/local/share/auroval/nightshade-05.png
+  state file   /var/lib/auroval/last-background
+  writable     no — Permission denied (os error 13)
+preselected  hyprland
+geometry     clock 146.66667px  date 29.333334px  user 21.333334px  field 340x56 r12 p4
+font         /usr/share/fonts/TTF/MesloLGSNerdFont-Regular.ttf
+fonts found  5
+locale       nl_NL from LC_ALL=— LC_TIME=nl_NL.UTF-8 LANG=en_US.UTF-8
+
+
+
+── probe, under cage ──
+sessions     2
+  hyprland               Wayland  /usr/bin/start-hyprland
+  hyprland-uwsm          Wayland  uwsm start -e -D Hyprland hyprland.desktop
+state file   /var/lib/auroval/last-login
+  last user    —
+  last session —
+  writable     no — Permission denied (os error 13)
+background   2 candidates, last shown —, next — (from the clock)
+  [0] ok      /usr/local/share/auroval/nightshade-01.mp4
+      ok      /usr/local/share/auroval/nightshade-01.png
+  [1] ok      /usr/local/share/auroval/nightshade-05.mp4
+      ok      /usr/local/share/auroval/nightshade-05.png
+  state file   /var/lib/auroval/last-background
+  writable     no — Permission denied (os error 13)
+preselected  hyprland
+geometry     clock 146.66667px  date 29.333334px  user 21.333334px  field 340x56 r12 p4
+font         /usr/share/fonts/TTF/MesloLGSNerdFont-Regular.ttf
+fonts found  5
+locale       nl_NL from LC_ALL=— LC_TIME=nl_NL.UTF-8 LANG=en_US.UTF-8
+
+cold  first frame 835.0 ms  wall 1440.4 ms  surface 2560x1440  exit 0
+warm  first frame 20.0 ms  wall 644.7 ms  surface 2560x1440  exit 0
+warm  first frame 19.0 ms  wall 647.2 ms  surface 2560x1440  exit 0
+warm  first frame 19.0 ms  wall 632.0 ms  surface 2560x1440  exit 0
+warm  first frame 19.0 ms  wall 630.3 ms  surface 2560x1440  exit 0
+warm  first frame 19.0 ms  wall 632.9 ms  surface 2560x1440  exit 0
+warm  first frame 19.0 ms  wall 652.8 ms  surface 2560x1440  exit 0
+warm  first frame 20.0 ms  wall 662.4 ms  surface 2560x1440  exit 0
+warm  first frame 19.0 ms  wall 650.1 ms  surface 2560x1440  exit 0
+warm  first frame 19.0 ms  wall 635.4 ms  surface 2560x1440  exit 0
+warm  first frame 20.0 ms  wall 639.2 ms  surface 2560x1440  exit 0
+
+── verdict ──
+median first frame 19.0 ms over 10 warm runs
+worst 20.0 ms
+surface 2560x1440
+R16 budget 500 ms HOLDS — median 19.0 ms, worst 20.0 ms
+cold first frame 835.0 ms — the cost of an unwarmed cache (C15)
