@@ -65,6 +65,17 @@ struct Screen {
     last: Option<String>,
 }
 
+/// Whether an Enter in `Stage::Answering` may become an answer.
+///
+/// A free function with the `awaiting_answer` field's whole argument in its
+/// doc, so the rule can be asserted without a compositor or a greetd. The
+/// case that matters is `false`: an Enter pressed while `auth.rs` is handling
+/// an `info` or `error` message, which it answers itself and never reads the
+/// channel for.
+fn may_answer(awaiting: bool) -> bool {
+    awaiting
+}
+
 pub struct Shell {
     registry_state: RegistryState,
     output_state: OutputState,
@@ -83,6 +94,20 @@ pub struct Shell {
     store: Store,
 
     pub ui: UiState,
+    /// Is the authentication thread actually waiting for an answer?
+    ///
+    /// Set when a `Prompt` arrives and cleared when an answer is sent, and
+    /// it exists because `Stage::Answering` is not the same question. The
+    /// stage is set the moment a username is submitted and stays set through
+    /// `info` and `error` messages, which `auth.rs` answers itself with no
+    /// response and never reads the channel for. So an Enter pressed at
+    /// those moments used to queue an answer into an unbounded channel that
+    /// nobody was reading, and the NEXT `recv()` took it: the conversation
+    /// shifted by one, and a password typed early could be posted to a
+    /// prompt the screen was still drawing as unanswered. Found by an
+    /// adversarial review; it needs a stack with an `info` or `error`
+    /// message in it, which R17's device-code flow is made of.
+    awaiting_answer: bool,
     to_auth: Option<Sender<Answer>>,
     from_auth: Option<Receiver<auth::Ui>>,
     session_cmd: Vec<String>,
@@ -200,6 +225,7 @@ pub fn run(cfg: Config, ui: UiState, preview: bool) -> Result<(), String> {
         },
         store: Store::at(&cfg.state_path),
         ui,
+        awaiting_answer: false,
         to_auth: None,
         from_auth: None,
         session_cmd,
@@ -300,6 +326,7 @@ impl Shell {
                     self.ui.secret = secret;
                     self.ui.stage = Stage::Answering;
                     self.ui.typed.clear();
+                    self.awaiting_answer = true;
                 }
                 auth::Ui::Message { text, is_error } => {
                     self.ui.notify(auroval_ui::ui::Notice {
@@ -366,7 +393,14 @@ impl Shell {
                 self.ui.prompt = "…".into();
             }
             Stage::Answering => {
+                // Only when something is actually waiting. An Enter at any
+                // other moment is dropped rather than queued: see
+                // `awaiting_answer`.
+                if !may_answer(self.awaiting_answer) {
+                    return;
+                }
                 if let Some(tx) = &self.to_auth {
+                    self.awaiting_answer = false;
                     let _ = tx.send(Answer::Text(std::mem::take(&mut self.ui.typed)));
                     self.ui.prompt = "…".into();
                     // The answer is the person acting on whatever the last
@@ -848,3 +882,21 @@ delegate_keyboard!(Shell);
 delegate_xdg_shell!(Shell);
 delegate_xdg_window!(Shell);
 delegate_registry!(Shell);
+
+#[cfg(test)]
+mod tests {
+    /// The regression `awaiting_answer` exists for: every Enter used to queue
+    /// an answer into an unbounded channel whether or not anything was
+    /// reading it, so one pressed during an `info` or `error` message was
+    /// handed to the NEXT prompt instead — a password posted to a question
+    /// the screen was still drawing as unanswered.
+    ///
+    /// A thin test over a thin function, and worth it for the same reason
+    /// `may_submit` is tested in the locker: the rule is one line and the
+    /// consequence of getting it wrong is not.
+    #[test]
+    fn an_enter_with_nothing_waiting_is_not_an_answer() {
+        assert!(!super::may_answer(false));
+        assert!(super::may_answer(true));
+    }
+}
