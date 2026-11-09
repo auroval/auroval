@@ -232,7 +232,31 @@ def main [
         "# to decode this says so and moves on rather than failing."
         "for v in /usr/local/share/auroval/*.mp4; do"
         '    [ -e "$v" ] || { echo "no theme media installed; decode path unverified"; break; }'
-        "    runuser -u greeter -- env XDG_CACHE_HOME=/var/cache/auroval \\"
+        # `env -u DISPLAY -u WAYLAND_DISPLAY`, and `EGL_PLATFORM=surfaceless`.
+        #
+        # The first time this step ever ran -- 2026-11-09, after the backslash
+        # above was fixed -- it failed with `no off-screen GL context: EGL is
+        # not initialized`, preceded by four `Authorization required` lines.
+        # Those were the maintainer's own `DISPLAY=:0` leaking through `sudo`
+        # into a user who may not use it. Isolated immediately afterwards, as
+        # the maintainer, against the same clip:
+        #
+        #     with a display                      GLMemory
+        #     no display                          no off-screen GL context
+        #     no display, EGL_PLATFORM=surfaceless  GLMemory
+        #
+        # So it was never about being `greeter`. With no display server EGL
+        # has no platform to guess and refuses; naming one answers it. The
+        # greeter proper is unaffected -- it runs under cage and has a
+        # Wayland display -- so this belongs here and not in the binary.
+        #
+        # What this probe now establishes is that the decode reaches a GL
+        # texture in a context `greeter` can create without a seat. It is
+        # still NOT the surface cage gives it, so it does not stand in for
+        # R7's figure; it answers the cheaper question, which had no answer
+        # at all until tonight.
+        "    runuser -u greeter -- env -u DISPLAY -u WAYLAND_DISPLAY \\"
+        "        EGL_PLATFORM=surfaceless XDG_CACHE_HOME=/var/cache/auroval \\"
         "        GST_REGISTRY=/var/cache/auroval/gst-registry.bin \\"
         # ONE backslash, and nushell is why this is worth a comment. A
         # single-quoted string here is literal, so `\\` emitted two
