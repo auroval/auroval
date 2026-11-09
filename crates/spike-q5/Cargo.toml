@@ -19,5 +19,5 @@ wayland-client = "0.31"
 wayland-egl = "0.32"
 khronos-egl = { version = "6", features = ["dynamic"] }
 glow = "0.16"
-glib = "0.21"
+glib = "0.22"
 fontdue = "0.9"
