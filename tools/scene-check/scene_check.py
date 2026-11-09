@@ -243,6 +243,43 @@ def subject_column_box(w: int, h: int) -> tuple[int, int, int, int]:
     return cx - cw // 2, y0, cx - cw // 2 + cw, y1
 
 
+def lower_centre_box(w: int, h: int) -> tuple[int, int, int, int]:
+    """The part of the subject column that sits below every UI element.
+
+    §4.2 is at its most specific about this region -- *"nothing important in
+    the lower centre"*, *"the lower middle of the frame is empty near-black
+    space"* -- and until this box existed nothing read it. The composition
+    clause excludes the whole subject column, legibility measures only where
+    UI lands and there is none down here, so a frame that was nothing but a
+    bright disc at 72% of the height cleared every clause the tool had.
+
+    It is measured and **not gated**, for a reason worth stating because the
+    obvious fix is the wrong one. Gating it rejects the reference: scene-01's
+    `master.png` reads 0.4329 mean and 55.12% bright here, the brightest
+    region of the picture, because its subject does not stop at the input
+    field -- it falls away into darkness below the *frame*, not below the UI.
+    Every scene-01 candidate fails this region; only scene-05 passes. So
+    either §4.2's sentence is not true of the artwork the theme is built on,
+    or the region needs a different threshold from the surround's. That is a
+    maintainer decision of the same kind as A8 and A10, and open item A12
+    carries the numbers.
+
+    Folding it into the surround instead was tried and is worse: it moves
+    `master.png` from 0.0561 to 0.1381 and undoes exactly what §5.3.1
+    achieved, which is one number no longer averaging two requirements that
+    want opposite things.
+
+    The top edge is the bottom of the lowest UI element, taken from
+    `ui_regions` so the two cannot drift. That element is the input field,
+    whose box is the field's own size rather than font metrics, so this bound
+    does not move with the font.
+    """
+    bottom = safe_field_box(w, h)[3]
+    cx0, _, cx1, _ = subject_column_box(w, h)
+    top = max(box[3] for box in ui_regions(w, h).values())
+    return cx0, min(top, bottom), cx1, bottom
+
+
 def ui_regions(W: int, H: int) -> dict[str, tuple[int, int, int, int]]:
     """The boxes the greeter's own text and input field occupy.
 
@@ -296,11 +333,14 @@ def measure_regions(img: Image.Image) -> dict[str, float]:
 
 @dataclass
 class SafeField:
-    """Three readings of the same rectangle. Only `surround` is gated."""
+    """Four readings of the same rectangle. Only `surround` is gated."""
 
     whole: tuple[float, float]
     column: tuple[float, float]
     surround: tuple[float, float]
+    # The part of the column below the UI: §4.2's region, which nothing else
+    # reads. See `lower_centre_box` for why it is reported and not gated.
+    lower: tuple[float, float]
 
 
 def measure_safe_field(img: Image.Image) -> SafeField:
@@ -311,13 +351,15 @@ def measure_safe_field(img: Image.Image) -> SafeField:
     whole = lum[y0:y1, x0:x1]
     column = lum[y0:y1, cx0:cx1]
     surround = np.concatenate([lum[y0:y1, x0:cx0], lum[y0:y1, cx1:x1]], axis=1)
+    lx0, ly0, lx1, ly1 = lower_centre_box(w, h)
+    lower = lum[ly0:ly1, lx0:lx1]
 
     def pair(a: np.ndarray) -> tuple[float, float]:
         if a.size == 0:
             return 0.0, 0.0
         return float(a.mean()), float((a > SAFE_BRIGHT_LEVEL).mean())
 
-    return SafeField(pair(whole), pair(column), pair(surround))
+    return SafeField(pair(whole), pair(column), pair(surround), pair(lower))
 
 
 def hue_via_matugen(src: Path, frame: Image.Image, tmp: Path) -> tuple[float, str, str] | None:
@@ -673,6 +715,22 @@ def evaluate(
                 "",
             )
         )
+        # §4.2's lower centre. Reported, not gated, and `lower_centre_box`
+        # says why at length: gating it rejects scene-01's own master. Before
+        # this line the region had no reader at all -- the composition clause
+        # excludes the column it sits in and no UI lands down there.
+        lm, lb = sf.lower
+        quiet = lm <= SAFE_MEAN_LUM_MAX and lb <= SAFE_BRIGHT_FRAC_MAX
+        res.clauses.append(
+            Clause(
+                "§4.2",
+                "lower centre (not gated)",
+                True,
+                f"mean {lm:.4f}, {lb * 100:.2f}% above {SAFE_BRIGHT_LEVEL}"
+                f"   ·   {'empty, as §4.2 asks' if quiet else 'lit — see A12'}",
+                "",
+            )
+        )
 
     got = None if hue_override is not None else hue_via_matugen(path, frame, tmp)
     if hue_override is not None:
@@ -1023,17 +1081,34 @@ def self_test() -> int:
         # Built as two frames carrying the same amount of light in the same
         # safe field, placed differently. The surround clause must separate
         # them; a measure that passes or fails both has lost what it is for.
-        def lit(cx_frac: float) -> Image.Image:
+        def lit_at(cx_frac: float, cy_frac: float) -> Image.Image:
             im = Image.new("RGB", (W, H), (8, 3, 10))
             dd = ImageDraw.Draw(im)
             r = 150
-            cx, cy = int(W * cx_frac), H // 2
+            cx, cy = int(W * cx_frac), int(H * cy_frac)
             dd.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(245, 240, 255))
             return im
 
+        def lit(cx_frac: float) -> Image.Image:
+            return lit_at(cx_frac, 0.5)
+
         centred, offset = tmp / "lit-centre.png", tmp / "lit-flank.png"
         lit(0.50).save(centred)
-        lit(0.32).save(offset)  # inside the safe field, outside the column
+        lit(0.32).save(offset)
+        # The flank disc's whole point is that it is inside the safe field and
+        # clear of the excluded column, and it clears that column by 4 px.
+        # Asserted rather than left in a comment: §5.3.1 and A10 both say
+        # SAFE_SUBJECT_COL was calibrated against the eight candidates that
+        # existed, so it is a number that will be revisited, and widening it
+        # would slide the boundary over this disc. The check below would then
+        # fail as though the measure had broken.
+        COL, SF = subject_column_box(W, H), safe_field_box(W, H)
+        fx0, fx1 = int(W * 0.32) - 150, int(W * 0.32) + 150
+        check(
+            "the flank disc is in the safe field and clear of the column",
+            fx0 >= SF[0] and fx1 <= COL[0],
+            f"disc x {fx0}..{fx1}, safe field from {SF[0]}, column from {COL[0]}",
+        )
         rc = evaluate(centred, tmp, hue_override=200.0)
         ro = evaluate(offset, tmp, hue_override=200.0)
 
@@ -1071,6 +1146,33 @@ def self_test() -> int:
             "while the same pixels as a greeter background do",
             res.scrim_alpha > 0.0,
             f"scrim {res.scrim_alpha * 100:.0f}%",
+        )
+
+        # §4.2's lower centre, which had no reader until it got its own box.
+        # A single bright disc below every UI element: the gated surround sees
+        # nothing (it is inside the excluded column), legibility sees nothing
+        # (no UI is down there), and the old whole-field measure did catch it
+        # at 4.60% bright. So this is the one reading that separates it.
+        below = tmp / "lit-below.png"
+        lit_at(0.50, 0.72).save(below)
+        rb = evaluate(below, tmp, hue_override=200.0)
+        check(
+            "a bright lower centre is invisible to every gated clause",
+            all(c.met for c in rb.clauses if not c.name.startswith("composition"))
+            and all(c.met for c in rb.clauses if c.name.startswith("composition"))
+            and rb.scrim_alpha == 0.0,
+            f"surround {rb.safe_field.surround[0]:.4f}/{rb.safe_field.surround[1] * 100:.2f}%, "
+            f"scrim {rb.scrim_alpha * 100:.0f}%",
+        )
+        check(
+            "and the lower-centre reading is what sees it",
+            rb.safe_field.lower[1] > SAFE_BRIGHT_FRAC_MAX,
+            f"lower {rb.safe_field.lower[0]:.4f}, {rb.safe_field.lower[1] * 100:.2f}% bright",
+        )
+        check(
+            "a dark lower centre reads as empty",
+            r2.safe_field.lower[1] <= SAFE_BRIGHT_FRAC_MAX,
+            f"lower {r2.safe_field.lower[0]:.4f} on the all-dark frame",
         )
 
         check(
@@ -1170,6 +1272,7 @@ def main() -> int:
                             "whole": res.safe_field.whole,
                             "column": res.safe_field.column,
                             "surround": res.safe_field.surround,
+                            "lower": res.safe_field.lower,
                         },
                         "palette": res.palette,
                         "notes": res.notes,
