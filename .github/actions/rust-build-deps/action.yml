@@ -1,32 +1,33 @@
 name: Rust build dependencies
-description: System libraries this workspace links against (GStreamer, Wayland, EGL).
+description: >-
+  Installs the system packages declared in .devcontainer/system-deps.txt, the
+  single list the devcontainer image also builds from.
 runs:
   using: composite
   steps:
+    # The package names are not written here. They live in
+    # .devcontainer/system-deps.txt, which the devcontainer's Dockerfile also
+    # installs, so the runner and the container cannot drift apart -- the whole
+    # point of having a container. Each package's reason is in that file.
+    #
+    # The list sits under .devcontainer/ because that directory is the Docker
+    # build context and `COPY` cannot reach outside it; see the header of
+    # system-deps.txt. Reaching down into it from here is the cheaper half of
+    # that trade.
+    #
+    # $GITHUB_WORKSPACE rather than a relative path, so this does not depend on
+    # whatever working directory a caller happens to be in. $packages is
+    # deliberately unquoted: apt wants the names as separate arguments.
     - shell: bash
       run: |
+        set -euo pipefail
+        list="$GITHUB_WORKSPACE/.devcontainer/system-deps.txt"
+        test -f "$list" || { echo "::error::missing $list"; exit 1; }
+        packages="$(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$list")"
+        # An empty list would make `apt-get install` succeed having installed
+        # nothing, and that would surface much later as three failing render
+        # tests rather than as a broken list. Fail here instead.
+        test -n "$packages" || { echo "::error::$list parsed to no packages"; exit 1; }
+        echo "installing: $packages"
         sudo apt-get update
-        sudo apt-get install -y --no-install-recommends \
-          pkg-config \
-          libgstreamer1.0-dev \
-          libgstreamer-plugins-base1.0-dev \
-          libwayland-dev \
-          libxkbcommon-dev
-        # The render tests in crates/greet/src/view.rs draw through a
-        # surfaceless EGL context and read the pixels back. A runner has no
-        # GPU and no display, so what satisfies them is Mesa's software
-        # rasteriser: libegl-mesa0 is the EGL driver, libgl1-mesa-dri carries
-        # llvmpipe, libgbm1 is what the Mesa EGL loader wants present. Without
-        # these, eglInitialize fails and the tests fail loudly rather than
-        # skipping -- which is the intended behaviour, and the reason this
-        # install is here instead of an #[ignore] on the tests.
-        #
-        # And a font: the atlas loads fonts by path and never through
-        # fontconfig (see crates/greet/src/render/atlas.rs), so a runner with
-        # no DejaVu on disk gets "no usable font" rather than a fallback.
-        sudo apt-get install -y --no-install-recommends \
-          libegl1 \
-          libegl-mesa0 \
-          libgbm1 \
-          libgl1-mesa-dri \
-          fonts-dejavu-core
+        sudo apt-get install -y --no-install-recommends $packages

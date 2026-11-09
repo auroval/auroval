@@ -40,6 +40,12 @@ jobs:
               - 'rust-toolchain.toml'
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
+              # The system package list, which the composite action installs.
+              # It lives under .devcontainer/ only because that is the Docker
+              # build context, so it would otherwise reach just the
+              # devcontainer job -- and a wrong list shows up as failing
+              # render tests in `test`, which is the job that has to rerun.
+              - '.devcontainer/system-deps.txt'
             docs:
               - '**/*.md'
               - '.github/scripts/check-doc-links.py'
@@ -146,6 +152,11 @@ jobs:
       # cannot observe, and matugen is not installed here.
       - run: python tools/scene-check/scene_check.py --self-test
       - run: python .github/scripts/smoke-scene-check.py
+      # The rendering style is a theme constant written down in both the
+      # document and the generator, and generate.py's own comment admits that
+      # transcription can drift from its source. A drift would fail nothing --
+      # it would just quietly produce a scene that does not read as nightshade.
+      - run: python .github/scripts/check-style-constant.py
 
   devcontainer:
     name: devcontainer builds

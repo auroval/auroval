@@ -523,6 +523,24 @@ impl Gl {
     }
 
     /// Centre a line horizontally on `cx`, placing its visual middle on `cy`.
+    /// The raw EGL display and context, for handing this context to
+    /// something that will create a shared one from it.
+    ///
+    /// GStreamer is the caller: `nvh264dec` negotiates `memory:GLMemory`
+    /// when it is given a GL context to share, so a decoded frame lands in an
+    /// OpenGL texture this renderer can sample with no CUDA interop written
+    /// here. See `docs/decisions/q5-renderer.md`, which settled that and
+    /// recorded the trap: the caps must be left to negotiate, not forced.
+    ///
+    /// Returned as `usize` because that is what the gst-gl bindings take, and
+    /// converting at the boundary keeps the cast in one place.
+    pub fn egl_handles(&self) -> (usize, usize) {
+        (
+            self.display.as_ptr() as usize,
+            self.context.as_ptr() as usize,
+        )
+    }
+
     /// How wide a string would be drawn, so a caller can decide where it
     /// fits before it draws it.
     pub fn width_of(&self, s: &str, px: f32) -> f32 {

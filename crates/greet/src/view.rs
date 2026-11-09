@@ -50,7 +50,7 @@ pub struct Style {
 /// `surface` is in it because a resize is a different picture of the same
 /// state, and `background` because R9's decode lands some time after start
 /// and arrives as a new picture with no state change behind it.
-pub fn signature(ui: &UiState, surface: (u32, u32), background: bool) -> String {
+pub fn signature(ui: &UiState, surface: (u32, u32), background: u64) -> String {
     let (w, h) = surface;
     let field = match ui.field_display() {
         FieldDisplay::Text(t) => format!("t{t}"),
@@ -71,7 +71,7 @@ pub fn signature(ui: &UiState, surface: (u32, u32), background: bool) -> String 
     };
     format!(
         "{w}x{h}|bg{}|{:?}|{}|{}|{}|{}|{}|{}|{}|{}",
-        background as u8,
+        background,
         ui.stage,
         ui.username,
         field,
@@ -176,7 +176,7 @@ pub fn draw(
             // like the greeter had hung. So it gets the text colour.
             let (hint, colour) = match ui.stage {
                 Stage::AskingUser => ("Who are you?", p.outline),
-                Stage::Answering => (ui.prompt.as_str(), p.on_surface),
+                Stage::Answering => (prompt_label(&ui.prompt), p.on_surface),
                 Stage::Starting => ("starting…", p.outline),
             };
             // A prompt the greeter did not write can be any length. PAM sent
@@ -232,6 +232,23 @@ pub fn draw(
         };
         gl.draw_centred(&label, g.user_px, cx, h - 64.0, p.outline);
     }
+}
+
+/// A PAM prompt as a label, rather than as a line of terminal output.
+///
+/// PAM writes its prompts for a terminal, where the text sits on the line in
+/// front of what you type: `Password: `. In a box that you type *into*, the
+/// colon is punctuation with nothing after it. It reads as a mistake, and on
+/// 2026-11-08 it was read as one.
+///
+/// This is typography, not redaction, and the distinction is what R1 turns
+/// on. The requirement is that the greeter assumes nothing about the
+/// conversation's message count, order or type — not that it reproduce
+/// terminal punctuation. `UiState::prompt` still holds exactly what PAM said,
+/// which is what the frame dump records and what any future log would show.
+fn prompt_label(s: &str) -> &str {
+    let s = s.trim_end();
+    s.strip_suffix(':').unwrap_or(s).trim_end()
 }
 
 fn shadowed(
@@ -412,12 +429,54 @@ mod tests {
     /// different GL contexts is a diff between two rasterisers as much as
     /// between two inputs, and the point of the superellipse test is that
     /// the only difference is the one it changed.
+    /// R9's chain, with pixels: a first candidate that cannot decode must
+    /// not cost the second one its turn.
+    ///
+    /// This lives here rather than in `background::tests` because the step
+    /// that moves to the next candidate happens in `poll`, and `poll` needs
+    /// a GL context -- which no test on a build machine has except the ones
+    /// in this module.
+    #[test]
+    fn a_background_that_will_not_decode_gives_the_next_one_its_turn() {
+        let _guard = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+        let good = write_circle_png(400, 400, 100);
+        let bad = good.with_file_name("truncated.png");
+        let whole = std::fs::read(&good).expect("the fixture");
+        std::fs::write(&bad, &whole[..whole.len() / 3]).expect("a truncated png");
+
+        let (mut gl, target) =
+            unsafe { Gl::headless(W, H) }.expect("an off-screen GL context for the render tests");
+        gl.make_current(&target).expect("make current");
+
+        let mut bg = Background::start(&[bad.clone(), good.clone()]);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !bg.settled(&gl) && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        assert!(
+            bg.ready(&gl).is_some(),
+            "the second candidate must be on screen; problems so far: {:?}",
+            bg.problems()
+        );
+        let said = bg.problems();
+        assert_eq!(said.len(), 1, "exactly the one failure, named: {said:?}");
+        assert!(
+            said[0].contains("truncated.png"),
+            "the log has to say which one failed: {said:?}"
+        );
+        std::fs::remove_file(&bad).ok();
+    }
+
     fn render_each(frames: &[(&UiState, &Style)], background: Option<&Path>) -> Vec<Frame> {
         let (mut gl, target) =
             unsafe { Gl::headless(W, H) }.expect("an off-screen GL context for the render tests");
         gl.make_current(&target).expect("make current");
 
-        let mut bg = Background::start(background);
+        let chain: Vec<PathBuf> = background
+            .map(|p| vec![p.to_path_buf()])
+            .unwrap_or_default();
+        let mut bg = Background::start(&chain);
         let ready = if background.is_some() {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
             while !bg.settled(&gl) && std::time::Instant::now() < deadline {
@@ -481,6 +540,24 @@ mod tests {
         // the outline and the fill but clear of any centred text.
         let (y0, h) = f.run_y(ex + 3, ey + eh / 2);
         assert_eq!((y0, h), (ey, eh), "field height and top edge");
+    }
+
+    #[test]
+    fn a_prompt_is_a_label_and_not_a_line_of_terminal_output() {
+        // PAM's own wording, both of them, exactly as they arrived on
+        // 2026-11-08.
+        assert_eq!(prompt_label("Password: "), "Password");
+        assert_eq!(
+            prompt_label("One-time password (OATH) for `dirk`:"),
+            "One-time password (OATH) for `dirk`"
+        );
+        // A prompt that is already a label is left alone, and so is one that
+        // ends in something else. Only the trailing colon goes.
+        assert_eq!(prompt_label("Password"), "Password");
+        assert_eq!(prompt_label("Who are you?"), "Who are you?");
+        assert_eq!(prompt_label(""), "");
+        // Not every colon: the one at the end.
+        assert_eq!(prompt_label("Code: 1:2:"), "Code: 1:2");
     }
 
     /// A prompt the greeter did not write can be any length, and R1 says it
@@ -702,12 +779,34 @@ mod tests {
     }
 
     fn sig(ui: &UiState) -> String {
-        signature(ui, SURFACE, false)
+        signature(ui, SURFACE, 0)
     }
 
-    /// The claim the whole change rests on: a login screen nobody is touching
-    /// is the same picture one turn of the loop later, so there is nothing to
-    /// draw.
+    /// The bug #49 could not have seen, because video did not exist yet: a
+    /// boolean for the background flips once when the first frame arrives
+    /// and never again, so a video plays and the screen does not move.
+    #[test]
+    fn a_background_that_is_still_moving_keeps_changing_the_signature() {
+        let ui = state();
+        // A still: one picture, one signature, forever.
+        assert_eq!(
+            signature(&ui, SURFACE, 1),
+            signature(&ui, SURFACE, 1),
+            "a still must not make the greeter redraw"
+        );
+        // A video: each delivered frame is a different picture.
+        assert_ne!(
+            signature(&ui, SURFACE, 2),
+            signature(&ui, SURFACE, 3),
+            "a frame that arrived has to reach the screen"
+        );
+        // And neither collides with having no background at all.
+        assert_ne!(signature(&ui, SURFACE, 0), signature(&ui, SURFACE, 1));
+        assert_ne!(signature(&ui, SURFACE, 0), signature(&ui, SURFACE, 2));
+    }
+
+    /// The claim #49 rests on: a login screen nobody is touching is the same
+    /// picture one turn of the loop later, so there is nothing to draw.
     #[test]
     fn a_screen_on_which_nothing_moved_has_the_same_signature() {
         let ui = state();
@@ -853,10 +952,7 @@ mod tests {
     #[test]
     fn the_background_arriving_is_a_frame() {
         let ui = state();
-        assert_ne!(
-            signature(&ui, SURFACE, false),
-            signature(&ui, SURFACE, true)
-        );
+        assert_ne!(signature(&ui, SURFACE, 0), signature(&ui, SURFACE, 1));
     }
 
     /// A resize is a different picture of the same state, which is also how a
@@ -864,10 +960,7 @@ mod tests {
     #[test]
     fn a_resize_is_a_frame() {
         let ui = state();
-        assert_ne!(
-            signature(&ui, (W, H), false),
-            signature(&ui, (1920, 1080), false)
-        );
+        assert_ne!(signature(&ui, (W, H), 0), signature(&ui, (1920, 1080), 0));
     }
 
     /// The notice is drawn in the error colour or the text colour, and the

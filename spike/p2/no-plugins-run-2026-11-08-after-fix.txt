@@ -1,0 +1,64 @@
+auroval P2 — R9 with GStreamer's plugins made unavailable
+2026-11-08T17:35:05+01:00
+
+binary    /home/dirk/Documents/projects/auroval/target/release/auroval-greet
+clip      /var/lib/auroval-spike/media/loop1440p60.h264.mp4
+plugins   /usr/lib/gstreamer-1.0
+timeout   20 s per run
+host      games-werkkamer  kernel 7.3.3-1-cachyos
+
+R9 wants three things of a greeter whose plugins are gone: it still
+renders, it still logs in, and the fallback is logged rather than
+silent. This script reaches the first and the third. Logging in needs
+greetd and is spike/p1ab/greetd-round.nu's business.
+
+preflight ok
+scratch   /tmp/auroval-p2-no-plugins
+
+reference — no background configured, so the frame IS the solid colour
+  corner  18,18,28
+  colours 2063   (the login field and its text, nothing else)
+  exited  0 in 0.21 sec
+
+control — plugins untouched, video configured
+  corner  138,29,255   (NOT the solid colour: a frame of the clip)
+  colours 105414
+  said    [background] playing /var/lib/auroval-spike/media/loop1440p60.h264.mp4
+  exited  0 in 1.45 sec
+
+experiment A — no plugins at all
+  drew    true
+  corner  18,18,28   (solid colour: true)
+  init    gst::init() succeeded: true  — core is linked in, not a plugin
+  exited  0 in 0.19 sec
+  stderr  2 lines:
+          [background] background /var/lib/auroval-spike/media/loop1440p60.h264.mp4 unavailable: no glsinkbin: Failed to find element factory with name 'glsinkbin' for creating element; falling back to the solid colour
+          auroval-greet: background /var/lib/auroval-spike/media/loop1440p60.h264.mp4 unavailable: no glsinkbin: Failed to find element factory with name 'glsinkbin' for creating element; falling back to the solid colour
+
+experiment B's plugin set
+  held back de265, libav, nvcodec, openh264, vulkan  — every plugin gst-inspect-1.0 says carries an H.26x decoder
+  linked    264 of 269 plugins from /usr/lib/gstreamer-1.0
+
+experiment B — every plugin except an H.26x video decoder
+  drew    true
+  corner  18,18,28   (solid colour: true)
+  exited  0 in 0.61 sec   (124 means the 20 s timeout killed it)
+  stderr  3 lines, first 12:
+          [background] playing /var/lib/auroval-spike/media/loop1440p60.h264.mp4
+          [background] background /var/lib/auroval-spike/media/loop1440p60.h264.mp4 unavailable: Your GStreamer installation is missing a plug-in.; falling back to the solid colour
+          auroval-greet: background /var/lib/auroval-spike/media/loop1440p60.h264.mp4 unavailable: Your GStreamer installation is missing a plug-in.; falling back to the solid colour
+
+────────────────────────────────────────────────────────────────
+VERDICT  R9 'still renders' + 'logged, not silent': PASS
+
+  renders   true   both experiments wrote a 2560x1440 PNG
+  fell back true   corner 18,18,28 and 18,18,28 against the reference's 18,18,28
+  logged    true
+    A: [background] background /var/lib/auroval-spike/media/loop1440p60.h264.mp4 unavailable: no glsinkbin: Failed to find element factory with name 'glsinkbin' for creating element; falling back to the solid colour
+    B: [background] background /var/lib/auroval-spike/media/loop1440p60.h264.mp4 unavailable: Your GStreamer installation is missing a plug-in.; falling back to the solid colour
+
+  R9's third clause, 'still logs in', is out of snapshot's reach: it
+  renders through surfaceless EGL and never speaks to greetd or PAM.
+  That clause belongs to spike/p1ab/greetd-round.nu.
+
+receipt  /home/dirk/auroval-p2-no-plugins.txt

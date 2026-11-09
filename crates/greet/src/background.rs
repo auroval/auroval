@@ -89,7 +89,11 @@ impl std::fmt::Display for Problem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "background {} unavailable, falling back to the solid colour: {}",
+            // Not "falling back to the solid colour": since #58 there may
+            // be another candidate, and saying the colour when a still is
+            // about to appear is a log line that contradicts the screen.
+            // What is certain here is that this one is not being shown.
+            "background {} unavailable: {}",
             self.path.display(),
             self.reason
         )
@@ -97,7 +101,10 @@ impl std::fmt::Display for Problem {
 }
 
 impl Problem {
-    fn new(path: &Path, reason: impl Into<String>) -> Problem {
+    /// `pub(crate)` rather than private: `video` reports its failures in the
+    /// same shape, because R9 makes them the same kind of thing — a reason
+    /// the background is not what was configured, carrying the path.
+    pub(crate) fn new(path: &Path, reason: impl Into<String>) -> Problem {
         Problem {
             path: path.to_path_buf(),
             reason: reason.into(),
@@ -221,6 +228,36 @@ enum State {
     /// deleted here: the renderer outlives the greeter's run, and there is no
     /// point in a destructor that only ever runs at exit.
     Ready { tex: glow::Texture, w: u32, h: u32 },
+    /// Configured as a video, not started yet.
+    ///
+    /// `start` runs before there is a surface, which is the whole reason the
+    /// still decode happens on a thread — R16's first frame must not wait on
+    /// it. A video needs the GL context in order to share it with GStreamer,
+    /// and the GL context does not exist that early, so this records the
+    /// intent and `poll` acts on it at the first frame that has one.
+    VideoPending(PathBuf),
+    /// Playing. Each frame hands back a different texture from GStreamer's
+    /// pool; see `video::Video` for why the mapping is held rather than the
+    /// id alone.
+    Video(Box<crate::video::Video>),
+}
+
+/// Whether a configured background is a video, by its extension.
+///
+/// By extension and not by sniffing, deliberately. The alternative is to try
+/// the image decoder first and fall back on failure, which means every video
+/// background pays for a failed image decode on the startup path C15 measures
+/// in milliseconds. An extension that lies falls back anyway: a `.mp4` that
+/// is not a video fails in GStreamer and lands on the solid colour with a
+/// line saying so, which is R9 either way.
+fn looks_like_video(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase())
+            .as_deref(),
+        Some("mp4" | "mkv" | "webm" | "mov" | "m4v" | "avi")
+    )
 }
 
 /// The background, from configuration to pixels.
@@ -236,6 +273,9 @@ pub struct Background {
     /// the file. R9 asks for the fallback to be logged, and a log that does
     /// not say which background failed is not much of one.
     configured: Option<PathBuf>,
+    /// The candidates not tried yet, in the order R9 asks for them. Each
+    /// failure moves to the next; running out is the solid colour.
+    rest: std::collections::VecDeque<PathBuf>,
     /// Everything that went wrong, already formatted, in the order it
     /// happened. Mirrors `Config::problems`: the greeter reports rather than
     /// hides, and a test can assert the fallback was announced.
@@ -251,28 +291,52 @@ impl Background {
     /// `None` is not a failure: it is the configured solid colour, so it logs
     /// nothing. R9 is about a background that was *asked for* and could not be
     /// shown.
-    pub fn start(path: Option<&Path>) -> Background {
-        let Some(path) = path else {
-            return Background {
-                state: State::Solid,
-                configured: None,
-                problems: Vec::new(),
-            };
+    pub fn start(paths: &[PathBuf]) -> Background {
+        let mut bg = Background {
+            state: State::Solid,
+            configured: None,
+            rest: paths.iter().cloned().collect(),
+            problems: Vec::new(),
         };
-        let path = path.to_path_buf();
-        let configured = Some(path.clone());
+        bg.try_next();
+        bg
+    }
+
+    /// Begin the next candidate, or settle on the solid colour.
+    ///
+    /// This is R9's "in order" as a loop rather than as a special case for
+    /// two: every failure lands here and asks for the next one, and running
+    /// out is the colour. Adding a third kind of background adds an arm to
+    /// the match and nothing else.
+    ///
+    /// Deliberately takes no `Gl`. A video is only *recorded* here and
+    /// started by `poll` at the first frame that has a context, which is what
+    /// keeps `start` off R16's critical path -- and what lets `start` be
+    /// called before a surface exists.
+    fn try_next(&mut self) {
+        let Some(path) = self.rest.pop_front() else {
+            self.state = State::Solid;
+            self.configured = None;
+            return;
+        };
+        self.configured = Some(path.clone());
+        if looks_like_video(&path) {
+            self.state = State::VideoPending(path);
+            return;
+        }
         let (tx, rx) = mpsc::channel();
         // A detached thread, deliberately: there is nothing to join, and a
         // decode still running at exit must not hold the greeter open.
+        let for_thread = path.clone();
         match std::thread::Builder::new()
             .name("auroval-bg-decode".into())
             .spawn(move || {
                 let began = Instant::now();
-                let out = decode(&path);
+                let out = decode(&for_thread);
                 if let Ok(s) = &out {
                     eprintln!(
                         "[background] decoded {} ({}x{}) in {:?}",
-                        path.display(),
+                        for_thread.display(),
                         s.width,
                         s.height,
                         began.elapsed()
@@ -282,20 +346,12 @@ impl Background {
                 // in which case dropping the pixels is exactly right.
                 let _ = tx.send(out);
             }) {
-            Ok(_) => Background {
-                state: State::Pending(rx),
-                configured,
-                problems: Vec::new(),
-            },
+            Ok(_) => self.state = State::Pending(rx),
             Err(e) => {
-                // Even failing to spawn degrades rather than dies.
-                let mut bg = Background {
-                    state: State::Solid,
-                    configured,
-                    problems: Vec::new(),
-                };
-                bg.failed(format!("its decoder thread could not be started: {e}"));
-                bg
+                // Even failing to spawn degrades rather than dies, and
+                // degrading means the next candidate, not the colour.
+                self.failed(format!("its decoder thread could not be started: {e}"));
+                self.try_next();
             }
         }
     }
@@ -312,15 +368,58 @@ impl Background {
     /// which keeps the view a pure function of what it is given.
     pub fn ready(&mut self, gl: &Gl) -> Option<(glow::Texture, u32, u32)> {
         self.poll(gl);
-        match self.state {
-            State::Ready { tex, w, h } => Some((tex, w, h)),
+        match &self.state {
+            State::Ready { tex, w, h } => Some((*tex, *w, *h)),
+            State::Video(v) => v.frame().map(|f| {
+                (
+                    // GStreamer's texture id is a raw GL name, which is what
+                    // `glow::NativeTexture` wraps. The renderer draws it like
+                    // any other 2D texture because `glsinkbin` has already
+                    // converted to RGBA -- the two points of CPU that buys
+                    // are measured in spike/p2/RESULTS.md, and they buy not
+                    // needing a second shader for NV12.
+                    glow::NativeTexture(std::num::NonZeroU32::new(f.texture).unwrap()),
+                    f.width,
+                    f.height,
+                )
+            }),
             _ => None,
         }
     }
 
-    /// Take delivery of the decode, if it has arrived, and upload it. Costs a
-    /// `try_recv` per frame while pending and nothing at all once settled.
     fn poll(&mut self, r: &Gl) {
+        if let State::VideoPending(path) = &self.state {
+            let path = path.clone();
+            match crate::video::Video::start(&path, r.egl_handles()) {
+                Ok(v) => {
+                    eprintln!("[background] playing {}", path.display());
+                    self.state = State::Video(Box::new(v));
+                }
+                Err(problem) => {
+                    // R9's middle step: a video that will not play tries the
+                    // next candidate, and only an empty list is the colour.
+                    self.fell_back(problem);
+                    self.try_next();
+                }
+            }
+            return;
+        }
+        if let State::Video(v) = &self.state {
+            let said = v.drain();
+            for p in said.warnings {
+                self.problems.push(format!("[background] {p}"));
+            }
+            if let Some(reason) = said.fatal {
+                // A video that played and then stopped is as much a failure
+                // of that candidate as one that never started, and R9 does
+                // not distinguish them. Dropping the `Video` here is what
+                // stops the pipeline: without it `playbin3` keeps retrying,
+                // which is what it did before this branch existed.
+                self.failed(reason);
+                self.try_next();
+            }
+            return;
+        }
         let State::Pending(rx) = &self.state else {
             return;
         };
@@ -328,21 +427,24 @@ impl Background {
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {
                 // The thread died without sending — a panic in a decoder, say.
-                // The greeter does not: it shows the colour and says so.
-                self.state = State::Solid;
+                // The greeter does not: it says so and tries the next one.
                 self.failed("its decoder thread ended without a result");
+                self.try_next();
             }
             Ok(Err(problem)) => {
-                self.state = State::Solid;
                 self.fell_back(problem);
+                self.try_next();
             }
             Ok(Ok(still)) => match upload(&r.gl, &still) {
                 Ok((tex, w, h)) => {
                     self.state = State::Ready { tex, w, h };
                 }
                 Err(reason) => {
-                    self.state = State::Solid;
+                    // The decode worked and the upload did not, which is a
+                    // driver problem rather than a file problem -- but the
+                    // next candidate may be smaller, so it still gets a turn.
                     self.failed(reason);
+                    self.try_next();
                 }
             },
         }
@@ -352,7 +454,14 @@ impl Background {
     /// function: stderr for the journal, and the list for whatever surface
     /// ends up showing problems to the person at the keyboard.
     fn fell_back(&mut self, p: Problem) {
-        let line = p.to_string();
+        // Said here rather than in `Problem`, because only this side knows
+        // whether anything is left to try -- and "what happens now" is the
+        // half of R9's "logged, not silent" that a reader actually needs.
+        let next = match self.rest.front() {
+            Some(n) => format!("trying {}", n.display()),
+            None => "falling back to the solid colour".to_string(),
+        };
+        let line = format!("{p}; {next}");
         eprintln!("[background] {line}");
         self.problems.push(line);
     }
@@ -385,7 +494,42 @@ impl Background {
     /// not distinguish "not yet" from "never".
     pub fn settled(&mut self, gl: &Gl) -> bool {
         self.poll(gl);
-        !matches!(self.state, State::Pending(_))
+        // "Settled" means there is nothing further to wait for, and for a
+        // video that includes its first frame: the only callers are the
+        // snapshot modes, which exist to capture a picture and would
+        // otherwise capture the fallback every time. The greeter itself does
+        // not call this -- it asks `ready` once per frame and draws the
+        // colour until there is something better, which is what keeps the
+        // decoder off R16's critical path.
+        match &self.state {
+            State::Pending(_) | State::VideoPending(_) => false,
+            State::Video(v) => v.frame().is_some(),
+            _ => true,
+        }
+    }
+
+    /// A number that changes exactly when the background's picture changes.
+    ///
+    /// This is what lets the draw loop stay on one mechanism. #49 made the
+    /// greeter draw only when `view::signature` changes, which was right for
+    /// a still screen and silently wrong for a video: the signature carried
+    /// a *boolean* for the background, so it flipped once when the first
+    /// frame arrived and never again. The video played and the screen did
+    /// not move.
+    ///
+    /// A still is 1 forever, so it still draws once. A video counts the
+    /// frames the sink has taken, so the greeter redraws per delivered
+    /// frame — at the clip's rate rather than the loop's, which is better
+    /// than the unconditional draw #49 replaced.
+    ///
+    /// The `+2` keeps a video that has delivered nothing yet from colliding
+    /// with "no background" or "a still".
+    pub fn generation(&self) -> u64 {
+        match &self.state {
+            State::Solid | State::Pending(_) | State::VideoPending(_) => 0,
+            State::Ready { .. } => 1,
+            State::Video(v) => v.delivered() + 2,
+        }
     }
 
     #[allow(dead_code)]
@@ -576,9 +720,24 @@ mod tests {
             said.contains("definitely-not-here.png"),
             "R9: the log names the file — got {said}"
         );
+        // What happens *instead* is no longer `Problem`'s to say: since the
+        // chain landed it depends on whether anything is left to try, which
+        // only `Background` knows. Asserted below, in both shapes.
+        let mut last = Background::start(&[p.to_path_buf()]);
+        last.fell_back(decode(p).expect_err("still missing"));
         assert!(
-            said.contains("solid colour"),
-            "R9: the log says what happens instead — got {said}"
+            last.problems()[0].contains("falling back to the solid colour"),
+            "R9: with nothing left, the log says the colour — got {:?}",
+            last.problems()[0]
+        );
+
+        let next = PathBuf::from("/var/lib/auroval/second.png");
+        let mut more = Background::start(&[p.to_path_buf(), next.clone()]);
+        more.fell_back(decode(p).expect_err("still missing"));
+        assert!(
+            more.problems()[0].contains("trying /var/lib/auroval/second.png"),
+            "R9: with a candidate left, the log names it — got {:?}",
+            more.problems()[0]
         );
         assert!(
             !problem.reason.is_empty(),
@@ -644,6 +803,29 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// The same refusal, for the video path, which did not have it for a
+    /// day. `decode` has refused a home since it was written; `Video::start`
+    /// was built as a transport experiment and inherited none of that care.
+    /// A test here rather than in `video` because this is where the rule
+    /// lives and where the next source will be added.
+    #[test]
+    fn a_video_in_a_home_is_refused_before_the_pipeline_is_built() {
+        let home = std::env::var("HOME").expect("a home to point into");
+        let path = std::path::PathBuf::from(home).join("whatever.mp4");
+        assert!(
+            looks_like_video(&path),
+            "the extension decides, and .mp4 is one"
+        );
+        // No GL context is needed to be refused, which is the point: the
+        // check runs before anything is opened or negotiated.
+        let err = crate::video::Video::start(&path, (0, 0))
+            .err()
+            .expect("a video in a home is refused");
+        let said = err.to_string();
+        assert!(said.contains("R15"), "{said}");
+        assert!(said.contains("home directory"), "{said}");
+    }
+
     #[test]
     fn a_background_in_a_home_is_refused_before_it_is_opened() {
         // R15, C10. The file does not need to exist: the point is that the
@@ -687,7 +869,7 @@ mod tests {
 
     #[test]
     fn nothing_configured_is_the_solid_colour_and_not_a_problem() {
-        let bg = Background::start(None);
+        let bg = Background::start(&[]);
         assert!(!bg.has_image());
         assert!(
             bg.problems().is_empty(),
@@ -695,11 +877,49 @@ mod tests {
         );
     }
 
+    /// R9 is a chain and this is the bookkeeping half of it: what `start`
+    /// picks up, and what it keeps for later. The behaviour half -- that a
+    /// failure actually moves to the next one -- needs a GL context and
+    /// lives in `view::tests`.
+    #[test]
+    fn the_chain_is_tried_in_order_and_an_empty_one_is_the_colour() {
+        let dir = scratch("chain");
+        let a = write(&dir, "first.png", &png(8, 8));
+        let b = write(&dir, "second.png", &png(8, 8));
+
+        let bg = Background::start(&[]);
+        assert!(matches!(bg.state, State::Solid));
+        assert!(
+            bg.configured.is_none(),
+            "nothing configured, nothing to name"
+        );
+
+        let bg = Background::start(&[a.clone(), b.clone()]);
+        assert_eq!(
+            bg.configured.as_deref(),
+            Some(a.as_path()),
+            "the first candidate is the one being attempted"
+        );
+        assert_eq!(
+            bg.rest.iter().cloned().collect::<Vec<_>>(),
+            vec![b],
+            "and the rest wait their turn, in order"
+        );
+
+        // A video is recorded rather than started, because `start` has no GL
+        // context -- that is what keeps it off R16's critical path.
+        let v = write(&dir, "clip.mp4", b"not really a video");
+        let bg = Background::start(std::slice::from_ref(&v));
+        assert!(matches!(bg.state, State::VideoPending(_)));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     #[test]
     fn a_configured_background_is_decoded_once_off_the_main_thread() {
         let dir = scratch("once");
         let p = write(&dir, "bg.png", &png(256, 256));
-        let bg = Background::start(Some(&p));
+        let bg = Background::start(std::slice::from_ref(&p));
         // `start` must not have blocked on the decode: the state is pending,
         // not ready, and no GL context exists in this test at all — which is
         // itself the proof that `start` does no uploading.
@@ -716,8 +936,21 @@ mod tests {
         assert_eq!((still.width, still.height), (256, 256));
 
         // And nothing further arrives: one decode per run, not one per frame.
+        //
+        // `recv_timeout` rather than `try_recv`, and either error accepted.
+        // The first version demanded `Disconnected`, which is a race it won
+        // on a developer's machine and lost on a CI runner: between the
+        // receiver taking the value and the decode thread actually ending,
+        // the channel is `Empty` and not yet disconnected. Neither of those
+        // is a second decode, which is the only thing this is asserting.
         match &bg.state {
-            State::Pending(rx) => assert!(matches!(rx.try_recv(), Err(TryRecvError::Disconnected))),
+            State::Pending(rx) => {
+                let second = rx.recv_timeout(Duration::from_millis(500));
+                assert!(
+                    second.is_err(),
+                    "a second background arrived; the decode ran more than once"
+                );
+            }
             _ => unreachable!(),
         }
         std::fs::remove_dir_all(&dir).ok();
@@ -728,7 +961,7 @@ mod tests {
         let dir = scratch("badpipe");
         let whole = png(128, 128);
         let p = write(&dir, "cut.png", &whole[..20]);
-        let bg = Background::start(Some(&p));
+        let bg = Background::start(std::slice::from_ref(&p));
         let got = match &bg.state {
             State::Pending(rx) => rx.recv_timeout(Duration::from_secs(10)).expect("delivers"),
             _ => unreachable!(),
@@ -740,6 +973,7 @@ mod tests {
         let mut solid = Background {
             state: State::Solid,
             configured: Some(p.clone()),
+            rest: Default::default(),
             problems: Vec::new(),
         };
         solid.fell_back(problem);
@@ -813,6 +1047,7 @@ mod tests {
         let mut bg = Background {
             state: State::Solid,
             configured: Some(PathBuf::from("/var/lib/auroval/bg.png")),
+            rest: Default::default(),
             problems: Vec::new(),
         };
         bg.failed("the driver refused a 8192x8192 texture (GL 0x501)");
