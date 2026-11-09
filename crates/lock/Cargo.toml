@@ -6,7 +6,7 @@ rust-version.workspace = true
 repository.workspace = true
 license.workspace = true
 publish = false
-description = "auroval's lock screen, protocol skeleton only: no authentication of any kind."
+description = "auroval's lock screen: ext-session-lock-v1, and a PAM unlock since 2026-11-09."
 
 [[bin]]
 name = "auroval-lock"
