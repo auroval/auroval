@@ -208,6 +208,18 @@ is the greeter's own context. A locker's context is a full session compositor,
 so a rehearsal needs either a nested Hyprland (which measures the nesting; see
 L14) or a real Hyprland on a free VT with someone present.
 
+**C24 — `/etc/pam.d/auroval-lock` has no `account` stanza, so the
+implementation must not call `pam_acct_mgmt()`.** The service
+[`pc-setup` installs](https://github.com/dlouwers/pc-setup/pull/3) has one
+effective line, `auth include login`, the same shape as `hyprlock`'s and for
+the same reason. A PAM service with no `account` lines does not default to
+permitting: it falls through to `/etc/pam.d/other`, which denies. So a locker
+that conscientiously checked the account after a correct password would refuse
+every unlock — and would do it **only on the deployed machine**, never in a
+test that stubs PAM or on a developer box with a fuller stack. That is the
+exact shape of failure L9's tripwire exists for, which is why it is written
+down as a constraint before the code that could trip over it exists.
+
 ## Requirements
 
 Priority is MoSCoW, as in greet.md. L-numbers, so an L is a locker
@@ -335,7 +347,7 @@ a lockout.
 | # | Question | What would settle it | Owner |
 |---|---|---|---|
 | N1 | Does the lock screen get its own config file, and what may it override? | The skeleton reads `/etc/auroval/greet.lua`, because inventing `/etc/auroval/lock.lua` in a commit that installs nothing would create a path that exists in code and nowhere on disk. **Recommendation: one `/etc/auroval/auroval.lua` with an optional `lock = { … }` table overriding named keys**, rather than two files that drift — which is C21's argument about two owners, applied one level down. The sharpest sub-question is the background: identical loops are the point, so the default must be shared, and only a theme that deliberately differs should say so. **Now partly answered by a file mode, not by taste** — see N7. | Maintainer |
-| N2 | What writes the `auroval-lock` PAM stack, and is it a copy of `hyprlock`'s or a symlink to `login`? | A copy under its own service name, almost certainly: `auth include login` is what hyprlock does and it is one line, but a service name of its own is what lets `faillock` be tuned for a lock screen without touching `sudo` or `login` (C19). This is a `pc-setup` change and needs root, so it is not this repository's to make. | Maintainer |
+| N2 | ~~What writes the `auroval-lock` PAM stack, and is it a copy of `hyprlock`'s or a symlink to `login`?~~ **Answered, and the prediction held: `pc-setup` writes it as a copy under its own service name.** | [dlouwers/pc-setup#3](https://github.com/dlouwers/pc-setup/pull/3) writes `/etc/pam.d/auroval-lock` with one effective line, `auth include login`, under a service name of its own so `faillock` can be tuned for a lock screen without touching `sudo` or `login` (C19). It carries a consequence the implementation must obey: **C24**. | Closed |
 | N3 | Should `ui::UiState` stop carrying a session list? | It carries one because the greeter preselects the last session, so `ui` depends on `sessions` and both had to move into the shared crate together; a locker constructs it with an empty list. Breaking that means making `UiState` generic over its session type, which is a design change and was deliberately not made in a refactor whose whole claim was that it changed no behaviour. **Recommendation: leave it until a second thing wants it.** One unused field is cheaper than a type parameter threaded through the view. | Maintainer |
 | N4 | Why does Hyprland wait 5.00 s before sending `locked`, and is it configurable? | Measured twice at exactly 5000 ms from process start, with the first locked frame 23–29 ms later — the flatness says deliberate delay, not work. Not investigated further: it may be a Hyprland setting, it may be specific to the nested backend. **It is why R16 does not carry over**, and until it is understood a first-frame budget for the locker would be measuring the wrong thing. Reading Hyprland's source for its session-lock handler would settle it. | Maintainer |
 | N5 | What actually happens to a held lock when the compositor restarts? | L8 is written for it and only half-verified. Hyprland has no in-place restart, so the honest position today is that a compositor crash ends the session and takes the lock with it — which is not a lockout but is also not "survives the compositor restarting under it", which is what issue #67 asks for. A config reload, which does not restart the compositor, is the case that can be tested cheaply and has not been. | Maintainer |
