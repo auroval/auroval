@@ -5,7 +5,7 @@ Hyprland 0.57.1 (`v0.57.1`, commit `acc1aa0`), NVIDIA, Dell S3220DGF.
 Reproduce with [`lock-measure.nu`](lock-measure.nu); nested compositor config
 in [`nested.lua`](nested.lua).
 
-> **The CPU figures below were taken against a compositor that was running on
+> **Pairs 1 and 2 in §3 were taken against a compositor that was running on
 > its defaults, not on the config this file cites.** The nested config was
 > `nested.conf`, in hyprlang, and Hyprland 0.57.1 reads a `-c` file as Lua:
 > every `#` comment was a syntax error, the config was abandoned whole, and
@@ -14,13 +14,11 @@ in [`nested.lua`](nested.lua).
 > log, so nothing here showed it; it was found on 2026-11-09 by the operator
 > reading his own screen. The file is Lua now and parses.
 >
-> How much this moves the numbers is **not known and is not assumed**. The
-> figures are each process's own CPU out of `/proc`, so a compositor
-> animating its own windows is not directly in them — but it shares a GPU and
-> it sets the frame pacing both front ends answer to. The pairing in §4 is
-> the part that survives regardless, because both front ends ran against the
-> same broken compositor. **Any absolute figure below should be re-measured
-> before it is quoted.**
+> It has since been re-measured. Pairs 3 and 4 in §3 were taken against the
+> compositor reading `nested.lua`, and they land inside the spread the first
+> two already had — so the broken config is not what moved these numbers, and
+> nothing here needed withdrawing. What it did cost is the *direction* of the
+> §3 claim: see pair 4.
 
 **What this answers.** Three of issue #67's premises, and no more than three:
 that `ext-session-lock-v1` is available here, that `crates/auroval-ui`'s
@@ -90,21 +88,38 @@ process's `utime + stime` out of `/proc/<pid>/stat`, sampled over a steady
 window that starts 8 s in so that GStreamer's startup and the lock handshake
 are outside it.
 
-| surface | protocol | CPU, pair 1 | CPU, pair 2 |
-|---|---|---|---|
-| `auroval-greet preview` | `xdg_shell` | 22.7% | **33.2%** |
-| `auroval-lock rehearse` | `ext-session-lock-v1` | 19.4% | **32.9%** |
+Pairs 1 and 2 were taken on 2026-11-08, against the compositor that was
+silently running on its defaults. Pairs 3 and 4 were taken on 2026-11-09
+against the same compositor reading `nested.lua`, at 1259x679 and 1259x678
+logical with the scale pinned to 1.
 
-Within each pair the two surfaces are **0.3 and 3.3 points apart, with the
-lock surface the cheaper one both times**. So the claim this run supports is
-the narrow one: *`ext-session-lock-v1` costs nothing the greeter's surface
-does not.* That is the question P3 had, and it is answered.
+| surface | protocol | pair 1 | pair 2 | pair 3 | pair 4 |
+|---|---|---|---|---|---|
+| `auroval-greet preview` | `xdg_shell` | 22.7% | 33.2% | 19.6% | 14.6% |
+| `auroval-lock rehearse` | `ext-session-lock-v1` | 19.4% | 32.9% | 17.7% | 17.3% |
+| difference, lock − greet | | −3.3 | −0.3 | −1.9 | **+2.7** |
 
-The run-to-run spread between the pairs — 22.7 against 33.2 for the *same
-binary on the same clip* — is large and is not new. Q5 recorded exactly this:
+**The fourth pair reverses the sign, and that is the useful result.** After
+three pairs with the lock surface cheaper, the first phrasing of this section
+read *"the cheaper one both times"*, which was a pattern in three samples and
+not a property. Pair 4 has the lock surface 2.7 points dearer. What survives
+all four is the magnitude: **the two surfaces are within ±3.3 points of each
+other, in both directions.**
+
+That band is smaller than the spread of one binary against itself. The
+greeter alone covers 14.6% to 33.2% on the same clip at the same size — so
+the difference the pairing is trying to resolve is below the noise it is
+measured in. The honest claim is therefore bounded rather than directional:
+*nothing here shows `ext-session-lock-v1` costing more than the greeter's
+surface, and the resolution of this instrument is about three points.* A
+difference smaller than that would not be visible; a difference large enough
+to threaten R7 would be.
+
+The spread itself is not new and is still unexplained. Q5 recorded it:
 *"the GL path's run-to-run spread (26–42%, against the readback path's 2
-points) is unexplained."* It is unexplained here too. Pairing is the defence
-against it, which is why the figures are only ever read within a pair.
+points) is unexplained."* Pairing is the defence against it, which is why the
+figures are only ever read within a pair — and pair 4 is why a *direction*
+read across pairs is not safe either.
 
 ### What this is not, and the measurement that is still missing
 
@@ -112,8 +127,11 @@ against it, which is why the figures are only ever read within a pair.
 present path — is stated at 1440p60 under `cage` on a free VT, and R16's note
 in the greeter's PRD records why that mattered: an earlier 1440p figure *"was
 measuring the nesting"* of a nested `cage` at 1255x674 inside a live Hyprland
-session, and was withdrawn. This run is nested, at 630x339 logical, against a
-30 fps clip rather than 60. Every one of those differences moves the number.
+session, and was withdrawn. These runs are nested, at 1259x679
+logical with the scale pinned to 1 — pairs 1 and 2 were at 630x339 logical,
+scale 2, the same pixels through a different reported geometry — and against
+a 30 fps clip rather than 60. Every one of those differences moves the
+number.
 
 Both figures sit under 50%, and that is worth nothing as evidence about R7.
 **The 1440p60-on-a-free-VT measurement of the lock surface has not been
