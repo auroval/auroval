@@ -44,6 +44,15 @@ libgstreamer-plugins-base1.0-dev
 libwayland-dev
 libxkbcommon-dev
 
+# What the lock screen authenticates through. `crates/lock` links libpam
+# directly (see the `#[link(name = "pam")]` block in crates/lock/src/pam.rs);
+# there is no -sys crate and so no pkg-config probe to fall back on. Arch, the
+# maintainer's system, ships pam's headers and `libpam.so` as part of the base
+# install, so the workspace built and tested locally while the runner failed to
+# link with `unable to find library -lpam` -- the exact divergence this file
+# exists to prevent. Debian splits the symlink into the -dev package.
+libpam0g-dev
+
 # What `cargo test` needs rather than what the build needs.
 #
 # The render tests in crates/greet/src/view.rs draw through a surfaceless EGL

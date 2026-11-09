@@ -1,28 +1,57 @@
-//! auroval's lock screen — **the protocol skeleton, and nothing else.**
+//! auroval's lock screen.
 //!
-//! # This binary cannot unlock a session, and that is the design
+//! # It can unlock a session now, and that changes what this file is for
 //!
-//! There is no PAM code here. No conversation function, no password buffer,
-//! no `libpam` in the dependency list, no code path that could authenticate
-//! anybody. The field is drawn and your keystrokes go nowhere. `L1` in
-//! [`docs/prd/lock.md`](../../../docs/prd/lock.md) is the requirement this
-//! binary deliberately does not meet.
+//! The previous version of this comment opened *"This binary cannot unlock a
+//! session, and that is the design"*, and the design was to separate the
+//! protocol work from the authentication work so that the first could be
+//! finished without anything that could lock a person out. That half is
+//! merged and measured — `spike/p3/RESULTS.md` has the protocol at version 1,
+//! the renderer drawing on a lock surface, and the loop staying in a GL
+//! texture there. This is the second half.
 //!
-//! The reason is narrow and worth stating plainly: the unlock path is the one
-//! part of this project where a mistake locks someone out of their own
-//! machine, and `ext-session-lock-v1` is explicit that it fails closed —
-//! *"If the client dies while the session is locked the session remains
-//! locked, possibly permanently depending on compositor policy."* So the
-//! protocol work and the authentication work were separated, and this is the
-//! first half: it proves the surface comes up, that the shared renderer
-//! draws on it, that the video still negotiates `memory:GLMemory` there, and
-//! what the present costs against R7's ceiling. Those are answerable without
-//! anything that could lock a person out. The other half gets written with
-//! the maintainer awake and a second TTY open.
+//! What authenticates is `src/pam.rs`: four functions and three structs
+//! transcribed from `pam_conv(3)` and `/usr/include/security/_pam_types.h`,
+//! for the reason `crates/greetd-proto` exists. No PAM crate. The service is
+//! `auroval-lock`, written by `pc-setup`, which is `auth include login` and
+//! has no `account` stanza — so nothing here calls `pam_acct_mgmt`, and
+//! `pam.rs` says why.
 //!
-//! # What it is safe to run, and what is not
+//! # The escape hatch is gone, and that is L9
 //!
-//! Two modes, and the split between them is the safety property:
+//! <kbd>Esc</kbd> did release the lock, unconditionally, and so did the
+//! `AUROVAL_LOCK_SECONDS` timer. L9 required both gone in the same commit
+//! that introduced PAM, not after it, and they are:
+//!
+//! * **Escape does nothing.** The key is matched and dropped, so the absence
+//!   is visible in the code rather than being an omission.
+//! * **The deadline exits without unlocking.** It still bounds a run, so
+//!   `spike/p3/lock-measure.nu` works unchanged, but the session stays
+//!   locked. The operator's job changes: a nested compositor has to be
+//!   closed rather than politely releasing itself.
+//!
+//! So there is exactly one path out of a held lock, and it runs through a
+//! successful `pam_authenticate`. The compiler helps: the binding cannot be
+//! committed without a caller, because `clippy -D warnings` refuses dead
+//! code, which is why these two things are one commit and not two.
+//!
+//! # What holds the faillock trap shut
+//!
+//! `/etc/security/faillock.conf` is commented out, so three failures lock the
+//! account for ten minutes — the mechanism `AGENTS.md` warns about for
+//! `sudo`. The stack is left at its defaults deliberately, because the trap
+//! is sprung by a locker that retries rather than by the policy. L10 is what
+//! forbids retrying, and it is enforced by a state rather than by care:
+//! while PAM is thinking every key is dropped, so a held Return, a burst of
+//! synthetic events and a keystroke during the two-second failure delay all
+//! produce one attempt. `may_submit` in `lock.rs` is that decision, as a free
+//! function, so it has tests.
+//!
+//! PAM runs on a worker thread. `pam_unix(8)` documents a delay-on-failure
+//! *"of the order of two seconds"* and the stack does not pass `nodelay`, so
+//! on the draw loop a wrong password would freeze the screen mid-animation.
+//!
+//! # Two modes, and the split is still the safety property
 //!
 //! * **`probe`** binds `ext_session_lock_manager_v1`, says whether it is
 //!   there and at what version, lists the outputs, and exits. **It never
@@ -33,33 +62,21 @@
 //!   by being run with no arguments is a trap, and the trap would be sprung
 //!   by exactly the person least expecting it.
 //!
-//! **The escape hatch, and why it exists even though it is wrong.** In
-//! `rehearse`, two things release the lock: <kbd>Esc</kbd>, and the
-//! `AUROVAL_LOCK_SECONDS` timer. That is an unconditional unlock with no
-//! authentication, which in a real locker would be the whole vulnerability —
-//! so it is not an unlock path, it is a rehearsal harness, and **it must be
-//! deleted in the same commit that introduces PAM**. L9 in the PRD records
-//! this as a tripwire rather than trusting anybody to remember it.
-//!
-//! It is still deliberately kept, rather than exiting without unlocking,
-//! because the alternative is worse in a specific way: a skeleton that leaves
-//! the session locked after every run can be tested exactly once per boot, so
-//! nobody would test it.
-//!
 //! **No signal is handled, and that is the fail-closed half.** SIGTERM,
 //! SIGINT and SIGKILL all leave the session locked: this process installs no
 //! handler, and sctk's own `Drop` for the lock object sends `destroy` rather
 //! than `unlock_and_destroy`, with a comment reading *"choosing not to unlock
-//! here results in us failing secure."* So R14's property is in the skeleton
-//! already, and it is the one thing here worth testing on purpose — with a
-//! second TTY open before you start.
+//! here results in us failing secure."*
 //!
-//! The honest summary: run `rehearse` in a nested compositor. Running it on
-//! the session you are sitting in works, and will lock your screen, and the
-//! only ways back are a key this binary tells you about, a timer you have to
-//! have set in advance, and a second TTY.
+//! The honest summary: run `rehearse` in a nested compositor, which is what
+//! `spike/p3/nested.conf` is for. On the session you are sitting in it will
+//! lock your screen, and now the only way back is the right password —
+//! there is no key and no timer. If PAM is misconfigured there is no way back
+//! at all except killing the compositor from another VT, which ends the
+//! session and everything unsaved in it.
 
 mod lock;
+mod pam;
 
 use auroval_ui::config::Config;
 
@@ -91,9 +108,11 @@ docs/prd/lock.md for what is still missing.
 process dies while the session is locked, the session stays locked. So:
 
   * it refuses to run unless AUROVAL_LOCK_REHEARSAL=1 is set,
-  * Esc releases the lock and exits, and so does the AUROVAL_LOCK_SECONDS
-    timer -- an unconditional unlock, which is a rehearsal harness and not
-    a locker, and which has to be deleted when PAM is written,
+  * THERE IS NO ESCAPE KEY. Esc used to release the lock and no longer
+    does, per L9: the only way out of a held lock is a correct password.
+  * AUROVAL_LOCK_SECONDS still bounds a run, but it now exits WITHOUT
+    unlocking, so the session stays locked and a nested compositor has to
+    be closed,
   * NO SIGNAL IS HANDLED. SIGTERM, SIGINT and SIGKILL all leave the
     session locked. That is R14's property, it is already true of this
     skeleton, and it is the one thing here worth testing on purpose --
@@ -102,9 +121,12 @@ process dies while the session is locked, the session stays locked. So:
 Run it in a nested compositor unless you mean it.
 
 AUROVAL_CONFIG overrides /etc/auroval/greet.lua.
-AUROVAL_LOCK_SECONDS=<n> makes rehearse release the lock and exit after n
-  seconds. For the measurement harness, which should not depend on anyone
-  being at the keyboard.
+AUROVAL_LOCK_SECONDS=<n> makes rehearse exit after n seconds WITHOUT
+  unlocking. For the measurement harness, which should not depend on anyone
+  being at the keyboard. The session is left locked on purpose -- see L9.
+AUROVAL_LOCK_PAM_SERVICE=<name> overrides the PAM service, default
+  `auroval-lock`. For trying a stack of your own without editing
+  /etc/pam.d; it cannot make authentication weaker than that file is.
 AUROVAL_LOG_DRAWS logs one line a second: frames presented, turns of the
   loop that drew nothing, and this process's CPU as a share of one core.
   This is R7's 50%-of-one-core ceiling, asked on a lock surface.";
@@ -208,7 +230,34 @@ fn probe() {
                     }
                 }
             }
-            println!("unlock       NONE — this binary cannot authenticate anybody");
+            // What `probe` can say about the unlock path without touching
+            // it: which service it would ask and for whom. It does not call
+            // pam_start -- a probe that authenticated would be a probe that
+            // could spend one of faillock's three.
+            match pam::own_username() {
+                Ok(u) => println!(
+                    "unlock       PAM service `{}`, user `{}` (not contacted)",
+                    std::env::var("AUROVAL_LOCK_PAM_SERVICE")
+                        .unwrap_or_else(|_| "auroval-lock".into()),
+                    u
+                ),
+                Err(e) => println!("unlock       NO USER — {e}"),
+            }
+            println!(
+                "             /etc/pam.d/{} {}",
+                std::env::var("AUROVAL_LOCK_PAM_SERVICE").unwrap_or_else(|_| "auroval-lock".into()),
+                if std::path::Path::new(&format!(
+                    "/etc/pam.d/{}",
+                    std::env::var("AUROVAL_LOCK_PAM_SERVICE")
+                        .unwrap_or_else(|_| "auroval-lock".into())
+                ))
+                .exists()
+                {
+                    "exists"
+                } else {
+                    "IS MISSING — rehearse would lock a screen nothing can unlock"
+                }
+            );
             println!(
                 "result       {}",
                 if p.manager.is_some() {
@@ -229,12 +278,33 @@ fn probe() {
 fn rehearse() {
     if std::env::var_os("AUROVAL_LOCK_REHEARSAL").as_deref() != Some(std::ffi::OsStr::new("1")) {
         eprintln!("auroval-lock: refusing to lock without AUROVAL_LOCK_REHEARSAL=1.");
-        eprintln!("auroval-lock: this mode locks the screen and cannot authenticate anybody.");
+        eprintln!("auroval-lock: this mode locks the screen. The only way out is your password.");
         eprintln!("auroval-lock: `auroval-lock probe` answers the protocol question safely.");
         std::process::exit(2);
     }
-    eprintln!("auroval-lock: REHEARSAL. This locks the session and has no unlock path.");
-    eprintln!("auroval-lock: Esc releases the lock. No signal does -- not even SIGTERM.");
+    // The refusal that matters most in this whole file.
+    //
+    // Without its PAM service file, `pam_start` has no stack to run and
+    // nothing anybody types can succeed. Locking the screen then is not a
+    // risk of a lockout, it is a lockout with extra steps -- and since L9
+    // took away the escape key and the timer's unlock, the only way out
+    // would be killing the compositor from another VT and losing the
+    // session. So this is checked before the lock is asked for, not after.
+    let service =
+        std::env::var("AUROVAL_LOCK_PAM_SERVICE").unwrap_or_else(|_| "auroval-lock".into());
+    let stack = format!("/etc/pam.d/{service}");
+    if !std::path::Path::new(&stack).exists() {
+        eprintln!("auroval-lock: {stack} does not exist, so nothing could unlock this screen.");
+        eprintln!("auroval-lock: refusing to lock. `auroval-lock probe` reports this too.");
+        eprintln!(
+            "auroval-lock: the file is written by pc-setup -- one line, `auth include login`."
+        );
+        std::process::exit(2);
+    }
+
+    eprintln!("auroval-lock: REHEARSAL. This locks the session.");
+    eprintln!("auroval-lock: There is NO escape key. Your password unlocks it; nothing else does.");
+    eprintln!("auroval-lock: No signal unlocks it either -- not even SIGKILL (L11).");
     let cfg = load_config();
     if let Err(e) = lock::run(cfg) {
         eprintln!("auroval-lock: {e}");

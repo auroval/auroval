@@ -23,6 +23,11 @@
 # SAFETY. `auroval-lock rehearse` locks whatever compositor it is pointed at,
 # and ext-session-lock-v1 fails closed. So this script refuses to run against
 # the session you are sitting in, and passes AUROVAL_LOCK_SECONDS so that
+# a run is bounded without anyone at the keyboard. Since 2026-11-09 that
+# timer EXITS WITHOUT UNLOCKING (L9), so the nested compositor is left locked
+# at the end of a run and has to be closed. The measurement is unaffected:
+# this script waits for the process to exit, which it still does.
+#
 # even a mistake releases itself.
 #
 # usage:
