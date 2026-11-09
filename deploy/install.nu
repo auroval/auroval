@@ -234,7 +234,18 @@ def main [
         '    [ -e "$v" ] || { echo "no theme media installed; decode path unverified"; break; }'
         "    runuser -u greeter -- env XDG_CACHE_HOME=/var/cache/auroval \\"
         "        GST_REGISTRY=/var/cache/auroval/gst-registry.bin \\"
-        '        /usr/local/lib/auroval/auroval-greet videoprobe "$v" 1 \\'
+        # ONE backslash, and nushell is why this is worth a comment. A
+        # single-quoted string here is literal, so `\\` emitted two
+        # backslashes into the root script: `sh` then read an escaped
+        # backslash rather than a line continuation, the next line began with
+        # a bare `|`, and the whole thing died with `syntax error near
+        # unexpected token '|'`. `sh` executes as it parses, so every
+        # `install` above had already run -- the script mutated /etc and
+        # /usr/local and then exited 2, which nobody noticed. Found by an
+        # adversarial review on 2026-11-09, after it had been shipping for a
+        # day; the videoprobe below, whose whole point is that the seatless
+        # decode path "is not a thing to assume", had never once run.
+        '        /usr/local/lib/auroval/auroval-greet videoprobe "$v" 1 \'
         "        | grep -E '^memory|^result' \\"
         '        || echo "videoprobe failed as greeter; the decode path is unverified"'
         "    break"
