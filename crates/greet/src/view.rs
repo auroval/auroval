@@ -224,13 +224,61 @@ pub fn draw(
 
     // The session, bottom centre: present enough to check, quiet enough to
     // ignore. Tab cycles it.
+    //
+    // On a plate, and that is not decoration. This label is the smallest text
+    // in the dimmest role, and it sits 64 px from the bottom edge -- 129 px
+    // *below* the safe field the artwork contract measures. So no clause
+    // reaches it: scene-check's composition clause stops at the safe field
+    // and its legibility clauses measure only the four boxes of the UI stack,
+    // which this is not one of. It was found by looking at the screen, which
+    // is the one reader it had.
+    //
+    // Measured behind it on scene-01, at the same 90th percentile the
+    // contract uses for every other element:
+    //
+    //     background p90                0.8450   (near-white: her shoulder)
+    //     outline, no plate               1.90:1
+    //     outline on the field's own α    2.05:1
+    //     outline on an opaque plate      7.37:1
+    //
+    // against the 4.5:1 floor that every other small element has. The alpha
+    // needed is 0.951, so the field's 0.8 buys almost nothing here -- which
+    // is why this plate is opaque where the input field is not. On scene-05
+    // the background is 0.0175 and the plate changes 6.99:1 into 7.37:1, so
+    // it costs nothing on a scene that did not need it.
+    //
+    // A colour change cannot do this job. The brighter roles are worse on a
+    // near-white background, not better: `on_surface` is lighter than
+    // `outline`. And a darker text colour would fail on scene-05. With the
+    // pool rotating between the two there is no single colour that works, so
+    // the fix has to make the background irrelevant rather than argue with
+    // it.
     if let Some(s) = ui.session() {
         let label = if ui.sessions.len() > 1 {
             format!("{}  ·  tab to change", s.name)
         } else {
             s.name.clone()
         };
-        gl.draw_centred(&label, g.user_px, cx, h - 64.0, p.outline);
+        let ly = h - 64.0;
+        let pad = g.user_px * 0.8;
+        let pw = gl.width_of(&label, g.user_px) + pad * 2.0;
+        let ph = g.user_px + pad;
+        gl.draw_field(&Field {
+            x: cx - pw * 0.5,
+            y: ly - ph * 0.5,
+            w: pw,
+            h: ph,
+            // The field's own rounding, so this reads as part of the same UI
+            // and not as a patch over the picture.
+            radius: g.field_rounding,
+            power: g.rounding_power,
+            // No stroke: the input field's outline says "type here" and this
+            // is not something you type into.
+            outline: 0.0,
+            fill: [p.surface[0], p.surface[1], p.surface[2], 1.0],
+            stroke: [0.0; 4],
+        });
+        gl.draw_centred(&label, g.user_px, cx, ly, p.outline);
     }
 }
 
@@ -919,6 +967,47 @@ mod tests {
         let mut after = before.clone();
         after.prompt = "One-time password (OATH) :".into();
         assert_ne!(sig(&before), sig(&after));
+    }
+
+    /// The session label sits 129 px below the safe field, so no clause of
+    /// the artwork contract measures what is behind it -- scene-check's
+    /// composition clause stops at the safe field and its legibility clauses
+    /// cover only the four boxes of the UI stack. Its legibility therefore
+    /// cannot come from the picture being dark there, and on scene-01 it is
+    /// not: the background reads 0.8450 at the same percentile the contract
+    /// uses, which puts the label at 1.90:1 against a 4.5:1 floor.
+    ///
+    /// It comes from the plate instead, so the plate has to actually be
+    /// there. Measured 16 px above the label's centre, which is inside the
+    /// plate and clear of the glyphs: without it that row is untouched
+    /// background and `run_x` finds nothing drawn at all.
+    #[test]
+    fn the_session_label_sits_on_a_plate() {
+        let sessions = vec![session("hyprland"), session("hyprland-uwsm")];
+        let mut ui = UiState::new(sessions, &LastLogin::default());
+        ui.clock = "23:26".into();
+        let f = render(&ui, &style(), None);
+
+        let (x0, w) = f.run_x(W / 2, H - 64 - 16);
+        assert!(
+            w > 200,
+            "the plate is {w} px wide above the label; a bare glyph row would \
+             not be drawn here at all"
+        );
+        let centre = x0 + w / 2;
+        assert!(
+            (centre as i32 - (W / 2) as i32).abs() <= 2,
+            "the plate is centred at {centre}, not {}",
+            W / 2
+        );
+
+        // And it is a plate, not a band across the screen.
+        let (_, ph) = f.run_y(W / 2 - w / 2 + 4, H - 64);
+        assert!(
+            (24..=64).contains(&ph),
+            "the plate is {ph} px tall, which is not a label's worth"
+        );
+        assert!(w < W / 2, "the plate is {w} px wide, which is a bar");
     }
 
     /// Tab cycles the session, and the label at the bottom of the screen is

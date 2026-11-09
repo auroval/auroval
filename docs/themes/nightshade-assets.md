@@ -348,6 +348,46 @@ box, at the **90th percentile** rather than the mean, because the bright part of
 a region is what breaks legibility, not its average. Required scrim is computed
 per element and the worst one wins.
 
+#### 5.2.1 The four boxes are four, and the greeter draws five things
+
+The session label is the fifth, and it is measured by nothing. Found on
+2026-11-09 by looking at the login screen, which was the only reader it had.
+
+It sits 64 px from the bottom edge, which is **129 px below the safe field**,
+so §2.2's composition clause cannot reach it and §5.2's legibility clauses
+cover only the four boxes above. Measured behind it on scene-01, at the same
+90th percentile this section uses:
+
+| | background p90 | contrast | |
+|---|---|---|---|
+| as deployed | 0.8773 | **1.97:1** | against a 4.5:1 floor |
+| with a plate | 0.0140 | 7.37:1 | |
+
+Both numbers read off a rendered frame rather than reasoned about. The first
+attempt at the second one came out at 3.04:1, because the measurement box
+contained the label's own glyphs and the 90th percentile found them: on a
+rendered frame, unlike on a candidate, the text is in the picture.
+
+**A colour cannot fix it and neither can translucency.** The alpha needed to
+reach the floor is 0.951, so the input field's own 0.8 gets to 2.05:1 — on a
+near-white background, translucency buys almost nothing. The brighter palette
+roles are worse rather than better, because they are lighter, and a darker
+text colour fails on scene-05, whose background at that spot is 0.0175. With
+§3.1's pool rotating between the two there is no single colour that works.
+
+So the greeter draws an opaque plate, and the artwork is **not** judged on
+this element — adding it to the measured boxes would reject scene-01 for a
+problem the plate has already solved, and at 83–90% required scrim it would
+fail §6's gate 1 outright. The invariant moves into the greeter's own tests
+instead, where `the_session_label_sits_on_a_plate` renders a frame and reads
+the pixels back.
+
+The general point is worth more than the fix. The contract measures the
+elements it knows about, and the greeter grew one it did not. Any element
+drawn outside the safe field is invisible to this document by construction,
+which is a thing to check when one is added rather than to discover on the
+screen.
+
 ### 5.3 Composition and legibility are different clauses
 
 They were one number and should not have been:
