@@ -186,6 +186,33 @@ def main [
         "else"
         '    echo "gst-inspect-1.0 not found; registry not warmed"'
         "fi"
+        ""
+        "# R7/Q5, asked by the user who will actually be doing it. videoprobe"
+        "# decodes a file into this renderer's own GL textures and prints what"
+        "# was negotiated -- `memory:GLMemory` on the hardware path, system"
+        "# memory on a software fallback that plays just as well at fourteen"
+        "# times the CPU. Until now that question has only ever been asked as"
+        "# the maintainer, who has a session and a seat. `greeter` is in the"
+        "# `video` group and has neither, and whether the zero-copy path"
+        "# survives that is not a thing to assume."
+        "#"
+        "# NOT a cache warming, despite how it looks next to the lines above."
+        "# Measured 2026-11-09 (#77): this compiles two GL programs, 60 KB,"
+        "# while the real greeter under cage compiles three, 352 KB. The"
+        "# program that costs the second needs a real DRM surface, which"
+        "# nothing available at install time has. See R16 and C15."
+        "#"
+        "# Theme media is not installed by this script (#63), so with nothing"
+        "# to decode this says so and moves on rather than failing."
+        "for v in /usr/local/share/auroval/*.mp4; do"
+        '    [ -e "$v" ] || { echo "no theme media installed; decode path unverified"; break; }'
+        "    runuser -u greeter -- env XDG_CACHE_HOME=/var/cache/auroval \\"
+        "        GST_REGISTRY=/var/cache/auroval/gst-registry.bin \\"
+        '        /usr/local/lib/auroval/auroval-greet videoprobe "$v" 1 \\'
+        "        | grep -E '^memory|^result' \\"
+        '        || echo "videoprobe failed as greeter; the decode path is unverified"'
+        "    break"
+        "done"
     ] | append "" | str join "\n" | save -f $root_sh
     ^chmod 0755 $root_sh
     print $"         ($root_sh)"
