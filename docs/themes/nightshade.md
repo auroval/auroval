@@ -349,6 +349,63 @@ The lightness band is the maintainer's to tune (N1). What is settled is the
 this turns matugen's pastel `#ffb0cd` (C\* 33) into `#ff1296` (C\* 85.4) — the
 difference between the theme's stated look and its opposite.
 
+#### 4.3.1 Measured against the scenes, and the answer is not a lightness band
+
+N1 asked for the accent's L\* and C\*, *"the one number worth getting wrong a
+few times first"*, to be chosen against a real scene. There are now three
+scenes, and measuring against them says the question is aimed at the wrong
+parameter.
+
+`scene_check.py` already implements the form settled above: scan L\* from 50
+to 70 in steps of 0.5, take the lightness whose cusp chroma is highest while
+still clearing 4.5:1 against surface. Only the band is open. Run against six
+real extracted hues:
+
+| band | C\* range | ratio |
+|---|---|---|
+| 50–70 (as implemented) | 38.5 – 86.2 | **2.24×** |
+| 55–60 (this section's stated starting point) | 34.0 – 80.4 | **2.36×** |
+| 60–70 | 38.5 – 86.2 | **2.24×** |
+
+The proposed starting point is worse than what is already running, on both
+counts: a wider spread and less chroma throughout. And no band comes close to
+consistency, because **the spread is not caused by lightness.** It is caused
+by hue.
+
+Across the hue circle, the achievable accent chroma runs from **38.6 at 210°**
+to **110 at 330°**. Below C\* 50 — which is where "neon" stops being an honest
+word — there is one continuous trough, **180° to 250°**: cyan and blue. No
+choice of L\* lifts a hue out of it, because the limit is the sRGB gamut and
+not a setting.
+
+This section half knows it already. It says *"C\* 75 is comfortable for magenta
+and impossible for cyan, so one number would make some hues neon and others
+pastel"*, and uses that to justify seeking the cusp instead of naming a
+chroma. But seeking the cusp does not remove the problem. It relocates it:
+some hues are still neon and others still pastel, and the difference is that
+no single number now shows it coming.
+
+**What this means for the scenes that exist.** scene-01's hue is 211°, the
+floor of the trough, so its accent cannot be neon — C\* 38.5 at best. The two
+wallpapers in rotation extract 13.0° and 259.2°, which is not only a 246°
+swing but C\* 79 against C\* 50: one is neon and the other cannot be. That is
+the daily change on the desktop, and it is a gamut fact rather than a tuning
+mistake.
+
+**So the lightness band is settled by default and the real question moves.**
+50–70 stays: of the three it gives the most chroma and the smallest spread,
+and nothing argues for 55–60 except that this section proposed it before
+anything had been measured. What decides nightshade's visual signature is
+which hues its own scenes have, and §4.3 declines to constrain hue at all.
+
+There is an exit that costs tenet 6 nothing, and §5.4 already opens it:
+*"a scene may simply declare its hue"*. nightshade's own artwork could declare
+hues outside the trough — roughly 280° through 80°, by way of magenta, red and
+orange — while a user's media keeps getting whatever it gives. Nothing is
+refused, nothing can fail, and the theme's own scenes become coherent by
+construction rather than by luck. That is **N8**, and it is the question N1
+was trying to ask.
+
 **Extraction is fragile, which is a third reason to commit the palette.**
 matugen's result depends on the file's bit depth: the same pixels at 16 and 8
 bits gave hues 118° apart (pink against cyan). Per file it is deterministic, but
@@ -621,7 +678,8 @@ to keep in sync.
 
 | # | Item | Owner |
 |---|---|---|
-| N1 | nightshade's tonal targets (§4.3) — the accent's L\* and C\*, which decide whether it reads as neon or as pastel. The theme's visual signature, and the one number worth getting wrong a few times first. | Maintainer, against the first scene |
+| N1 | **Reformulated 2026-11-08, measured rather than argued (§4.3.1).** Asked for the accent's L\* and C\* as the theme's visual signature. Measured against six real scene hues, the lightness band barely moves the result: 50–70 gives a 2.24× chroma spread, and the 55–60 this document proposed gives 2.36× with less chroma throughout. **Settled: the band stays 50–70.** The spread comes from hue, not lightness — the sRGB cusp runs from C\* 38.6 at 210° to 110 at 330° — so the signature is not controlled by this parameter and the real question is N8. | Settled |
+| N8 | Do nightshade's **own** scenes hold a hue band, so the theme's coherence is design rather than luck? **The principle was settled in practice 2026-11-08**: offered a rotation of 13.0°, 24.9° and 259.2°, the maintainer withdrew the 259.2° scene — coherence over a liked image — leaving a rotation 11.9° wide. The first time nightshade's own scenes shared a palette. **Still open: the mechanism.** Selection is what happened, and it scales badly: it rejects finished artwork after the fact and gives no guidance before generating. Declaring a hue (§5.4) would do it at packaging time instead, and §4.4's packaging step is where that belongs. Either way a user's media keeps getting whatever it gives, so tenet 6 is untouched. | Principle settled; mechanism open |
 | N2 | Does the centre window title stay in the bar (§5)? | Maintainer |
 | N3 | How many scenes does nightshade ship? Daily rotation over two scenes is a two-day cycle, which is not rotation. | Maintainer |
 | N4 | Fixed clock times or solar phase boundaries (§3.3)? No longer constrained by the format — Q4 chose Lua — so this is now purely what is wanted. Solar is right and costs a location; clock is wrong in December and costs nothing. | Maintainer |
