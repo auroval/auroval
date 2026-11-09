@@ -298,6 +298,12 @@ fn rehearse() {
         std::process::exit(2);
     }
 
+    // Before anything can be typed, and before the renderer exists to crash.
+    if let Err(e) = pam::refuse_core_dumps() {
+        eprintln!("auroval-lock: could not disable core dumps ({e}).");
+        eprintln!("auroval-lock:   a crash while typing could write the secret to disk.");
+    }
+
     eprintln!("auroval-lock: REHEARSAL. This locks the session.");
     eprintln!("auroval-lock: There is NO escape key. Your password unlocks it; nothing else does.");
     eprintln!("auroval-lock: No signal unlocks it either -- not even SIGKILL (L11).");
