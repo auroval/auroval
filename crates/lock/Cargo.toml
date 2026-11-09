@@ -13,10 +13,19 @@ name = "auroval-lock"
 path = "src/main.rs"
 
 [dependencies]
-# The whole of what this binary draws with. There is deliberately nothing
-# else: no PAM crate, no password handling, no `libc` for a conversation
-# function. The dependency list is the first place a reader can check that
-# the boundary in `main.rs`'s doc comment is real.
+# The boundary this list used to mark has moved, and the move is the point of
+# reading it. It said: "no PAM crate, no password handling, no `libc` for a
+# conversation function." PAM is now here, so `libc` is too -- for `calloc`
+# and `free`, because `pam_conv(3)` requires the response array be heap
+# memory that PAM itself releases.
+#
+# What is still absent, and still checkable here: there is no PAM *crate*.
+# `src/pam.rs` is four functions and three structs transcribed from
+# `pam_conv(3)` and `/usr/include/security/_pam_types.h`, for the reason
+# `crates/greetd-proto` exists -- auroval owns the code on the paths it
+# cannot afford to be wrong about. `pam-sys` and `pam-client2` were both
+# considered and the file says why neither is here.
+libc = "0.2"
 auroval-ui = { path = "../auroval-ui" }
 smithay-client-toolkit = "0.20"
 wayland-client = "0.31"

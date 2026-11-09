@@ -73,6 +73,7 @@ use wayland_client::{
     Connection, Proxy, QueueHandle,
 };
 
+use crate::pam;
 use auroval_ui::background::Background;
 use auroval_ui::config::Config;
 use auroval_ui::render::{Gl, Target};
@@ -183,6 +184,38 @@ struct Screen {
     last: Option<String>,
 }
 
+/// Whether a Return should become a `pam_authenticate` call.
+///
+/// A free function because L10 is a requirement with a test attached, and a
+/// `Lock` cannot be built without a Wayland display. The two reasons to
+/// refuse are the whole of L10:
+///
+/// * an attempt is already in flight — a held Return, a burst of synthetic
+///   events, or a second press during the two-second failure delay
+/// * the field is empty — not an attempt anybody made, and it would still
+///   spend one of `pam_faillock`'s three
+fn may_submit(auth: &Auth, secret_empty: bool) -> bool {
+    matches!(auth, Auth::Typing) && !secret_empty
+}
+
+/// What the field is doing. Two states, and the second one is L10.
+///
+/// L10: *"Never submit an authentication attempt the user did not ask for,
+/// and never retry one automatically."* `InFlight` is how that is kept: while
+/// a `pam_authenticate` is running nothing can start another, so a held
+/// Return, a burst of synthetic events and a failure followed by a redraw all
+/// produce exactly one call. The counter in `pam_faillock` is at three and
+/// `/etc/security/faillock.conf` is commented out, so an automatic retry
+/// empties it in under a second and shuts the owner out for ten minutes.
+#[derive(Debug, PartialEq, Eq)]
+enum Auth {
+    /// Accepting keystrokes.
+    Typing,
+    /// A worker thread is inside `pam_authenticate`. No submission is
+    /// accepted and no key is stored until it answers.
+    InFlight,
+}
+
 pub struct Lock {
     registry_state: RegistryState,
     output_state: OutputState,
@@ -219,6 +252,25 @@ pub struct Lock {
     /// True once `unlock` has been called, so it is not called twice: the
     /// protocol makes a second `unlock_and_destroy` an error.
     released: bool,
+
+    /// The PAM service name. `auroval-lock`, written by pc-setup, which is
+    /// `auth include login` and deliberately has no `account` stanza --
+    /// see `pam.rs` for why nothing here calls `pam_acct_mgmt`.
+    service: String,
+    /// The one user this locker will authenticate, from `getpwuid(getuid())`.
+    user: String,
+    /// What the field is doing. See [`Auth`].
+    auth: Auth,
+    /// The typed secret, in the only buffer this process owns. It is never
+    /// copied into `ui`, which gets a placeholder per keystroke so the dot
+    /// count is right and nothing else.
+    secret: pam::Secret,
+    /// Results from the worker thread. Polled with `try_recv` on the draw
+    /// loop's own 16 ms turn rather than through a calloop source, because
+    /// the loop already wakes that often and a channel that needs no waking
+    /// is one fewer thing to get wrong on this path.
+    auth_rx: std::sync::mpsc::Receiver<pam::Outcome>,
+    auth_tx: std::sync::mpsc::Sender<pam::Outcome>,
 
     log_draws: bool,
     presents: u32,
@@ -266,6 +318,20 @@ impl Lock {
             locale: auroval_ui::clock::locale_from_env(),
             done: false,
             released: false,
+            // probe locks nothing, so these are inert by construction: it
+            // never reaches `submit`, and `release` is unreachable without a
+            // `session_lock`. The service and user are still the real ones so
+            // that `probe` can report them -- which is the mode's whole job.
+            service: String::new(),
+            user: String::new(),
+            auth: Auth::Typing,
+            secret: pam::Secret::new(),
+            auth_rx: {
+                let (_t, r) = std::sync::mpsc::channel();
+                r
+            },
+            auth_tx: std::sync::mpsc::channel().0,
+
             log_draws: false,
             presents: 0,
             turns: 0,
@@ -335,6 +401,15 @@ pub fn run(cfg: Config) -> Result<(), String> {
         eprintln!("auroval-lock: {p}");
     }
 
+    // L3: the one user this locker will ever authenticate, from the uid and
+    // nowhere else. Fatal if it cannot be determined -- a locker that does
+    // not know whose screen it is holding has no business holding it.
+    let user = pam::own_username()?;
+    let service =
+        std::env::var("AUROVAL_LOCK_PAM_SERVICE").unwrap_or_else(|_| "auroval-lock".into());
+    eprintln!("auroval-lock: pam service {service}, user {user}");
+    let (auth_tx, auth_rx) = std::sync::mpsc::channel();
+
     let deadline = std::env::var_os("AUROVAL_LOCK_SECONDS")
         .and_then(|v| v.to_string_lossy().parse::<u64>().ok())
         .map(|n| Instant::now() + Duration::from_secs(n));
@@ -364,6 +439,13 @@ pub fn run(cfg: Config) -> Result<(), String> {
         locale: auroval_ui::clock::locale_from_env(),
         done: false,
         released: false,
+        service: service.clone(),
+        user: user.clone(),
+        auth: Auth::Typing,
+        secret: pam::Secret::new(),
+        auth_rx,
+        auth_tx,
+
         log_draws: std::env::var_os("AUROVAL_LOG_DRAWS").is_some(),
         presents: 0,
         turns: 0,
@@ -399,12 +481,28 @@ pub fn run(cfg: Config) -> Result<(), String> {
         loop_
             .dispatch(Duration::from_millis(16), &mut lock)
             .map_err(|e| e.to_string())?;
+        lock.poll_auth();
         lock.tick_clock();
         lock.draw_all();
         lock.report();
         if lock.deadline.is_some_and(|d| Instant::now() >= d) {
-            eprintln!("auroval-lock: AUROVAL_LOCK_SECONDS elapsed; releasing the lock");
-            lock.release();
+            // **Exits without unlocking**, and the difference is L9. This
+            // deadline used to call `release`, which was an unconditional
+            // unlock on a timer. It now ends the process and leaves the
+            // session locked, which is what L11 asks of every other way of
+            // dying.
+            //
+            // The measurement harness still works: `lock-measure.nu` passes
+            // this to bound a run and waits for the process to exit, which it
+            // still does. What changes is the operator's job -- the nested
+            // compositor is left locked and has to be closed. On the session
+            // you are sitting in there is no way out but the right password,
+            // which is the point.
+            eprintln!(
+                "auroval-lock: AUROVAL_LOCK_SECONDS elapsed; exiting WITHOUT unlocking. \
+                 The session stays locked -- close the nested compositor."
+            );
+            lock.done = true;
         }
     }
 
@@ -419,12 +517,90 @@ pub fn run(cfg: Config) -> Result<(), String> {
 }
 
 impl Lock {
+    /// Hand the typed secret to PAM, on a thread, once.
+    ///
+    /// **Off the draw loop, and that is a requirement rather than a
+    /// courtesy.** `pam_unix(8)` documents a *"delay-on-failure of the order
+    /// of two seconds"* and `/etc/pam.d/system-auth` does not pass
+    /// `nodelay`, so a wrong password blocks for seconds. On this thread that
+    /// is a lock screen frozen mid-animation at the moment somebody is
+    /// wondering whether they mistyped. L7 called it: *"if the PAM
+    /// conversation shares a thread with the renderer, a render path that
+    /// cannot recover takes the unlock with it."*
+    ///
+    /// The secret is **moved** into the thread, so it is zeroed by its own
+    /// `Drop` when the closure ends, whatever PAM returned.
+    fn submit(&mut self) {
+        if !may_submit(&self.auth, self.secret.is_empty()) {
+            return;
+        }
+        let mut secret = std::mem::replace(&mut self.secret, pam::Secret::new());
+        self.ui.typed.clear();
+        self.ui.notice = None;
+        self.auth = Auth::InFlight;
+
+        let (service, user, tx) = (
+            self.service.clone(),
+            self.user.clone(),
+            self.auth_tx.clone(),
+        );
+        std::thread::spawn(move || {
+            let outcome = pam::authenticate(&service, &user, secret.as_str());
+            secret.clear();
+            // A send that fails means the loop is already gone, which is the
+            // ordinary shutdown path and not worth reporting.
+            let _ = tx.send(outcome);
+        });
+    }
+
+    /// Take whatever the worker said, if it has said anything.
+    ///
+    /// Nothing here retries. A denial puts the field back in the user's hands
+    /// and waits, which is the other half of L10.
+    fn poll_auth(&mut self) {
+        let Ok(outcome) = self.auth_rx.try_recv() else {
+            return;
+        };
+        self.auth = Auth::Typing;
+        match outcome {
+            pam::Outcome::Success { info } => {
+                for i in &info {
+                    eprintln!("auroval-lock: pam: {i}");
+                }
+                eprintln!("auroval-lock: authenticated; unlocking");
+                self.release();
+            }
+            pam::Outcome::Denied { reason, info } => {
+                for i in &info {
+                    eprintln!("auroval-lock: pam: {i}");
+                }
+                eprintln!("auroval-lock: denied: {reason}");
+                self.ui.notice = Some(auroval_ui::ui::Notice {
+                    text: reason,
+                    kind: auroval_ui::ui::NoticeKind::Error,
+                });
+            }
+            pam::Outcome::Error { reason } => {
+                // Not a wrong password. Said differently on purpose: a user
+                // who retypes a correct password against a broken stack
+                // spends faillock's three attempts on nothing.
+                eprintln!("auroval-lock: PAM error (not a denial): {reason}");
+                self.ui.notice = Some(auroval_ui::ui::Notice {
+                    text: format!("authentication is unavailable: {reason}"),
+                    kind: auroval_ui::ui::NoticeKind::Error,
+                });
+            }
+        }
+    }
+
     /// Release the lock, once, and stop the loop.
     ///
-    /// This is the rehearsal harness's unconditional unlock and it is the one
-    /// thing in this crate that a real locker must not have. It is called
-    /// from Esc, from the `AUROVAL_LOCK_SECONDS` deadline, and from the
-    /// signal handler.
+    /// **One caller: `poll_auth`'s success branch.** That is L9 — a shipped
+    /// build contains no path from a keysym, a timer or a signal to this
+    /// function that does not pass through a PAM success. Escape no longer
+    /// calls it, the `AUROVAL_LOCK_SECONDS` deadline no longer calls it, and
+    /// no signal is handled at all, so `SIGTERM` and `SIGKILL` both leave the
+    /// session locked (L11).
     fn release(&mut self) {
         if let Some(l) = &self.session_lock {
             if !self.released {
@@ -676,11 +852,18 @@ impl SessionLockHandler for Lock {
 }
 
 impl KeyboardHandler for Lock {
-    /// The rehearsal's escape hatch, and nothing else.
+    /// The field.
     ///
-    /// Every keysym other than Escape is ignored *without being stored*. A
-    /// real locker accumulates a secret here; this one must be checkable by
-    /// reading it, so there is no buffer to accumulate into.
+    /// **Escape does nothing, and that absence is L9.** It used to release
+    /// the lock, unconditionally and without authenticating anybody, because
+    /// a skeleton that leaves the session locked after every run can be
+    /// tested once per boot. The rehearsal is nested now -- the compositor
+    /// being locked is a window to close -- so the hatch has no excuse left,
+    /// and L9 required it gone in the same commit that introduced PAM.
+    ///
+    /// Nothing is submitted that the user did not ask for (L10): a secret
+    /// leaves this function only on Return, and only when no attempt is
+    /// already in flight.
     fn press_key(
         &mut self,
         _conn: &Connection,
@@ -689,9 +872,33 @@ impl KeyboardHandler for Lock {
         _serial: u32,
         event: KeyEvent,
     ) {
-        if event.keysym == Keysym::Escape {
-            eprintln!("auroval-lock: Esc — releasing the lock. A real locker would not do this.");
-            self.release();
+        // While PAM is thinking, every key is dropped -- not buffered for
+        // later. Buffering would mean a keystroke typed during the two-second
+        // failure delay lands in the *next* attempt, which is an attempt the
+        // user did not compose.
+        if self.auth == Auth::InFlight {
+            return;
+        }
+        match event.keysym {
+            Keysym::Return | Keysym::KP_Enter => self.submit(),
+            Keysym::BackSpace => {
+                self.secret.pop();
+                self.ui.backspace();
+            }
+            Keysym::Escape => {}
+            _ => {
+                // `utf8` is what the key produced after the layout and the
+                // modifiers, which is the only thing a password field can
+                // use. Control characters are not text.
+                if let Some(text) = event.utf8 {
+                    for c in text.chars().filter(|c| !c.is_control()) {
+                        self.secret.push(c);
+                        // A placeholder, so `field_display` counts the right
+                        // number of dots and `ui` never holds the secret.
+                        self.ui.push('\u{2022}');
+                    }
+                }
+            }
         }
     }
 
@@ -705,9 +912,10 @@ impl KeyboardHandler for Lock {
     ) {
     }
 
-    /// Held Esc releases too, which costs nothing: `release` is idempotent.
-    /// A real locker's repeat handling belongs with its field, and there is
-    /// no field here to repeat into.
+    /// A held key repeats into the field, which is what a field should do --
+    /// and a held Return cannot submit twice, because the first press leaves
+    /// `Auth::InFlight` and `press_key` drops everything until PAM answers.
+    /// That is L10 holding without a special case for repeats.
     fn repeat_key(
         &mut self,
         conn: &Connection,
@@ -899,3 +1107,44 @@ delegate_seat!(Lock);
 delegate_keyboard!(Lock);
 delegate_registry!(Lock);
 delegate_session_lock!(Lock);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// L10, as far as it can be reached without a compositor: at most one
+    /// attempt per deliberate submission, and none at all from an empty
+    /// field.
+    #[test]
+    fn only_a_deliberate_nonempty_submission_reaches_pam() {
+        assert!(
+            may_submit(&Auth::Typing, false),
+            "a typed secret and Return"
+        );
+        assert!(
+            !may_submit(&Auth::Typing, true),
+            "an empty field is not an attempt"
+        );
+        assert!(
+            !may_submit(&Auth::InFlight, false),
+            "a second Return while PAM is thinking must not reach it"
+        );
+        assert!(!may_submit(&Auth::InFlight, true));
+    }
+
+    /// The shape of the burst L10 names: a thousand Returns against a field
+    /// that is answered once. Only the first can pass, because the first is
+    /// what moves the state.
+    #[test]
+    fn a_burst_of_returns_produces_one_attempt() {
+        let mut auth = Auth::Typing;
+        let mut attempts = 0;
+        for _ in 0..1000 {
+            if may_submit(&auth, false) {
+                attempts += 1;
+                auth = Auth::InFlight;
+            }
+        }
+        assert_eq!(attempts, 1);
+    }
+}
