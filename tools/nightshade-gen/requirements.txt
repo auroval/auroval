@@ -19,7 +19,17 @@ diffusers==0.42.1
 # and the seed do. The resolved version is recorded in every run.json instead,
 # which is where it is useful.
 torch
-transformers
+#
+# transformers IS pinned, and for the same reason diffusers is. It runs the
+# text encoder that turns the prompt into embeddings, so a change to
+# tokenization or padding changes the image from an identical brief, seed and
+# weight revision. It was the hole in the argument above: pinned weights
+# beside unpinned code, one layer further in. 5.22.2 is what generated
+# scene-05, recorded in its run.json.
+transformers==5.22.2
+#
+# accelerate places modules on devices and does not decide what the image
+# looks like. Recorded in run.json rather than pinned, like torch.
 accelerate
 sentencepiece
 protobuf

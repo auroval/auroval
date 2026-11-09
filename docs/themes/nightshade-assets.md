@@ -293,7 +293,7 @@ ls candidates/*.png | each { |f| python3 tools/scene-check/scene_check.py $f.nam
 |---|---|
 | Format | codec and profile, colour primaries, declared range, pixel format |
 | Geometry | resolution, aspect |
-| Composition | mean luminance and bright fraction **around** the subject, inside the central 60×70% (§5.3.1) |
+| Composition | mean luminance and bright fraction **around** the subject, inside the central 60×70% (§5.3.1); the subject column and the lower centre are reported beside it, ungated (§5.3.2) |
 | **Legibility** | the background behind **each UI element separately** |
 | Loop | duration, and the seam against an ordinary frame step |
 | Palette | the derived palette, plus assertions that it holds its floors |
@@ -357,6 +357,48 @@ The split is covered by `--self-test`, which builds two frames carrying the
 same light in the same safe field at different places, and asserts that the
 whole-field number cannot separate them while the surround number does.
 
+#### 5.3.2 The lower centre had no reader at all
+
+Excluding the subject column closed one hole and opened another, and the
+second one was wider. The column runs the full height of the safe field, so
+it also excludes the region §4.2 is at its most specific about: *"nothing
+important in the lower centre"*, *"the lower middle of the frame is empty
+near-black space"*. Nothing measured it. The composition clause excludes it
+by construction, legibility measures only where UI lands and the greeter's
+lowest element stops at 56% of the height, and the safe field's bottom edge
+is at 85%.
+
+A frame built to show this — a 2560x1440 field of near-black with one bright
+disc at 72% of the height and nothing else — cleared **every clause the tool
+had**: composition passed with a surround reading 0.00% bright, legibility
+passed because no UI is down there, and it needed no scrim. The whole-field
+measure it replaced had failed it at 4.60%.
+
+**The obvious fix is wrong, and that is the interesting part.** Bounding the
+excluded column at the bottom of the UI stack, so the lower centre falls back
+into the gated surround, moves scene-01's `master.png` from 0.0561 to 0.1381
+and fails the one image §5.3.1 had finally made measurable. Measured on the
+candidates:
+
+| | surround | lower centre |
+|---|---|---|
+| scene-01 `master` | 0.0561 / 7.62% | **0.4329 / 55.12%** |
+| scene-01 `v5-nacre` | 0.2319 / 29.13% | 0.1339 / 18.93% |
+| scene-01 `v2-moths` | 0.0161 / 2.58% | 0.1435 / 19.49% |
+| scene-05 `lantern-s11` | 0.0407 / 6.77% | 0.0022 / 0.08% |
+| the synthetic disc above | 0.0014 / 0.00% | 0.2458 / 27.52% |
+
+scene-01's subject does not stop at the input field. It falls away into
+darkness below the *frame*, not below the UI, so the lower centre is the
+brightest part of the reference image. Every scene-01 candidate fails that
+region and only scene-05 passes it. Either §4.2's sentence is not true of the
+artwork this theme is built on, or the region wants a threshold of its own.
+
+So the region is **reported and not gated**, which is the same stance §5.3.1
+takes on the bright-fraction threshold and for the same reason: the tool has
+found a disagreement between the contract and the reference, and which of the
+two is wrong is not the tool's call. A12 carries it.
+
 **The bright-fraction threshold is still met by nothing**, and that is a
 separate question from this one. The mean threshold is now reachable — two of
 the eight candidates measured meet it — but ≤ 2% above 0.25 is not met even by
@@ -366,6 +408,52 @@ the threshold is calibrated against an idea rather than against the reference,
 and it should be recalibrated against the reference or dropped. Left as it
 stands rather than quietly retuned, because what counts as the nightshade look
 is the maintainer's call and not the tool's.
+
+### 5.4 The palette, and a trap worth knowing
+
+The tool extracts hue the way the shipped palette does — matugen, always with
+`--dry-run` hard-coded, because without it `matugen image` writes through
+`~/.config/matugen/config.toml` and re-themes the running desktop.
+
+**matugen's extraction is sensitive to bit depth.** Measured 2026-11-07 on one
+file: the 16-bit original yields `#ffb0cd`, hue 354.8° (pink). The same pixels
+re-saved at 8 bits yield `#8ad0ee`, hue 236.5° (cyan). That is 118° apart. Per
+file the result is perfectly deterministic — three runs identical — but any step
+that re-encodes changes the answer, and `magick -strip` keeping 16 bits
+reproduces the original exactly, which rules out the ICC profile as the cause.
+
+Three consequences, all now in force:
+
+1. **Stills are passed to matugen untouched.** The tool never re-encodes one.
+2. **A video's canonical frame is extracted by exactly one pinned command**, and
+   that frame is what the palette comes from. Change the command, change the
+   palette.
+3. **The palette is committed, not recomputed.** `palette.toml` ships with the
+   scene. [nightshade §4.4](nightshade.md) already required this so the three
+   surfaces agree; this is a second and stronger reason — re-derivation is not
+   reproducible across pipeline changes.
+
+A scene may also **declare** its hue outright (`--hue 355`), which is the honest
+option when extraction picks a colour from the background rather than the
+subject. The tool proposes; a person accepts.
+
+#### 5.4.1 The accent is sought, not specified
+
+A fixed chroma target is not realisable. sRGB's gamut varies enormously by hue:
+C\* 75 at L\* 57.5 is comfortable for magenta and **impossible** for cyan, which
+tops out around 35. Specifying one number gives some hues neon and others
+pastel, for no reason a viewer could name.
+
+So the accent is specified as *the most chromatic colour available at a
+lightness that still clears the contrast floor*, searched within L\* 50–70. Every
+hue then gets the most neon it can actually be. On the measured example this
+turns matugen's pastel `#ffb0cd` (C\* 33) into `#ff1296` (C\* 85.4) at the sRGB
+cusp — which is the difference between the theme's stated look and its opposite.
+
+N1 remains open: the lightness band and the floor are the maintainer's to tune.
+What is settled is the *form* of the answer — seek the cusp, do not name a
+chroma.
+
 
 ### 5.5 matugen's hue is not predictable from the image
 
@@ -454,52 +542,6 @@ prompting, that clause is decoration, and the glow in scene-01 and scene-03
 was luck or composition rather than instruction. It is also why control 1
 above failed for the cold variant: an object that does not glow stays
 desaturated, and a desaturated colour cannot win a saturation contest.
-
-### 5.4 The palette, and a trap worth knowing
-
-The tool extracts hue the way the shipped palette does — matugen, always with
-`--dry-run` hard-coded, because without it `matugen image` writes through
-`~/.config/matugen/config.toml` and re-themes the running desktop.
-
-**matugen's extraction is sensitive to bit depth.** Measured 2026-11-07 on one
-file: the 16-bit original yields `#ffb0cd`, hue 354.8° (pink). The same pixels
-re-saved at 8 bits yield `#8ad0ee`, hue 236.5° (cyan). That is 118° apart. Per
-file the result is perfectly deterministic — three runs identical — but any step
-that re-encodes changes the answer, and `magick -strip` keeping 16 bits
-reproduces the original exactly, which rules out the ICC profile as the cause.
-
-Three consequences, all now in force:
-
-1. **Stills are passed to matugen untouched.** The tool never re-encodes one.
-2. **A video's canonical frame is extracted by exactly one pinned command**, and
-   that frame is what the palette comes from. Change the command, change the
-   palette.
-3. **The palette is committed, not recomputed.** `palette.toml` ships with the
-   scene. [nightshade §4.4](nightshade.md) already required this so the three
-   surfaces agree; this is a second and stronger reason — re-derivation is not
-   reproducible across pipeline changes.
-
-A scene may also **declare** its hue outright (`--hue 355`), which is the honest
-option when extraction picks a colour from the background rather than the
-subject. The tool proposes; a person accepts.
-
-### 5.5 The accent is sought, not specified
-
-A fixed chroma target is not realisable. sRGB's gamut varies enormously by hue:
-C\* 75 at L\* 57.5 is comfortable for magenta and **impossible** for cyan, which
-tops out around 35. Specifying one number gives some hues neon and others
-pastel, for no reason a viewer could name.
-
-So the accent is specified as *the most chromatic colour available at a
-lightness that still clears the contrast floor*, searched within L\* 50–70. Every
-hue then gets the most neon it can actually be. On the measured example this
-turns matugen's pastel `#ffb0cd` (C\* 33) into `#ff1296` (C\* 85.4) at the sRGB
-cusp — which is the difference between the theme's stated look and its opposite.
-
-N1 remains open: the lightness band and the floor are the maintainer's to tune.
-What is settled is the *form* of the answer — seek the cusp, do not name a
-chroma.
-
 ---
 
 ## 6. The judging gate
@@ -759,6 +801,7 @@ re-runs the first of these and fails loudly if matugen's behaviour changes.
 | A8 | A4's scrim threshold now looks like the wrong axis on its own. Measured: the only candidate with correct composition scored 0.275, just *above* the 25% guess, while a candidate with **no subject** scored 0.000. Scrim alone rewards emptiness, so the reject rule needs a second term — minimum subject extent, or ornament density — or gate 1 will systematically prefer duller images. | Maintainer |
 | A9 | The generator obeys instruction about style and subject and ignores instruction about structure (§10). Is that FLUX.2 [klein] specifically, a 4B-parameter limit, or every model? Decides whether the filter stage can ever shrink. | Maintainer |
 | A10 | The composition clause's bright-fraction threshold (≤ 2% above 0.25) is met by no image ever generated, including the reference, whose surround sits at 7.6% and looks right (§5.3.1). Recalibrate against the reference or drop the term. Not changed by the split, deliberately -- what counts as the look is a maintainer decision. | Maintainer |
+| A12 | §4.2 asks the lower centre to be "empty near-black space" and scene-01's own master reads 0.4329 mean, 55.12% bright there — the brightest region of the reference image (§5.3.2). Every scene-01 candidate fails it; scene-05 passes. Either the clause does not describe the accepted artwork, or the region needs its own threshold. Reported and not gated until that is decided. | Maintainer |
 | A11 | Hue is not stable across seeds of one brief: six scene-02 candidates, one subject, gave 344.9°, 57.9°, 355.7°, 306.4°, 2.6°, 7.3°. If tone and chroma are the theme's and hue is the media's (N1), the accent is decided by which candidate is accepted rather than by the scene, and acceptance becomes an unrecorded palette decision. | Maintainer |
 
 ---

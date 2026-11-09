@@ -37,18 +37,55 @@ DOC = ROOT / "docs/themes/nightshade-assets.md"
 GEN = ROOT / "tools/nightshade-gen/generate.py"
 
 
+HEADING = "#### 4.1.1"
+
+
 def from_doc() -> str:
-    """§4.1.1's operative string: consecutive backticked blockquote lines.
+    """§4.1.1's operative string: its consecutive backticked blockquote lines.
 
     The document gives it as two lines so it fits the page, and says plainly
     why the string is recorded at all rather than the art-historical label:
     "it is what actually reproduces the look and an art-historical label is
     not".
+
+    Scoped to the section and required to be consecutive, both deliberately.
+    An earlier version searched the whole document for `^> `...`$`, which
+    happened to match only §4.1.1's two lines and would have kept doing so
+    until somebody blockquoted a filename or a config key anywhere in seven
+    hundred lines of prose. The stray line would have been appended to the
+    style string, and this script would then have failed with "the rendering
+    style has drifted" and told the reader to change the generator to match
+    the document -- which would have written the stray text into STYLE and
+    sent it to the model. A check whose failure message points at the wrong
+    file is worse than no check.
     """
-    lines = re.findall(r"^> `(.+)`$", DOC.read_text(), re.MULTILINE)
-    if not lines:
-        sys.exit(f"{DOC}: found no backticked blockquote lines for the style")
-    return " ".join(line.strip() for line in lines)
+    text = DOC.read_text()
+    if HEADING not in text:
+        sys.exit(f"{DOC}: no {HEADING} heading; the style has moved or been renamed")
+    section = text.split(HEADING, 1)[1]
+    # To the next heading of any depth, so the search cannot wander on.
+    section = re.split(r"^#{1,6} ", section, maxsplit=1, flags=re.MULTILINE)[0]
+
+    runs: list[list[str]] = []
+    for line in section.splitlines():
+        m = re.fullmatch(r"> `(.+)`", line.strip())
+        if m:
+            if not runs or not runs[-1]:
+                runs.append([])
+            runs[-1].append(m.group(1).strip())
+        elif runs and runs[-1]:
+            runs.append([])
+    runs = [r for r in runs if r]
+
+    if not runs:
+        sys.exit(f"{DOC}: {HEADING} has no backticked blockquote lines for the style")
+    if len(runs) > 1:
+        sys.exit(
+            f"{DOC}: {HEADING} has {len(runs)} separate blocks of backticked "
+            "blockquote lines, so which one is the style is a guess:\n  "
+            + "\n  ".join(" ".join(r) for r in runs)
+        )
+    return " ".join(runs[0])
 
 
 def from_generator() -> str:
