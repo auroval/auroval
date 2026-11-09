@@ -48,18 +48,58 @@ judge has to be the thing that ships.
 
 ## 3. What a scene is
 
+### 3.1 Two kinds of scene, and not one scene twice
+
+**Settled 2026-11-09, by the maintainer, after this section said otherwise for
+a week and cost a conversation.**
+
+There are **two categories of artwork**, not one scene delivered two ways:
+
+| | **desktop** | **greeter** |
+|---|---|---|
+| Motion | none — a still | a loop |
+| Framing | fills the frame edge to edge, every part occupied | subject well off to one side |
+| The middle of the frame | occupied like the rest of it | empty near-black, kept clear |
+| Why | nothing sits on top of it | a clock, a date, a username and an input field sit on top of it |
+| Brief | `"surface": "desktop"` | `"surface": "greeter"` |
+| Shows on | the desktop wallpaper | login, and lock once something can play a loop there |
+| Scenes so far | scene-03, scene-04 | scene-02, scene-05 |
+| Clauses that apply | geometry and palette | those, plus composition (§2.2) and legibility (§5.2) |
+
+**They are not the same picture in two formats, and that is the whole point.**
+§4.1's constant part is a *greeter* brief: three of its clauses and all four of
+§4.2's exist to keep a rectangle clear for UI. Apply them to a wallpaper and
+you get a frame that is two-thirds empty, which reads as a login screen missing
+its login form — because that is exactly what it is. Six scene-02 candidates
+were generated that way on 2026-11-08 before anyone noticed.
+
+What the two share is what nightshade *is*: the rendering style of §4.1.1, neon
+rim light and glow, deep darkness, grain, 16:9, no marks. What differs is the
+framing, and `tools/nightshade-gen/generate.py` holds a separate constant part
+for each. A brief that does not name its surface is **refused**, because a
+brief written without the distinction in mind is the mistake above.
+
+So the desktop rotation draws from the desktop set and the greeter's pool from
+the greeter set. One scene serving both means generating it twice, as two
+briefs, and no scene has been made that way yet.
+
+### 3.2 What a scene is made of
+
 One **scene** = one subject, delivered as:
 
 | Artefact | Count | Purpose |
 |---|---|---|
 | Master still | 1 | The source of truth. Highest resolution, highest bit depth. |
-| Phase stills | 4 | dawn / day / dusk / night. What the desktop shows. |
-| Loop | 1 per phase, or 1 shared | What login and lock show. |
+| Phase stills | up to 4 | dawn / day / dusk / night. **A desktop scene's delivery**, and what R12's time-of-day variants would select between. |
+| Loop | 1 per phase, or 1 shared | **A greeter scene's delivery**: what login shows, and lock when something there can play one. |
+| Still, from the loop | 1 | R9's second rung for a greeter scene — rendered from the loop, never a transcode of it (§10.9). |
 | `palette.toml` | 1 | The committed derived palette (see §5.4). |
-| `source.md` | 1 | Prompt, model, seed, settings, and the grading recipe. |
+| `source.md` | 1 | Prompt, model, seed, settings, the grading recipe, and which surface it is for. |
 
-`source.md` is not optional. Without it the set cannot be extended in the same
-voice a year later, and §1.1 of the theme doc commits to recording it.
+A desktop scene needs no loop and a greeter scene needs no phase stills, so the
+counts above are per kind rather than per scene. `source.md` is not optional.
+Without it the set cannot be extended in the same voice a year later, and §1.1
+of the theme doc commits to recording it.
 
 ---
 
@@ -150,10 +190,10 @@ framing — the greeter's subject sits in cleared darkness, the wallpaper's
 fills the frame and the dark sits between the forms instead of instead of
 them.
 
-**Open, and it belongs to §3.1 rather than here.** If one scene is to serve
-both surfaces, it has to be generated twice, or the daily rotation has to
-draw from a wallpaper set that is not the greeter set. Neither is written
-down.
+**Settled 2026-11-09, and it is written down in §3.1 rather than here.** Two
+sets: the desktop rotation draws from the desktop scenes, the greeter's pool
+from the greeter scenes. A scene that is to serve both is generated twice, as
+two briefs, and none has been.
 
 #### 4.1.1 Rendering style — one theme, one style
 
@@ -702,10 +742,29 @@ Questions, in this order:
 *"Het moet tijdloos zijn en niet gaan irriteren."* Nothing in gates 1 and 2
 measures that. Neither does any number.
 
-The protocol: set the candidate as the desktop still and live with it for **two
-weeks** before it is allowed into the set. Not as the login screen — as the
-desktop, where it is in peripheral vision for hours rather than seconds. That
-is the harsher test, and a scene that survives it will survive the greeter.
+**This protocol is a desktop-scene protocol, and §3.1 is why.** Set the
+candidate as the desktop still and live with it for **two weeks** before it is
+allowed into the set, where it is in peripheral vision for hours rather than
+seconds. That is the harsher test of a wallpaper, and it is the gate scene-03's
+`hollow-s1` and scene-04's `pond-s11` are in now — both `desktop` scenes.
+
+**For a greeter scene it does not work, and that is open.** Reached on
+2026-11-09 with scene-05, the first `greeter` scene to pass gates 1 and 2. The
+old wording said "not as the login screen — as the desktop", on the assumption
+that one scene served both surfaces. §3.1 settles that it does not: a greeter
+scene is framed to keep its middle empty, so on a desktop it reads as a login
+screen missing its form, and two weeks of that tests the wrong artefact in
+exactly the way §3.1 describes. Three candidate protocols, and they are not
+equivalent:
+
+| | exposure | the problem with it |
+|---|---|---|
+| The login screen | once per boot | thin, for a test about growing tired of something |
+| The lock screen | many times a day, seconds each | hyprlock cannot play a loop, so this waits on `auroval-lock` (issue #67) |
+| Its own standard | — | a login screen catches you at the moment you want to get in, which is harsh on a different axis than peripheral vision; nothing has been written for it |
+
+Filed as A13. Until it is settled, a greeter scene can reach "gates 1 and 2
+passed" and no further, which is where scene-05 now is.
 
 Reject on any of:
 
@@ -923,6 +982,7 @@ re-runs the first of these and fails loudly if matugen's behaviour changes.
 | A9 | The generator obeys instruction about style and subject and ignores instruction about structure (§10). Is that FLUX.2 [klein] specifically, a 4B-parameter limit, or every model? Decides whether the filter stage can ever shrink. | Maintainer |
 | A10 | **Withdrawn the day it was filed.** Proposed recalibrating the composition clause's bright-fraction threshold (≤ 2% above 0.25) because no image had met it. `pond-warm-b-s11` then measured 1.74% and passed the clause outright (§5.3.1), so the threshold is reachable and loosening it would have removed a working limit on the evidence of a small sample. What it took was a brief stating darkness as appearance rather than as lighting (§5.5.1). | Withdrawn |
 | ~~A12~~ | ~~§4.2's lower centre is read by nothing~~ **Settled 2026-11-09 by §4.1.2.** The surround-gated split left the lower centre unmeasured by any clause, and a frame that was one bright disc at 72% of the height cleared all of them (§5.3.2). Bounding the excluded column would have failed scene-01's own master. Moving the subject off centre made the centre the gated region, which contains it. | Settled |
+| A13 | Gate 3 has no protocol for a greeter scene. Its two weeks as the desktop still is a desktop-scene test, and §3.1 settles that a greeter scene is a different picture rather than the same one unanimated — put one on the desktop and it reads as a login screen missing its form. The login screen is one exposure per boot; the lock screen is many but waits on `auroval-lock` (#67). Reached with scene-05 on 2026-11-09, which is therefore stuck at "gates 1 and 2 passed". | Maintainer |
 | A11 | Hue is not stable across seeds of one brief: six scene-02 candidates, one subject, gave 344.9°, 57.9°, 355.7°, 306.4°, 2.6°, 7.3°. If tone and chroma are the theme's and hue is the media's (N1), the accent is decided by which candidate is accepted rather than by the scene, and acceptance becomes an unrecorded palette decision. | Maintainer |
 
 ---
