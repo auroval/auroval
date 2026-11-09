@@ -18,7 +18,7 @@ smithay-client-toolkit = "0.20"
 wayland-client = "0.31"
 wayland-egl = "0.32"
 khronos-egl = { version = "6", features = ["dynamic"] }
-glow = "0.16"
+glow = "0.18"
 fontdue = "0.9"
 # Local time, for the clock and the date line (R11). default-features off
 # keeps this to what the greeter needs and nothing else chrono can do.
