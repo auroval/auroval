@@ -249,13 +249,35 @@ def main() -> None:
     # wall-clock and nothing else.
     pipe.enable_model_cpu_offload()
 
+    import accelerate
     import diffusers
+    import PIL
+    import transformers
 
+    # Everything that stands between the brief and the pixels, recorded.
+    #
+    # `transformers` is here because it was the gap this file's own argument
+    # did not cover: requirements.txt pins diffusers on the grounds that
+    # "pinned weights beside unpinned code make reproducible a year later only
+    # half true", and transformers *is* such code -- it runs the text encoder
+    # that turns this prompt into embeddings. It was neither pinned nor
+    # recorded, so a tokenizer or padding change would have moved the image
+    # with nothing here to explain it. Pinned now, and recorded anyway: a pin
+    # says what should be installed and this says what was.
+    #
+    # The rest cannot change the image but can change the file: numpy does the
+    # quantisation to 16 bit, cv2 writes the master and Pillow the preview.
+    # Cheap to record, and the alternative is guessing later.
     versions = {
         "diffusers": diffusers.__version__,
+        "transformers": transformers.__version__,
+        "accelerate": accelerate.__version__,
         "torch": torch.__version__,
         "cuda": torch.version.cuda,
         "device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+        "numpy": np.__version__,
+        "opencv": cv2.__version__,
+        "pillow": PIL.__version__,
     }
 
     for n, seed in enumerate(seeds, 1):
@@ -282,10 +304,18 @@ def main() -> None:
         # uses, so the master is written by the same library that reads it.
         # cv2 is BGR, hence the channel reversal.
         a = np.clip(out, 0.0, 1.0)
-        cv2.imwrite(
-            str(args.outdir / f"{stem}-master16.png"),
+        # The return value is checked because cv2 does not raise. It answers
+        # an unwritable directory with `False` -- verified against cv2 5.0.0 --
+        # and the Pillow save and the run.json write that follow would both
+        # succeed, so the run would print "wrote <stem>-master16.png" and exit
+        # 0 having written no master. A run.json claiming a reproducible
+        # record for a file that is not there is this tool's own failure mode.
+        master = args.outdir / f"{stem}-master16.png"
+        if not cv2.imwrite(
+            str(master),
             (a[:, :, ::-1] * 65535.0 + 0.5).astype(np.uint16),
-        )
+        ):
+            sys.exit(f"{master}: cv2 could not write the master (it returns False, not an error)")
         # The 8-bit preview stays on Pillow, where RGB is the native case.
         Image.fromarray((a * 255.0 + 0.5).astype(np.uint8)).save(args.outdir / f"{stem}.png")
         (args.outdir / f"{stem}-run.json").write_text(
