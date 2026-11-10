@@ -39,12 +39,15 @@
 //! happens to be on top, and the gap between asking for it and getting it is
 //! a gap in which the desktop is on screen.
 //!
-//! **What this module does not do.** It does not read a password, hold one,
-//! or have anywhere to send one. `UiState` is constructed in the
-//! `AskingUser` stage with an empty session list and left there; keys are
-//! read only so that <kbd>Esc</kbd> can release the rehearsal, and every
-//! other keysym is dropped on the floor without being recorded. See
-//! `main.rs` for why.
+//! **This module reads a password and sends it to PAM**, and the paragraph
+//! here used to say the opposite -- *"it does not read a password, hold one,
+//! or have anywhere to send one"* -- which was true of the skeleton and
+//! false from the commit that added `pam.rs`. `UiState` is constructed in
+//! `Stage::Unlocking` with this session's own username and an empty session
+//! list; it was `AskingUser` until 2026-11-10, which drew *"Who are you?"*
+//! at a user who was already known and left the field unable to mask
+//! anything. The secret itself never enters `UiState`: keystrokes go to
+//! `pam::Secret` and the field is advanced with `push_placeholder`.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -553,7 +556,35 @@ pub fn run(cfg: Config) -> Result<Outcome, String> {
         // An empty session list, which is the shape of the wart recorded in
         // `auroval-ui`'s doc comment: `UiState` carries a session list because
         // the greeter preselects one, and a locker has nothing to put in it.
-        ui: UiState::new(Vec::new(), &auroval_ui::store::LastLogin::default()),
+        ui: {
+            let mut ui = UiState::new(Vec::new(), &auroval_ui::store::LastLogin::default());
+            // Three assignments, and each one is a thing the screen got
+            // wrong until 2026-11-10.
+            //
+            // The stage, because `AskingUser` drew *"Who are you?"* at a
+            // session whose owner is already known -- and, worse, hid
+            // nothing: the old masking rule was `stage != AskingUser &&
+            // secret`, so the one stage this screen was in was the one
+            // stage that could not mask.
+            //
+            // The name, because L13 asks the screen to say who is locked
+            // out and `view` draws `username` above the field. It was never
+            // set, so the line read `—` until the first keystroke and then
+            // filled with the placeholders `push` had been putting into
+            // `username` -- the dots appeared twice, once where the owner's
+            // name belongs.
+            //
+            // The prompt, because the view asks the conversation what to
+            // say rather than assuming, so something has to be there before
+            // PAM has said anything. "Password" is this locker's guess at
+            // its own stack and nothing more; a stack that asks for a
+            // one-time password should overwrite it, which is L1's
+            // territory and is not wired yet.
+            ui.stage = auroval_ui::ui::Stage::Unlocking;
+            ui.username = user.clone();
+            ui.prompt = "Password".into();
+            ui
+        },
         locale: auroval_ui::clock::locale_from_env(),
         done: false,
         released: false,
@@ -1079,9 +1110,14 @@ impl KeyboardHandler for Lock {
                 if let Some(text) = event.utf8 {
                     for c in text.chars().filter(|c| !c.is_control()) {
                         self.secret.push(c);
-                        // A placeholder, so `field_display` counts the right
-                        // number of dots and `ui` never holds the secret.
-                        self.ui.push('\u{2022}');
+                        // Not `push(c)`: L4 says the secret is never copied
+                        // into the view. This was `push('\u{2022}')`, a
+                        // literal here that happened to match what a hidden
+                        // field draws; `push_placeholder` is the same thing
+                        // with the intent in the signature, so a caller
+                        // holding a secret cannot advance the field with it
+                        // even by accident.
+                        self.ui.push_placeholder();
                     }
                 }
             }
