@@ -91,13 +91,22 @@ use auroval_ui::config::Config;
 /// gets its own file, and what it may override, is **N1** in the PRD.
 const CONFIG: &str = "/etc/auroval/greet.lua";
 
-const USAGE: &str = "usage: auroval-lock <probe|rehearse>
+const USAGE: &str = "usage: auroval-lock <probe|lock|rehearse>
 
   probe     say whether ext-session-lock-v1 is available, at what version,
             and on how many outputs. Never locks anything. Safe to run on
             the desktop you are sitting in.
-  rehearse  bring up a real ext-session-lock surface, play the background on
-            it, draw the clock and the date, and report the present cost.
+  lock      LOCK THIS SESSION. What an idle manager or a keybind points at.
+            No environment gate -- and for that reason it refuses to start
+            while any of the test hooks below are set.
+  rehearse  the same lock, gated behind AUROVAL_LOCK_REHEARSAL=1 and
+            honouring every test hook. For a nested compositor and for the
+            measurement harness.
+
+THERE IS NO BARE INVOCATION THAT LOCKS. `auroval-lock` with no argument
+prints this and exits 2. The greeter may fall through to its real mode on a
+bare run because the worst case there is a login prompt nobody asked for;
+here the worst case is a locked screen, so something has to say the word.
 
 THIS BINARY UNLOCKS A SESSION, as of 2026-11-09. The paragraph here used to
 say the opposite -- `no PAM code in it and no authentication of any kind` --
@@ -111,7 +120,7 @@ because it could point authentication at `pam_permit`.
 exit codes: 0 locked and released, 1 a failure of this program,
 2 a refusal to start, 3 the compositor declined the lock (L8).
 
-`rehearse` LOCKS YOUR SCREEN. ext-session-lock-v1 fails closed: if this
+`lock` AND `rehearse` BOTH LOCK YOUR SCREEN. ext-session-lock-v1 fails closed: if this
 process dies while the session is locked, the session stays locked. So:
 
   * it refuses to run unless AUROVAL_LOCK_REHEARSAL=1 is set,
@@ -127,6 +136,13 @@ process dies while the session is locked, the session stays locked. So:
 
 Run it in a nested compositor unless you mean it.
 
+`lock` REFUSES TO START while any of these are set, because each makes the
+screen worse in a way nobody at the keyboard can see, and the environment
+here means a line in a file the session's own user writes:
+  AUROVAL_LOCK_SECONDS, AUROVAL_LOCK_BREAK_GL, AUROVAL_FRAME_DUMP.
+`rehearse` honours all three. That is what two modes are for: the one an idle
+manager points at is not the one you measure with.
+
 AUROVAL_CONFIG overrides /etc/auroval/greet.lua.
 AUROVAL_LOCK_SECONDS=<n> makes rehearse exit after n seconds WITHOUT
   unlocking. For the measurement harness, which should not depend on anyone
@@ -139,6 +155,7 @@ fn main() {
     match std::env::args().nth(1).as_deref() {
         Some("probe") => probe(),
         Some("rehearse") => rehearse(),
+        Some("lock") => lock_mode(),
         // Deliberately no default. The greeter can fall through to its real
         // mode on a bare invocation because the worst case there is a login
         // prompt nobody asked for; here the worst case is a locked screen.
@@ -272,6 +289,95 @@ fn probe() {
 }
 
 /// Lock the session, draw on it, and say what it cost.
+/// The environment variables a locker that is really locking must refuse.
+///
+/// # Why a refusal and not a default
+///
+/// Each of these makes the locker worse in a way nobody at the keyboard can
+/// see, and each is set by the environment — which on this machine means a
+/// line in `~/.config/hypr/hyprland.conf`, a file the session's own user
+/// writes. On 2026-11-09 an adversarial review found exactly that shape in
+/// `AUROVAL_LOCK_PAM_SERVICE`: a variable that looked like a convenience and
+/// was a complete authentication bypass. The answer there was to delete the
+/// variable. These three cannot be deleted — two of them are how L7 and the
+/// measurement harness exist at all — so the answer is that the mode which
+/// really locks will not start while they are set.
+///
+/// `rehearse` still honours all three. That is the whole point of having two
+/// modes: the one you point an idle manager at is not the one you measure
+/// with.
+const REFUSED_WHEN_LOCKING: [(&str, &str); 3] = [
+    (
+        "AUROVAL_LOCK_SECONDS",
+        "exits WITHOUT unlocking, which in a real session is a locked screen \
+         with no process holding it",
+    ),
+    (
+        "AUROVAL_LOCK_BREAK_GL",
+        "destroys the GL context on purpose; it is L7's test hook",
+    ),
+    (
+        "AUROVAL_FRAME_DUMP",
+        "writes PNGs of the screen, and this screen is a password field",
+    ),
+];
+
+/// Which of them are set. Takes the lookup so it can be tested without
+/// touching the real environment, which a test in a threaded binary must not
+/// do.
+///
+/// L4's row says a test is what keeps `AUROVAL_FRAME_DUMP` away from a lock
+/// surface, and an adversarial review found that what actually kept it away
+/// was an absence: the locker never constructs a `Dump`, so nothing writes a
+/// PNG and nothing checks. An absence is not a guard — it is a guard until
+/// somebody adds a feature. This is the check that sentence was describing.
+fn refused_hooks_present(present: impl Fn(&str) -> bool) -> Vec<&'static str> {
+    REFUSED_WHEN_LOCKING
+        .iter()
+        .filter(|(name, _)| present(name))
+        .map(|(name, _)| *name)
+        .collect()
+}
+
+fn why_refused(name: &str) -> &'static str {
+    REFUSED_WHEN_LOCKING
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, why)| *why)
+        .unwrap_or("is a test hook")
+}
+
+/// Which of the two locking modes this is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    /// `rehearse`: for a nested compositor and the harness. Gated behind
+    /// `AUROVAL_LOCK_REHEARSAL=1` and honours every test hook.
+    Rehearsal,
+    /// `lock`: what an idle manager or a keybind points at. No gate, and the
+    /// test hooks are refused.
+    Production,
+}
+
+/// `lock` — the mode that exists to be pointed at.
+///
+/// Deliberately a named mode rather than a bare invocation. The greeter can
+/// fall through to its real mode with no arguments because the worst case
+/// there is a login prompt nobody asked for; here the worst case is a locked
+/// screen, so `auroval-lock` with no arguments still prints its usage and
+/// exits 2. Something has to say the word.
+fn lock_mode() {
+    let set: Vec<&str> = refused_hooks_present(|n| std::env::var_os(n).is_some());
+    if !set.is_empty() {
+        eprintln!("auroval-lock: refusing to lock: the environment carries test hooks.");
+        for name in &set {
+            eprintln!("auroval-lock:   {name} {}", why_refused(name));
+        }
+        eprintln!("auroval-lock: unset them, or use `rehearse`, which honours them on purpose.");
+        std::process::exit(2);
+    }
+    lock_the_session(Mode::Production);
+}
+
 fn rehearse() {
     if std::env::var_os("AUROVAL_LOCK_REHEARSAL").as_deref() != Some(std::ffi::OsStr::new("1")) {
         eprintln!("auroval-lock: refusing to lock without AUROVAL_LOCK_REHEARSAL=1.");
@@ -279,6 +385,11 @@ fn rehearse() {
         eprintln!("auroval-lock: `auroval-lock probe` answers the protocol question safely.");
         std::process::exit(2);
     }
+    lock_the_session(Mode::Rehearsal);
+}
+
+/// Everything both locking modes do, which is almost all of it.
+fn lock_the_session(mode: Mode) {
     // The refusal that matters most in this whole file.
     //
     // Without its PAM service file, `pam_start` has no stack to run and
@@ -304,9 +415,21 @@ fn rehearse() {
         eprintln!("auroval-lock:   a crash while typing could write the secret to disk.");
     }
 
-    eprintln!("auroval-lock: REHEARSAL. This locks the session.");
-    eprintln!("auroval-lock: There is NO escape key. Your password unlocks it; nothing else does.");
-    eprintln!("auroval-lock: No signal unlocks it either -- not even SIGKILL (L11).");
+    match mode {
+        Mode::Rehearsal => {
+            eprintln!("auroval-lock: REHEARSAL. This locks the session.");
+            eprintln!(
+                "auroval-lock: There is NO escape key. Your password unlocks it; nothing else does."
+            );
+            eprintln!("auroval-lock: No signal unlocks it either -- not even SIGKILL (L11).");
+        }
+        // Shorter, and said once. This one runs every time the screen locks,
+        // so a paragraph of warnings would be noise in the journal rather
+        // than a warning to anybody.
+        Mode::Production => {
+            eprintln!("auroval-lock: locking. Your password unlocks it; nothing else does.");
+        }
+    }
     let cfg = load_config();
     match lock::run(cfg) {
         Err(e) => {
@@ -320,5 +443,69 @@ fn rehearse() {
         // a compositor that would not have it.
         Ok(lock::Outcome::Declined) => std::process::exit(3),
         Ok(lock::Outcome::Locked) => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The mode that really locks will not start with a test hook set.
+    ///
+    /// This is the shape that bit this crate once already. On 2026-11-09 an
+    /// adversarial review found `AUROVAL_LOCK_PAM_SERVICE`, a variable that
+    /// read like a convenience and was a complete authentication bypass: one
+    /// `env =` line in a user-writable `hyprland.conf` and the next lock
+    /// opened on a keystroke. That one was deleted. These three cannot be --
+    /// two of them are how L7 and the harness exist -- so the guard is that
+    /// `lock` refuses while they are set, and `rehearse` still honours them.
+    #[test]
+    fn locking_for_real_refuses_the_test_hooks() {
+        for (name, _) in REFUSED_WHEN_LOCKING {
+            let found = refused_hooks_present(|n| n == name);
+            assert_eq!(found, vec![name], "{name} did not stop a real lock");
+        }
+    }
+
+    /// A clean environment is not a refusal.
+    #[test]
+    fn a_clean_environment_locks() {
+        assert!(refused_hooks_present(|_| false).is_empty());
+    }
+
+    /// All of them at once are all reported, not just the first.
+    ///
+    /// Somebody who has one of these set probably has several, and a message
+    /// naming one of three sends them round the loop twice.
+    #[test]
+    fn every_hook_that_is_set_is_named() {
+        let found = refused_hooks_present(|_| true);
+        assert_eq!(found.len(), REFUSED_WHEN_LOCKING.len());
+    }
+
+    /// Each refusal says why, because "refusing" without a reason is a
+    /// message people route around rather than read.
+    #[test]
+    fn each_refusal_explains_itself() {
+        for (name, why) in REFUSED_WHEN_LOCKING {
+            assert_eq!(why_refused(name), why);
+            assert!(why.len() > 20, "{name}'s reason is too short to be one");
+        }
+    }
+
+    /// `AUROVAL_FRAME_DUMP` is on the list, and the reason is L4.
+    ///
+    /// L4's row says a test keeps the frame dump away from a lock surface.
+    /// What actually kept it away was an absence -- the locker never builds a
+    /// `Dump` -- and an absence holds until somebody adds a feature. Naming
+    /// it here is the check that sentence was always describing.
+    #[test]
+    fn the_frame_dump_is_refused_rather_than_merely_absent() {
+        assert!(
+            REFUSED_WHEN_LOCKING
+                .iter()
+                .any(|(n, _)| *n == "AUROVAL_FRAME_DUMP"),
+            "L4 rests on this being refused, not on nobody having wired it up"
+        );
     }
 }
