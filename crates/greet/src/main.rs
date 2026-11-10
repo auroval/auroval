@@ -17,7 +17,12 @@ mod auth;
 // locker running as the logged-in user cannot read it, let alone advance it.
 // `crates/lock` therefore takes the first candidate and does not rotate. See
 // N1 in docs/prd/lock.md.
-mod rotation;
+// Moved to the shared crate on 2026-11-10 so the locker can rotate too: it
+// was private to the greeter, which is why N7 recorded the locker as taking
+// candidate 0 for ever. Re-exported under its old path rather than touching
+// every call site, because the move is the change and a rename alongside it
+// would hide which is which in the diff.
+use auroval_ui::rotation;
 mod shell;
 
 // Everything this binary draws with now lives in `auroval-ui`, so that the

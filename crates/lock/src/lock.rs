@@ -440,6 +440,68 @@ fn own_cpu_seconds() -> f64 {
     (ticks(11) + ticks(12)) / 100.0
 }
 
+/// Where this locker remembers which scene it showed last.
+///
+/// `$XDG_STATE_HOME/auroval/last-background`, falling back to
+/// `~/.local/state/auroval/` as the basedir spec defines when the variable is
+/// unset. Deliberately NOT `/var/lib/auroval`, which is the greeter's and is
+/// `drwxr-x--- greeter greeter`: see the long note at the call site.
+///
+/// # Why a home directory is allowed here, when L12 says media is not
+///
+/// L12 and R15 keep the *media* path out of homes, and the argument is C10's:
+/// the greeter runs as another user and cannot traverse a home at mode 700,
+/// so a background that lives in one works on the lock screen and fails on
+/// the login screen. None of that applies to an integer this process writes
+/// about itself. The locker runs as the session's own user; a file in that
+/// user's own state directory is the one place it is certain to be able to
+/// write, and nothing else reads it.
+///
+/// Every failure is survivable by construction: `rotation` treats the state
+/// file as advisory. Unreadable means "start somewhere", derived from the
+/// clock rather than pinned to zero, and unwritable means "this lock does not
+/// advance" and says so. So a home that cannot be written costs the rotation
+/// and not the lock.
+pub fn rotation_state_for_probe() -> std::path::PathBuf {
+    rotation_state()
+}
+
+fn rotation_state() -> std::path::PathBuf {
+    let dir = state_dir(std::env::var_os("XDG_STATE_HOME"), std::env::var_os("HOME"));
+    // Best effort, and ignored on purpose: `rotation` reports an unwritable
+    // state file itself, in R9's shape, and this function's job is to name a
+    // path rather than to guarantee one.
+    let _ = std::fs::create_dir_all(&dir);
+    dir.join("last-background")
+}
+
+/// The directory part, with the environment passed in so it has tests.
+///
+/// Reading `std::env` inside the function under test is how a test becomes a
+/// race against every other test in the binary, and this path decides whether
+/// the rotation works at all — an empty `XDG_STATE_HOME` that was honoured
+/// rather than ignored would put the state file at `/auroval/`, which is
+/// unwritable, and the lock screen would quietly stop rotating.
+fn state_dir(
+    xdg: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+) -> std::path::PathBuf {
+    let base = match xdg {
+        // The basedir spec is explicit that an empty value counts as unset,
+        // and this is the one that bites: `XDG_STATE_HOME=` is a line people
+        // write in shell profiles by accident.
+        Some(v) if !v.is_empty() => std::path::PathBuf::from(v),
+        _ => match home {
+            Some(h) if !h.is_empty() => std::path::PathBuf::from(h).join(".local/state"),
+            // No home at all is not worth inventing a path for: `rotation`
+            // treats the file as advisory, so a relative path costs the
+            // rotation and not the lock.
+            _ => std::path::PathBuf::new(),
+        },
+    };
+    base.join("auroval")
+}
+
 /// L7's fault injection, read from the environment exactly once.
 ///
 /// A free function so that the parse has tests without a compositor, and
@@ -518,16 +580,38 @@ pub fn run(cfg: Config) -> Result<Outcome, String> {
     // frame has something on it. The solid colour shows until the decode
     // lands, exactly as in the greeter.
     //
-    // THE FIRST CANDIDATE, NOT A ROTATED ONE. `background` is a pool of
-    // chains since #66, and `greet` picks between them with `rotation`, which
-    // remembers its place in `/var/lib/auroval/last-background`. That
-    // directory is `drwxr-x--- greeter greeter`: a locker runs as the
-    // logged-in user and cannot read it, never mind advance it. So the pool's
-    // first candidate is what a locker shows, every time, and the two screens
-    // agree only when the greeter happens to be on candidate 0. Whether a
-    // locker should rotate at all, and against what state, is N1 in the PRD.
-    let chain: &[std::path::PathBuf] = cfg.background.first().map_or(&[], |c| c.as_slice());
-    let background = Background::start(chain);
+    // ROTATED, SINCE 2026-11-10, AND AGAINST AN INDEX OF ITS OWN. This took
+    // the pool's first candidate every time, because `rotation` was private
+    // to `crates/greet` and its index lives in
+    // `/var/lib/auroval/last-background`, a `drwxr-x--- greeter greeter`
+    // directory a locker cannot read, never mind advance. N7 recorded that as
+    // the maintainer's decision and he made it: the module moved to the
+    // shared crate and the locker keeps its own place.
+    //
+    // ITS OWN, and not the greeter's, which is the part worth disagreeing
+    // with if you are going to. Sharing the greeter's index would make the
+    // two screens always agree, and it needs `/var/lib/auroval` opened up to
+    // every local user plus a root command to do it -- for a file that says
+    // which wallpaper you last saw. An index the session's own user owns
+    // needs neither, and the cost is that the lock screen and the login
+    // screen need not be showing the same scene. They already did not: this
+    // locker was pinned to candidate 0 while the greeter walked the pool.
+    //
+    // `greet` rotates per launch; the natural reading of that for a locker is
+    // per lock, which is what this is.
+    let state = rotation_state();
+    let choice = auroval_ui::rotation::choose(&cfg.background, &state);
+    for p in &choice.problems {
+        eprintln!("auroval-lock: {p}");
+    }
+    if let Some(i) = choice.index {
+        eprintln!(
+            "auroval-lock: background candidate {} of {}",
+            i + 1,
+            cfg.background.len()
+        );
+    }
+    let background = Background::start(choice.chain);
     for p in background.problems() {
         eprintln!("auroval-lock: {p}");
     }
@@ -1383,6 +1467,44 @@ delegate_session_lock!(Lock);
 
 #[cfg(test)]
 mod tests {
+    /// Where the rotation index lives, including the empty-variable case the
+    /// basedir spec calls unset.
+    ///
+    /// `XDG_STATE_HOME=` in a shell profile is a line people write by
+    /// accident. Honoured rather than ignored it puts this file at
+    /// `/auroval/last-background`, which no user can write — and because
+    /// `rotation` treats the state as advisory, the lock screen would stop
+    /// rotating and say so once per lock instead of failing.
+    #[test]
+    fn the_rotation_index_lives_in_the_users_own_state_dir() {
+        use std::ffi::OsString;
+        let p = |x: Option<&str>, h: Option<&str>| {
+            state_dir(x.map(OsString::from), h.map(OsString::from))
+                .to_string_lossy()
+                .into_owned()
+        };
+        assert_eq!(p(Some("/x/state"), Some("/home/d")), "/x/state/auroval");
+        assert_eq!(p(None, Some("/home/d")), "/home/d/.local/state/auroval");
+        assert_eq!(
+            p(Some(""), Some("/home/d")),
+            "/home/d/.local/state/auroval",
+            "an empty XDG_STATE_HOME is unset, not root"
+        );
+        assert_eq!(p(Some(""), Some("")), "auroval", "relative, and advisory");
+        assert_eq!(p(None, None), "auroval");
+    }
+
+    /// It is never the greeter's, which is the whole reason this exists.
+    #[test]
+    fn it_is_not_the_greeters_state_directory() {
+        use std::ffi::OsString;
+        let d = state_dir(None, Some(OsString::from("/home/dirk")));
+        assert!(
+            !d.starts_with("/var/lib/auroval"),
+            "sharing the greeter's index needs /var/lib/auroval opened up; see the call site"
+        );
+    }
+
     /// L7's hook has to be off by default, and `0` has to be refused.
     ///
     /// `0` is the interesting one: it would destroy the context before a
