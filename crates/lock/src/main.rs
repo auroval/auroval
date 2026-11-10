@@ -13,8 +13,8 @@
 //! What authenticates is `src/pam.rs`: four functions and three structs
 //! transcribed from `pam_conv(3)` and `/usr/include/security/_pam_types.h`,
 //! for the reason `crates/greetd-proto` exists. No PAM crate. The service is
-//! `auroval-lock`, written by `pc-setup`, which is `auth include login` and
-//! has no `account` stanza — so nothing here calls `pam_acct_mgmt`, and
+//! `auroval-lock`, written by `pc-setup`, which is `auth include system-auth`
+//! and has no `account` stanza — so nothing here calls `pam_acct_mgmt`, and
 //! `pam.rs` says why.
 //!
 //! # The escape hatch is gone, and that is L9
@@ -293,7 +293,7 @@ fn rehearse() {
         eprintln!("auroval-lock: {stack} does not exist, so nothing could unlock this screen.");
         eprintln!("auroval-lock: refusing to lock. `auroval-lock probe` reports this too.");
         eprintln!(
-            "auroval-lock: the file is written by pc-setup -- one line, `auth include login`."
+            "auroval-lock: the file is written by pc-setup -- one line, `auth include system-auth`."
         );
         std::process::exit(2);
     }

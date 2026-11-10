@@ -35,8 +35,9 @@ def main [
     let deploy = $"($repo)/deploy"
     let stage = $"($repo)/target/auroval-stage"
     let bin = $"($repo)/target/release/auroval-greet"
+    let lockbin = $"($repo)/target/release/auroval-lock"
     let total = 5
-    print $"auroval — staging the greeter. No sudo is run by this script."
+    print $"auroval — staging the greeter and the locker. No sudo is run by this script."
     print ""
 
     print $"  1/($total)  build"
@@ -45,6 +46,10 @@ def main [
     } else {
         cd $repo
         ^cargo build --release -p greet
+        # The locker, built in the same step rather than a separate flag.
+        # P3e wants an install step before any keybind, and a binary that has
+        # to be built by hand is a binary that gets installed stale.
+        ^cargo build --release -p lock
     }
     if not ($bin | path exists) {
         print $"         ($bin) is missing."
@@ -53,11 +58,23 @@ def main [
         exit 2
     }
     print $"         ($bin)"
+    # The locker is NOT fatal if missing, and the greeter is. Installing a
+    # greeter is how this machine is logged into; installing a locker enables
+    # nothing by itself (see the root script), so a checkout where the lock
+    # crate does not build should still be able to deploy a greeter.
+    let have_lock = ($lockbin | path exists)
+    if $have_lock {
+        print $"         ($lockbin)"
+    } else {
+        print $"         ($lockbin) is MISSING — the locker will not be installed."
+        print "         Build it with: cargo build --release -p lock"
+    }
 
     print $"  2/($total)  stage"
     rm -rf $stage
     mkdir $stage
     cp $bin $"($stage)/auroval-greet"
+    if $have_lock { cp $lockbin $"($stage)/auroval-lock" }
     cp $"($deploy)/auroval-greet.sh" $"($stage)/auroval-greet.sh"
     # greetd clears the environment, so a debug variable exported in the
     # shell that starts greetd never reaches the greeter. The only place it
@@ -120,6 +137,7 @@ def main [
     | str replace -r '(?m)^vt = \d+$' $"vt = ($vt)"
     | save -f $"($stage)/greetd-auroval.toml"
     ^chmod 0755 $"($stage)/auroval-greet" $"($stage)/auroval-greet.sh" $"($stage)/auroval-warm-registry.sh"
+    if $have_lock { ^chmod 0755 $"($stage)/auroval-lock" }
     print $"         ($stage)"
     if $frame_dump != "" {
         print $"         AUROVAL_FRAME_DUMP=($frame_dump) is baked in — re-run"
@@ -176,6 +194,16 @@ def main [
         ["auroval-keys"       "spike/p1ab/keyboard-round.nu"  "R6, key repeat and caps lock"]
         ["auroval-greetd"     "spike/p1ab/greetd-round.nu"    "R3 and R1, with greetd"]
     ]
+    # The locker gets a wrapper for `probe` ONLY, and the reason is the whole
+    # argument of this file: `probe` binds the manager, counts outputs and
+    # exits without ever calling `lock`, so it cannot lock the desktop you
+    # are sitting in. `rehearse` can and does, with no escape key, so it gets
+    # no one-word name -- somebody typing a short name they half-remember is
+    # exactly who would be caught by it.
+    let lock_wrappers = (if $have_lock { [
+        [name                 what];
+        ["auroval-lock-probe" "L2, is ext-session-lock-v1 there at all"]
+    ] } else { [] })
     let bindir = ($"~/.local/bin" | path expand)
     for w in $wrappers {
         let wrapper = ($"~/.local/bin/($w.name)" | path expand)
@@ -186,6 +214,28 @@ def main [
             "# One word, because the clipboard does not survive a VT switch."
             $"cd ($repo) || exit 1"
             $"exec nu ($w.script) \"$@\""
+        ] | append "" | str join "\n" | save -f $wrapper
+        ^chmod 0755 $wrapper
+        print $"         ($w.name)  — ($w.what)"
+    }
+    for w in $lock_wrappers {
+        let wrapper = ($"~/.local/bin/($w.name)" | path expand)
+        [
+            "#!/bin/sh"
+            $"# auroval — ($w.what). Written by deploy/install.nu."
+            "# `probe` never calls lock, so this cannot lock your screen."
+            "# There is deliberately no wrapper for `rehearse`, which can."
+            "#"
+            "# The INSTALLED binary first, the build second, and it says"
+            "# which it ran. Once the root script has run, the installed"
+            "# one is what this machine would actually use, and a probe of"
+            "# the build can disagree with it -- which is the whole class"
+            "# of bug this project keeps finding."
+            "installed=/usr/local/lib/auroval/auroval-lock"
+            $"built=($repo)/target/release/auroval-lock"
+            'if [ -x "$installed" ]; then bin="$installed"; else bin="$built"; fi'
+            'echo "auroval-lock-probe: $bin" >&2'
+            'exec "$bin" probe "$@"'
         ] | append "" | str join "\n" | save -f $wrapper
         ^chmod 0755 $wrapper
         print $"         ($w.name)  — ($w.what)"
@@ -230,6 +280,9 @@ def main [
         "auroval-warm-registry.sh"
         "auroval-warm-registry.hook"
     ]
+    # Appended rather than listed above, because the list above is what a
+    # greeter install always has and this one entry is conditional.
+    let staged_files = (if $have_lock { $staged_files | append "auroval-lock" } else { $staged_files })
     let digests = ($staged_files | each {|f|
         {name: $f, sha: (open --raw $"($stage)/($f)" | hash sha256)}
     })
@@ -277,6 +330,43 @@ def main [
         $"install -m 0755 \"($stage)/auroval-greet\"    /usr/local/lib/auroval/auroval-greet"
         $"install -m 0755 \"($stage)/auroval-greet.sh\" /usr/local/lib/auroval/auroval-greet.sh"
         $"install -m 0755 \"($stage)/auroval-warm-registry.sh\" /usr/local/lib/auroval/auroval-warm-registry.sh"
+    ]
+    | append (if $have_lock { [
+        ""
+        "# auroval-lock, AND INSTALLING IT ENABLES NOTHING."
+        "#"
+        "# This is P3e's first step, in the order P3e asks for: an install"
+        "# step and a written rollback before any keybind, and the idle"
+        "# timeout long after that -- a lock you did not ask for is the one"
+        "# you are least ready for. deploy/LOCK-TRIAL.md is the rollback, and"
+        "# it was written before this line existed."
+        "#"
+        "# Three things this deliberately does NOT do, and each is a reason"
+        "# this script stays safe to run:"
+        "#"
+        "#   * nothing under ~/.config is touched, so hypridle still calls"
+        "#     hyprlock on the idle timeout and on SUPER + L,"
+        "#   * hyprlock is not removed or disabled. It is the locker of"
+        "#     record until greet.md's metric is met,"
+        "#   * no keybind is written. This locker is used by choice or not"
+        "#     at all."
+        "#"
+        "# It could not take over even if something did call it: a bare"
+        "# `auroval-lock` prints its usage and exits 2. The only mode that"
+        "# locks is `rehearse`, which additionally refuses to start without"
+        "# AUROVAL_LOCK_REHEARSAL=1. A production mode is a separate"
+        "# decision and a separate commit -- the one that makes a bare"
+        "# invocation able to lock a screen."
+        "#"
+        "# It also needs /etc/pam.d/auroval-lock, which this script does not"
+        "# write -- pc-setup's playbook does. Without that file it cannot"
+        "# authenticate at all, which is the safe direction to fail in."
+        $"install -m 0755 \"($stage)/auroval-lock\" /usr/local/lib/auroval/auroval-lock"
+    ] } else { [
+        ""
+        "# auroval-lock was not staged, so nothing installs it here."
+    ] })
+    | append [
         ""
         "# Issue #77: the same script, run by pacman whenever the plugins the"
         "# registry indexes are installed, upgraded or removed. /etc/pacman.d"

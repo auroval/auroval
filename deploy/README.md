@@ -19,6 +19,7 @@ P1 and it is a deliberate, separate act.
 | `greetd-auroval.toml` | `/etc/greetd/auroval.toml` | greetd's config for auroval — **not** `config.toml`, and never read by `greetd.service` |
 | `auroval-warm-registry.sh` | `/usr/local/lib/auroval/auroval-warm-registry.sh` | warms the greeter's GStreamer plugin registry as `greeter` (C15). Run by the install **and** by the pacman hook, so the two cannot drift |
 | `auroval-warm-registry.hook` | `/etc/pacman.d/hooks/auroval-warm-registry.hook` | runs the script above whenever a file under `/usr/lib/gstreamer-1.0` is installed, upgraded or removed. Issue #77: an install cannot warm a registry that next month's gstreamer update invalidates |
+| `auroval-lock` (built) | `/usr/local/lib/auroval/auroval-lock` | the lock screen. **Installing it enables nothing** — no keybind is written, hypridle still calls hyprlock, and a bare invocation exits 2. `deploy/LOCK-TRIAL.md` is the rollback |
 | `install.nu` | — | builds, stages, writes the one root script, writes the `auroval-vt` wrapper. Runs no `sudo` |
 
 The binary itself is installed as `/usr/local/lib/auroval/auroval-greet`, out
