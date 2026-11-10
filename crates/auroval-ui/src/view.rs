@@ -174,10 +174,11 @@ pub fn draw(
             // conversation is a *question*, and the person has to read it to
             // answer it — on 2026-11-08 one went unread long enough to look
             // like the greeter had hung. So it gets the text colour.
-            let (hint, colour) = match ui.stage {
-                Stage::AskingUser => ("Who are you?", p.outline),
-                Stage::Answering => (prompt_label(&ui.prompt), p.on_surface),
-                Stage::Starting => ("starting…", p.outline),
+            let hint = hint_text(ui.stage, &ui.prompt);
+            let colour = if hint_is_a_question(ui.stage) {
+                p.on_surface
+            } else {
+                p.outline
             };
             // A prompt the greeter did not write can be any length. PAM sent
             // "One-time password (OATH) for `dirk`:" during the console
@@ -294,6 +295,38 @@ pub fn draw(
 /// conversation's message count, order or type — not that it reproduce
 /// terminal punctuation. `UiState::prompt` still holds exactly what PAM said,
 /// which is what the frame dump records and what any future log would show.
+/// What goes above the field, for each stage.
+///
+/// A free function because this was the bug. It was a `match` inside a
+/// 200-line draw call, which is a decision nothing could assert and nobody
+/// re-read: the locker ran in `Stage::AskingUser`, so the screen of a locked
+/// session asked *"Who are you?"* of a user it already knew, and that
+/// survived a PRD, a failure round and six merged PRs until the maintainer
+/// sat in front of it on 2026-11-10 and said so.
+///
+/// `Unlocking` gets the conversation's prompt rather than a string of its
+/// own, deliberately. A locker that drew a hardcoded "Password" would be
+/// saying what it assumed the stack asked for, and L1 is the requirement
+/// that forbids assuming -- a stack carrying `pam_oath` asks for a one-time
+/// password and this line has to say so. The locker seeds `prompt` with its
+/// own default; wiring PAM's real prompt through is the rest of that work.
+fn hint_text(stage: Stage, prompt: &str) -> &str {
+    match stage {
+        Stage::AskingUser => "Who are you?",
+        Stage::Answering | Stage::Unlocking => prompt_label(prompt),
+        Stage::Starting => "starting…",
+    }
+}
+
+/// Whether the hint is something the person has to read to answer.
+///
+/// auroval's own placeholders are dim, hyprlock's way. A prompt from the
+/// conversation is a question, and on 2026-11-08 a dim one went unread long
+/// enough to look like the greeter had hung.
+fn hint_is_a_question(stage: Stage) -> bool {
+    matches!(stage, Stage::Answering | Stage::Unlocking)
+}
+
 fn prompt_label(s: &str) -> &str {
     let s = s.trim_end();
     s.strip_suffix(':').unwrap_or(s).trim_end()
@@ -370,6 +403,50 @@ fn dots(gl: &mut Gl, n: usize, fx: f32, fy: f32, g: &Geometry, p: &Palette) {
 /// pixel assertion wants the same rasteriser every run.
 #[cfg(test)]
 mod tests {
+    /// A locked session does not ask who you are.
+    ///
+    /// The defect as a test. `Stage::AskingUser` drew auroval's identity
+    /// placeholder, and the locker sat in that stage, so the lock screen
+    /// asked *"Who are you?"* and then waited for a password. Nothing could
+    /// assert it, because the choice lived in a `match` inside the draw call.
+    #[test]
+    fn a_locked_session_is_not_asked_who_it_is() {
+        assert_eq!(
+            super::hint_text(Stage::Unlocking, "Password"),
+            "Password",
+            "the lock screen must ask for what the stack asked for"
+        );
+        assert_ne!(
+            super::hint_text(Stage::Unlocking, "Password"),
+            super::hint_text(Stage::AskingUser, "Password"),
+            "a locked session already knows who you are"
+        );
+    }
+
+    /// The lock screen says what the conversation asked, not what we guessed.
+    ///
+    /// L1 forbids assuming the number, order or type of PAM's messages, and
+    /// a hardcoded "Password" on this line would assume the type. A stack
+    /// carrying `pam_oath` asks for something else and the screen has to
+    /// say so.
+    #[test]
+    fn the_lock_screen_repeats_the_conversations_question() {
+        assert_eq!(
+            super::hint_text(Stage::Unlocking, "One-time password (OATH) for `dirk`:"),
+            "One-time password (OATH) for `dirk`",
+            "the prompt is the stack's, minus the colon"
+        );
+    }
+
+    /// A question is drawn as a question, a placeholder as a placeholder.
+    #[test]
+    fn only_the_conversations_questions_get_the_text_colour() {
+        assert!(super::hint_is_a_question(Stage::Answering));
+        assert!(super::hint_is_a_question(Stage::Unlocking));
+        assert!(!super::hint_is_a_question(Stage::AskingUser));
+        assert!(!super::hint_is_a_question(Stage::Starting));
+    }
+
     use super::*;
     use crate::background::Background;
     use crate::render::Gl;

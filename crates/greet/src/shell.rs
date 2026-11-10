@@ -411,6 +411,13 @@ impl Shell {
                 }
             }
             Stage::Starting => {}
+            // The greeter cannot be in this stage: it belongs to a locked
+            // session, and this binary is what you log in through rather
+            // than what locks you out. Matched explicitly instead of with a
+            // wildcard so that the next stage anyone adds makes this file
+            // fail to compile and someone decides, which is the only reason
+            // the lock screen's own stage was ever noticed.
+            Stage::Unlocking => {}
         }
     }
 

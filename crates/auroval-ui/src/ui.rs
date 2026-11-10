@@ -37,6 +37,14 @@ pub struct UiState {
     pub date: String,
 }
 
+/// What `push_placeholder` puts in the field: one bullet per keystroke.
+///
+/// The same character `field_display` draws for a hidden field, so a field
+/// filled this way looks identical whether or not the masking is also on.
+/// That is deliberate -- the two defences are independent, and a difference
+/// between them would be a way to tell which one was working.
+const PLACEHOLDER: char = '\u{2022}';
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stage {
     /// Asking who you are. The field holds `username`.
@@ -45,6 +53,37 @@ pub enum Stage {
     Answering,
     /// Authenticated; the session is starting. Nothing more to type.
     Starting,
+    /// A locked session, asking its own user to unlock it. The field holds
+    /// `typed`.
+    ///
+    /// # Why this is not `Answering`
+    ///
+    /// It very nearly is: both hold a secret in `typed` and both draw the
+    /// conversation's prompt. The difference is what the screen is for.
+    /// `Answering` belongs to a login, where who you are is still being
+    /// established and the name above the field is what you typed.
+    /// `Unlocking` belongs to a session that is already yours: the name is
+    /// known before the screen appears, it is not input, and L13 asks for it
+    /// to be shown rather than asked for.
+    ///
+    /// # Why it is not `AskingUser`, which is what the locker used
+    ///
+    /// Found on 2026-11-10 by the maintainer, in the first attended
+    /// rehearsal: *"heel vreemd dat er 'Wie ben je?' staat en dat er een
+    /// password wordt verwacht"*. The locker built a `UiState` in
+    /// `AskingUser` and never left it, and three things followed from that
+    /// one shortcut.
+    ///
+    /// * The hint was the greeter's identity placeholder — *"Who are you?"* —
+    ///   on a screen whose user was already known and already in the log.
+    /// * `field_display` hid nothing, because the old rule was
+    ///   `stage != AskingUser && secret`. The component whose job is to mask
+    ///   a secret ran in the only stage that could not.
+    /// * `push` routes to `username` in that stage, so the placeholders went
+    ///   into the username field — and `view` draws that field above the
+    ///   input. The dots appeared twice, and before anything was typed the
+    ///   screen showed `—` where the owner's name belongs.
+    Unlocking,
 }
 
 #[derive(Debug, Clone)]
@@ -104,6 +143,17 @@ impl UiState {
         }
     }
 
+    /// Whether this stage's field holds something that must not be read.
+    ///
+    /// A list rather than `!= AskingUser`, because that is how the old rule
+    /// came to hide nothing on the lock screen: it was written when
+    /// `AskingUser` was the only stage that did not hold a secret, and it
+    /// stayed true by accident until a stage was added. Naming the stages
+    /// that hide means a new one has to choose.
+    fn hides_its_field(&self) -> bool {
+        matches!(self.stage, Stage::Answering | Stage::Unlocking)
+    }
+
     /// What to show in the field: the text itself, or one dot per character.
     /// Counted in characters rather than bytes, so a non-ASCII password does
     /// not leak its length in UTF-8 bytes.
@@ -124,7 +174,7 @@ impl UiState {
         // decides whether anything is hidden at all. The existing
         // `the_username_field_is_never_dotted` caught a first version of
         // this that got the order wrong and blanked the username.
-        let hidden = self.stage != Stage::AskingUser && self.secret;
+        let hidden = self.hides_its_field() && self.secret;
         if hidden && !self.typed.is_empty() {
             FieldDisplay::Dots(self.typed.chars().count())
         } else if hidden {
@@ -180,10 +230,31 @@ impl UiState {
         };
     }
 
+    /// Fill the field by one character without saying what was typed.
+    ///
+    /// # Why a caller would want this
+    ///
+    /// L4 says the typed secret is never copied into `UiState`: the one copy
+    /// this process owns lives in `pam::Secret`, which zeroes itself, and
+    /// the view gets a count rather than a string. So the locker cannot call
+    /// `push(c)` — it would put the password in the view — and what it did
+    /// instead was `push('\u{2022}')`, a literal in the caller that happened
+    /// to match what the field would have drawn anyway.
+    ///
+    /// That worked and said nothing about intent. Here the intent is the
+    /// signature: a caller holding a secret has a way to advance the field
+    /// that *cannot* carry one, and reading the locker no longer requires
+    /// noticing which character it chose. The masking in `field_display`
+    /// stays as well — two independent reasons the view cannot leak a
+    /// password is the right number for this requirement, not one.
+    pub fn push_placeholder(&mut self) {
+        self.push(PLACEHOLDER);
+    }
+
     pub fn push(&mut self, c: char) {
         match self.stage {
             Stage::AskingUser => self.username.push(c),
-            Stage::Answering => self.typed.push(c),
+            Stage::Answering | Stage::Unlocking => self.typed.push(c),
             Stage::Starting => {}
         }
     }
@@ -199,7 +270,7 @@ impl UiState {
     pub fn clear_field(&mut self) {
         match self.stage {
             Stage::AskingUser => self.username.clear(),
-            Stage::Answering => self.typed.clear(),
+            Stage::Answering | Stage::Unlocking => self.typed.clear(),
             Stage::Starting => {}
         }
     }
@@ -209,7 +280,7 @@ impl UiState {
             Stage::AskingUser => {
                 self.username.pop();
             }
-            Stage::Answering => {
+            Stage::Answering | Stage::Unlocking => {
                 self.typed.pop();
             }
             Stage::Starting => {}
@@ -246,7 +317,7 @@ mod tests {
     /// field showed the running total of every attempt that sitting.
     #[test]
     fn clearing_a_field_empties_the_one_push_fills() {
-        for stage in [Stage::AskingUser, Stage::Answering] {
+        for stage in [Stage::AskingUser, Stage::Answering, Stage::Unlocking] {
             let mut ui = UiState::new(Vec::new(), &crate::store::LastLogin::default());
             ui.stage = stage;
             ui.push('x');
@@ -254,6 +325,69 @@ mod tests {
             ui.clear_field();
             assert!(ui.field().is_empty(), "{stage:?} did not clear");
         }
+    }
+
+    /// The lock screen's field hides what is typed into it.
+    ///
+    /// This is the defect itself, as a test. The old rule was
+    /// `stage != AskingUser && secret`, which was true for every stage that
+    /// existed when it was written and became false the moment one was
+    /// added -- and the stage that was added is the lock screen, where the
+    /// whole field is a password. A rule that lists the stages that hide
+    /// makes a new one choose instead of inheriting.
+    #[test]
+    fn the_lock_screens_field_is_hidden() {
+        let mut ui = UiState::new(Vec::new(), &crate::store::LastLogin::default());
+        ui.stage = Stage::Unlocking;
+        ui.push_placeholder();
+        ui.push_placeholder();
+        ui.push_placeholder();
+        assert!(
+            matches!(ui.field_display(), FieldDisplay::Dots(3)),
+            "the lock screen's field must be dotted, got {:?}",
+            ui.field_display()
+        );
+    }
+
+    /// Typing on the lock screen does not touch the name above the field.
+    ///
+    /// `push` routes to `username` in `AskingUser`, and `view` draws
+    /// `username` above the input -- so the locker's placeholders appeared
+    /// twice, once where L13 wants the owner's name. The name is set once,
+    /// before the screen appears, and nothing the keyboard does may change
+    /// it.
+    #[test]
+    fn typing_to_unlock_leaves_the_name_alone() {
+        let mut ui = UiState::new(Vec::new(), &crate::store::LastLogin::default());
+        ui.stage = Stage::Unlocking;
+        ui.username = "dirk".into();
+        ui.push_placeholder();
+        ui.push_placeholder();
+        ui.backspace();
+        assert_eq!(ui.username, "dirk", "the keyboard reached the name");
+        assert_eq!(ui.field().chars().count(), 1, "and missed the field");
+    }
+
+    /// `push_placeholder` cannot carry what was typed.
+    ///
+    /// L4's property is that the secret never enters `UiState`. The locker
+    /// used to spell that as `push('\u{2022}')`, which is correct and
+    /// invisible: nothing stopped the next person from writing `push(c)`
+    /// there, and nothing would have failed. This asserts the API itself has
+    /// no way to say the secret.
+    #[test]
+    fn a_placeholder_says_nothing_about_the_key() {
+        let mut ui = UiState::new(Vec::new(), &crate::store::LastLogin::default());
+        ui.stage = Stage::Unlocking;
+        for _ in 0.."hunter2".chars().count() {
+            ui.push_placeholder();
+        }
+        assert!(
+            !ui.field().contains(|c: char| c.is_ascii_alphanumeric()),
+            "the field holds something that could be a password: {:?}",
+            ui.field()
+        );
+        assert_eq!(ui.field().chars().count(), 7, "but it counts the length");
     }
 
     use super::*;
