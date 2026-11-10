@@ -302,7 +302,7 @@ pub struct Lock {
     accepted: bool,
 
     /// The PAM service name. `auroval-lock`, written by pc-setup, which is
-    /// `auth include login` and deliberately has no `account` stanza --
+    /// `auth include system-auth` and deliberately has no `account` stanza --
     /// see `pam.rs` for why nothing here calls `pam_acct_mgmt`.
     service: String,
     /// The one user this locker will authenticate, from `getpwuid(getuid())`.
