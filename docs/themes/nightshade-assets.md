@@ -64,7 +64,7 @@ There are **two categories of artwork**, not one scene delivered two ways:
 | Brief | `"surface": "desktop"` | `"surface": "greeter"` |
 | Shows on | the desktop wallpaper | login, and lock once something can play a loop there |
 | Scenes so far | scene-03, scene-04 | scene-02, scene-05 |
-| Clauses that apply | geometry and palette | those, plus composition (§2.2) and legibility (§5.2) |
+| Clauses that apply | geometry and palette, and §4.5's *ornamented* and *edged* only (§4.5.1) | those, plus composition (§2.2), legibility (§5.2) and all five of §4.5's subject clauses |
 
 **They are not the same picture in two formats, and that is the whole point.**
 §4.1's constant part is a *greeter* brief: three of its clauses and all four of
@@ -288,7 +288,7 @@ image holds up at the fiftieth look rather than the first.
 A subject qualifies when it is:
 
 - **Singular.** One object or one figure. Not a scene, not a pair, not a
-  landscape with something in it.
+  landscape with something in it. **Greeter only — see §4.5.1.**
 - **Ornamented.** Carrying surface detail that rewards looking — embroidery,
   engraving, inlay, filigree, botanical complexity. A plain object lit well is
   what the brief produced before this section existed, and it was correct and
@@ -307,13 +307,80 @@ A subject qualifies when it is:
   appear. This is a per-asset instruction precisely because *what* the edge is
   changes per scene, while *that* there is one does not.
 - **Closed in silhouette.** It reads as a shape against black, with the field
-  around and below it staying dark.
+  around and below it staying dark. **Greeter only — see §4.5.1.**
 - **Still.** Nothing mid-motion. §7's loops animate by parallax over depth
-  layers, which a subject caught mid-gesture fights.
+  layers, which a subject caught mid-gesture fights. **Greeter only — see
+  §4.5.1.**
 
 Record the subject phrase for each scene in that scene's `source.md`, because
 it is the one part of the prompt that is not shared and therefore the one part
 that cannot be reconstructed from this document.
+
+#### 4.5.1 Two of those clauses are the theme; three are the greeter's framing
+
+**Settled 2026-11-10,** after the maintainer asked whether §4.5 was the
+greeter's reading of a subject. It is not, and that is worth stating because
+the structure argues both ways. §4's preamble makes the subject the one thing
+that varies per scene, and `assemble()` is `STYLE + subject +
+SURFACES[surface] + NO_MARKS` — the subject is the only part that does **not**
+depend on the surface. So the section is shared by construction.
+
+But three of the five clauses above are *framing*, and §3.1 assigns framing per
+surface. They were written when only greeter scenes existed, and the committed
+briefs in `tools/nightshade-gen/` have disagreed with them ever since:
+
+| Clause | Greeter | Desktop | What the committed briefs do |
+|---|---|---|---|
+| **Ornamented** | holds | holds | all four: bones, skulls, spider lilies, scratched crooked faces |
+| **Edged** | holds | holds | all four |
+| **Singular** | holds | **does not apply** | `scene-03-hollow` asks for *"dozens of small crude figures"*; `scene-04-pond-warm-b` for *"massed in it a shoal of large koi carp"* |
+| **Closed in silhouette** | holds | **inverted** | both desktop briefs open with *"the whole frame packed with"* / *"the whole frame filled with"*; `DESKTOP_CONSTANT` asks for *"deep shadow between and behind the forms rather than empty black space"* |
+| **Still** | holds | **moot** | no desktop scene has a loop (§3.2), so §7's parallax — the clause's only justification — does not arise |
+
+The two greeter briefs honour the greeter column exactly, which is what makes
+this a split rather than a contradiction: `scene-02-shrine` ends *"the posts
+and ledge falling away into darkness below"* and `scene-05-lantern` *"the left
+and the middle of the picture empty black night going back into nothing"*.
+
+So **ornamented** and **edged** are what nightshade *is*; **singular**,
+**closed in silhouette** and **still** are what a greeter *background* needs.
+A desktop brief inherits the first two and none of the last three.
+
+This is §4.1.2 one section down. There, `generate.py` deliberately disagrees
+with §4.1's own blockquote about *"centred"* and the disagreement is recorded
+rather than left to be discovered. The same had happened here and was not
+recorded: the generator and the shipped artwork had already decided, and only
+the prose was still speaking for the greeter alone.
+
+#### 4.5.2 Candidate subjects
+
+Five proposed 2026-11-10, kept here because §4.5's closing paragraph is right
+about `source.md` and right one floor up too: a candidate that is not written
+down does not exist. Each was first argued on loop-seam grounds, which is
+**not a valid argument in this theme** — §7's loops animate by parallax over
+depth layers, so the subject's own motion is irrelevant to the seam and the
+*Still* clause asks for the opposite.
+
+| Candidate | Desktop | Greeter | Why |
+|---|---|---|---|
+| A moth at a lamp | **yes** | no | Fails *singular* as a greeter pair; as a filled nocturnal frame with the lamp as its source it is one of the two strongest. The lamp may sit anywhere: §3.1 exempts desktop from §2.2's composition clause |
+| A jellyfish, lit from below | **yes** | yes | Ornament is inherent. Hue must be pushed off cyan — see below |
+| A monolith with a neon crack | no | no | Fails *ornamented*, which holds on both surfaces. §4.5 already names this failure: a plain object lit well is *"correct and dull"* |
+| A cracked mask or helmet in rain | yes | **yes** | The strongest greeter candidate. §4.5's *Edged* clause names *"a cracked mask"* as its own example |
+| Something tumbling in orbit | no | no | Fails *ornamented*, and *"fills the entire frame edge to edge"* is hard to honour in vacuum |
+
+**The hue is the constraint that applies to all of them,** and it is measured
+rather than aesthetic: [nightshade.md §4.3.1](nightshade.md) puts the
+achievable accent chroma between C\* 38.6 at 210° and 110 at 330°, with one
+continuous trough from 180° to 250° where nothing clears C\* 50. scene-01 sits
+at 211°, the floor of that trough, so its accent cannot be neon whatever is
+done to it. A new scene that is meant to read as neon lands between **300° and
+350°**. This is why the jellyfish above must not be cyan: the obvious colour
+for the subject is the one colour the gamut cannot saturate.
+
+One thing to settle before any of these is generated: **N9** is open because
+scene-01 (215.9°) and scene-05 (69.3°) are already 146° apart while §4.3 gives
+the UI a single accent. Every scene at a new hue widens that.
 
 ### 4.6 What the first generation trial found
 
