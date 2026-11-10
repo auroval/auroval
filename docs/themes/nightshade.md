@@ -75,6 +75,59 @@ Two consequences, both load-bearing:
 The prompts and settings that produced each image are recorded alongside it, so
 the set can be extended later in the same voice rather than re-guessed.
 
+### 1.2 A theme carries media and a palette, and no code
+
+**Settled by the maintainer 2026-11-10,** when distribution came up for the
+first time. A theme is **media plus `palette.toml` plus metadata**. It does not
+carry Lua, and nothing in it is executed.
+
+The reason is not that the sandbox is weak — §1.3 says it is not. It is what
+each kind of artefact promises. **Data promises a hash; code promises key
+management.** A theme that is data can be verified the way `deploy/install.nu`
+already verifies a binary: one sha256, settled before anything is unpacked. A
+theme that runs is a theme whose author must be identified, which means a
+signing key, a revocation story, and an answer for the day somebody's theme is
+misused. That is a second project, and it is not this one yet.
+
+Reversing this later is easy; reversing it the other way is not. So it starts
+closed.
+
+**This narrows what Q4 and R22 allowed, and both rows now say so.** Q4 chose
+Lua partly because it *"lets a theme express how backgrounds switch"*, and R22
+is written in terms of *"theme code"*. On today's decision no distributed theme
+supplies that code — the expressiveness belongs to the administrator's
+`/etc/auroval/greet.lua`, which is root-owned and arrives by a different route
+entirely. **R22 is unaffected by the narrowing and still earns its place**,
+because that config is still code evaluated on the login path, and R13 and R22
+are the same sentence twice: nothing in a file anybody can edit may stand
+between a person and their machine. What changed is only who writes the file,
+and that is exactly the boundary this section draws.
+
+What a theme needs to express about switching, it expresses as data: §3's pool
+of candidates and R9's fallback chain are a nested list, which is what the
+installed config already holds and what `Config::background` already reads.
+
+### 1.3 What distribution has to carry, and what already decides it
+
+Two constraints settle most of the design before any mechanism is chosen.
+
+**The media must reach a system path**, by C10 and R15 above. So installing a
+theme needs root, whatever installs it.
+
+**And auroval needs an install path of its own regardless of packaging.**
+Tenet 6 says a person's own video wins; R15 says the greeter never reads a
+home. Together those mean a user's own file must also land on a system path —
+and a file somebody shot themselves never arrives as a signed distribution
+package. The tool that puts it there is the same tool that puts a theme there,
+so **"install a theme" and "use my own video" are one operation**, and building
+it once is cheaper than maintaining two mechanisms.
+
+That makes **the on-disk layout the contract, not the tool**: one directory per
+theme, and anything that produces that directory is a valid way to install one
+— a first-party command, a distribution package, or a hand-copied folder. The
+greeter and the locker do not ask how it got there. This is what keeps a later
+change of packaging from being a rewrite.
+
 ---
 
 ## 2. The media contract
