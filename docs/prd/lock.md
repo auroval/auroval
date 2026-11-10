@@ -357,8 +357,15 @@ a lockout.
   `AUROVAL_LOCK_BREAK_GL` or `AUROVAL_FRAME_DUMP` are set — each of those
   makes the screen worse invisibly, and the environment here is a file the
   session's own user writes. `rehearse` still honours all three, which is
-  what two modes are for. **So the keybind now has something to bind**, and
-  that is the next step rather than this one.
+  what two modes are for. **And the keybind landed the same day**:
+  `SUPER + SHIFT + L` in
+  [dlouwers/pc-setup#6](https://github.com/dlouwers/pc-setup/pull/6), with
+  hyprlock keeping `SUPER + L` and `hypridle.conf` untouched. It is in the
+  playbook rather than in `lua/keybinds.lua`, whose own first line says local
+  edits are overwritten — a keybind added by hand would have worked until the
+  next playbook run. **The idle timeout is what is left of P3e**, and it is
+  deliberately last: it is the only one of the three you cannot choose not to
+  press.
   Then a second deliberate keybind, so the locker is used by choice while `SUPER + L` and the idle timeout stay on hyprlock, and only then the
   timeout itself — a lock you did not ask for is the one you are least ready
   for. No supervisor: P3c established that nothing can restart into a held
