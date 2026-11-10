@@ -178,6 +178,13 @@ Receipt: `failure-round-2026-11-10-handshake.txt`, the whole round re-run
 against the fixed handshake — six of six, and the recovery sequence with it,
 so nothing in L5–L8 or L11 depended on the inverted order.
 
+**And confirmed on the real output, which is the only place it could be.**
+The maintainer installed the fixed build and locked his own screen with
+`SUPER + SHIFT + L`: no black rectangle, no smear, the lock screen straight
+away. That confirmation cannot come from this harness — every nested
+measurement in this file was a window on a desktop that repainted it anyway,
+which is exactly why the symptom survived five days of green rounds.
+
 And the order flipped: the frame now precedes `locked`, which is what the
 protocol describes. The log had been printing the two the wrong way round for
 five days, which was visible evidence of an inverted handshake that nobody
