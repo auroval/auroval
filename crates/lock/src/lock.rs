@@ -323,6 +323,16 @@ pub struct Lock {
     log_draws: bool,
     presents: u32,
     turns: u32,
+    /// L7's fault injection: destroy the GL context after this many frames.
+    ///
+    /// `None` is every run nobody asked, which is every run. See
+    /// `Gl::break_context_on_purpose` for what this does and does not prove,
+    /// and `maybe_break_gl` for why it is counted in frames rather than
+    /// seconds.
+    break_gl_after: Option<u32>,
+    /// Whether the context has already been taken away, so the report and
+    /// the recovery attempt happen once rather than per frame.
+    gl_broken: bool,
     reported: Instant,
     /// `own_cpu_seconds()` as of the last report, so the per-second line can
     /// state the *interval's* cost. The first version of this printed CPU
@@ -386,6 +396,8 @@ impl Lock {
             log_draws: false,
             presents: 0,
             turns: 0,
+            break_gl_after: None,
+            gl_broken: false,
             reported: Instant::now(),
             cpu_at_report: 0.0,
             started: Instant::now(),
@@ -414,6 +426,46 @@ fn own_cpu_seconds() -> f64 {
     let f: Vec<&str> = rest.split_whitespace().collect();
     let ticks = |i: usize| f.get(i).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
     (ticks(11) + ticks(12)) / 100.0
+}
+
+/// L7's fault injection, read from the environment exactly once.
+///
+/// A free function so that the parse has tests without a compositor, and
+/// because the refusal below is the interesting part: `0` would destroy the
+/// context before a single frame had been presented, which is not L7's
+/// question — L7 asks what happens to a lock screen that was *working*. A
+/// locker that never draws at all is L6's and L5's territory and they are
+/// already tested.
+fn break_gl_after() -> Option<u32> {
+    let raw = std::env::var_os("AUROVAL_LOCK_BREAK_GL")?;
+    parse_break_gl(&raw.to_string_lossy())
+}
+
+/// The decision inside `break_gl_after`, with the environment taken out.
+///
+/// Split off so it has tests rather than a sentence saying it could have
+/// them: reading `std::env` from a test is a race against every other test
+/// in the binary, so a function that reads the environment is a function
+/// nobody tests.
+fn parse_break_gl(raw: &str) -> Option<u32> {
+    match raw.parse::<u32>() {
+        Ok(0) => {
+            eprintln!("auroval-lock: AUROVAL_LOCK_BREAK_GL=0 would break the context before");
+            eprintln!("auroval-lock:   the first frame, which is not what L7 asks. Ignored.");
+            None
+        }
+        Ok(n) => {
+            eprintln!("auroval-lock: AUROVAL_LOCK_BREAK_GL={n} — THE GL CONTEXT WILL BE");
+            eprintln!("auroval-lock:   DESTROYED ON PURPOSE after {n} presented frames.");
+            eprintln!("auroval-lock:   This is L7's test hook. The session stays locked and");
+            eprintln!("auroval-lock:   the only way out is still the right password.");
+            Some(n)
+        }
+        Err(_) => {
+            eprintln!("auroval-lock: AUROVAL_LOCK_BREAK_GL is not a number. Ignored.");
+            None
+        }
+    }
 }
 
 /// Lock the session and draw on it until something releases the lock.
@@ -518,6 +570,8 @@ pub fn run(cfg: Config) -> Result<Outcome, String> {
         log_draws: std::env::var_os("AUROVAL_LOG_DRAWS").is_some(),
         presents: 0,
         turns: 0,
+        break_gl_after: break_gl_after(),
+        gl_broken: false,
         reported: Instant::now(),
         cpu_at_report: own_cpu_seconds(),
         started: Instant::now(),
@@ -734,6 +788,30 @@ impl Lock {
     /// Draw every surface whose state has changed, and no others.
     fn draw_all(&mut self) {
         self.turns += 1;
+        // Once the context is gone nothing below can reach the screen, so
+        // stop asking it to. The loop still TURNS -- that is what carries
+        // the keyboard and the PAM answer, and L7 is the requirement that
+        // cares -- it just stops making GL calls that cannot work.
+        //
+        // WHAT THIS DOES NOT BUY, measured 2026-11-10 rather than assumed.
+        // It was written to cut the cost of a lost context, and it does not:
+        // after the loss this process still spends 11-18% of one core with a
+        // video background and 0-1% with a still, and those numbers are the
+        // same before and after this early return. The cost is GStreamer
+        // decoding on its own threads, which does not care whether anyone
+        // pulls the samples.
+        //
+        // And the pipeline is deliberately NOT stopped to reclaim it.
+        // `Video` wraps THIS context -- `GLContext::new_wrapped` over our own
+        // handle, not a context of its own -- so taking the pipeline to
+        // `Null` would free GLMemory against a context that has just been
+        // destroyed, which is the hazard being avoided rather than a way out
+        // of it. A locked screen that spends a sixth of a core until somebody
+        // types a password is worse than one that does not; a locked screen
+        // that faults in the driver is worse than both.
+        if self.gl_broken {
+            return;
+        }
         let Some(gl) = self.gl.as_mut() else { return };
         let ready = self.background.as_mut().and_then(|b| b.ready(gl));
         let generation = self
@@ -764,13 +842,40 @@ impl Lock {
             if screen.last.as_deref() == Some(sig.as_str()) {
                 continue;
             }
-            if gl.make_current(target).is_err() {
+            if let Err(e) = gl.make_current(target) {
+                // Reported once, not per frame. This branch used to be a
+                // bare `continue`, which is the right thing to DO and says
+                // nothing: after a context is lost every turn of the loop
+                // takes it, so a screen frozen on its last frame and a
+                // screen with nothing to redraw look identical in the log.
+                // L7 is the requirement that cares, and `gl_broken` is what
+                // makes the difference visible exactly once.
+                if !self.gl_broken {
+                    self.gl_broken = true;
+                    eprintln!("auroval-lock: the GL context is gone ({e}).");
+                    eprintln!(
+                        "auroval-lock:   the screen keeps its last frame. \
+                         THE FIELD STILL ACCEPTS INPUT and the password still unlocks (L7)."
+                    );
+                }
                 continue;
             }
             view::draw(gl, &self.ui, &self.style, ready);
             gl.present(target);
             screen.last = Some(sig);
             self.presents += 1;
+            if self.break_gl_after == Some(self.presents) {
+                // After the present, not before: L7 asks what happens to a
+                // lock screen that was working, so the frame the user is
+                // looking at has to have reached the screen first.
+                eprintln!(
+                    "auroval-lock: destroying the GL context on purpose after {} frames (L7).",
+                    self.presents
+                );
+                if let Err(e) = gl.break_context_on_purpose() {
+                    eprintln!("auroval-lock: could not break it: {e}");
+                }
+            }
             if self.first_frame.is_none() {
                 self.first_frame = Some(Instant::now());
                 eprintln!(
@@ -1191,6 +1296,36 @@ delegate_session_lock!(Lock);
 
 #[cfg(test)]
 mod tests {
+    /// L7's hook has to be off by default, and `0` has to be refused.
+    ///
+    /// `0` is the interesting one: it would destroy the context before a
+    /// single frame had reached the screen, and L7 asks what happens to a
+    /// lock screen that was *working*. A locker that never draws at all is
+    /// L5's and L6's territory, and they have their own cases.
+    #[test]
+    fn the_gl_break_hook_refuses_nonsense_and_zero() {
+        assert_eq!(parse_break_gl("3"), Some(3));
+        assert_eq!(parse_break_gl("1"), Some(1));
+        assert_eq!(
+            parse_break_gl("0"),
+            None,
+            "0 breaks it before the first frame"
+        );
+        assert_eq!(parse_break_gl(""), None);
+        assert_eq!(parse_break_gl("yes"), None);
+        assert_eq!(parse_break_gl("-1"), None);
+        assert_eq!(
+            parse_break_gl("3 "),
+            None,
+            "a trailing space is not a number"
+        );
+        assert_eq!(
+            parse_break_gl("99999999999999999999"),
+            None,
+            "overflow is a refusal, not a wrap"
+        );
+    }
+
     use super::*;
 
     /// L10, as far as it can be reached without a compositor: at most one
