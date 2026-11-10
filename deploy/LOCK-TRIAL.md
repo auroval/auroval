@@ -74,12 +74,27 @@ you locked your screen but the lockscreen app died"* and names the way out
 itself. From another VT — `Ctrl+Alt+F3`, log in as yourself:
 
 ```nu
-hyprctl --instance 0 eval 'hl.clear_crashed_lockscreen\(\)'
+hyprctl --instance 0 eval 'hl.clear_crashed_lockscreen()'
 ```
 
-That has been run and it works. The parentheses are escaped because in
-nushell `(...)` inside a string is a subexpression; in `sh` or `fish` write
-it without the backslashes.
+That has been run and it works, and it is written plainly on purpose. This
+line used to carry escaped parentheses — `\(\)` — on the reasoning that
+`(...)` inside a nushell string is a subexpression. **That is true of an
+interpolated string and false of this one.** Single quotes in nushell are
+literal, so the backslashes were passed through to Lua, which answered
+
+```
+error: 3 [string "hl.clear_crashed_lockscreen\(\)"]:1: syntax error near '\'
+```
+
+Found by the maintainer on 2026-11-10, by running the recovery command in the
+one situation where it has to work on the first try. Which is the argument for
+why it lives in this file at all, and the argument for why a correct-looking
+command in a document is not the same thing as a command somebody has run.
+
+`spike/p3/failure-round.nu` prints the same line and prints it correctly: there
+it *is* inside `$"..."`, where the escape is required, and the receipt in
+`failure-round-2026-11-10.txt` shows `()` coming out the other end.
 
 **What has not been exercised:** the sequence above while genuinely locked out
 of this machine's own session, with the real PAM stack. It has been done in a
