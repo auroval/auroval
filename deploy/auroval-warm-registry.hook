@@ -1,0 +1,48 @@
+# Installed by deploy/install.nu to
+# /etc/pacman.d/hooks/auroval-warm-registry.hook.
+#
+# Issue #77. auroval's greeter keeps its GStreamer plugin registry in
+# /var/cache/auroval (C15), and deploy/install.nu warms it at install time so
+# that the first login does not pay the plugin scan. A gstreamer update
+# invalidates that registry, which on a rolling distribution happens roughly
+# monthly -- and an install that ran weeks ago cannot warm it again. Without
+# this hook the next login after every such update costs between 1.3 s and
+# 1.9 s to first frame, against R16's 500 ms budget.
+#
+# WHY Type = Path AND NOT Type = Package. Counted on this machine on
+# 2026-11-10, eleven installed packages own a file under
+# /usr/lib/gstreamer-1.0: gstreamer, gst-plugins-base, -base-libs, -good,
+# -bad, -bad-libs, -ugly, gst-libav, gst-plugin-pipewire, gst-plugin-va and
+# **libnice**. A hand-written package list gets the first eight and forgets
+# the last three, and the one it forgets is the one that breaks it silently --
+# a registry that was not re-warmed looks exactly like a registry that did not
+# need to be, until somebody logs in. The plugin directory is what actually
+# invalidates the registry, so it is what gets watched. Targets are relative
+# to the installation root and carry no leading slash; that is pacman's
+# convention and not a typo.
+#
+# Remove is included: a plugin that goes away invalidates the registry's
+# entry for it just as an upgrade does.
+#
+# PostTransaction, because the plugins have to be on disk before they can be
+# scanned. The hook runs once per transaction however many plugins changed.
+#
+# WHY Exec GOES THROUGH /bin/sh. A hook whose Exec does not exist fails every
+# transaction that triggers it, and this hook is installed by hand rather than
+# by a package -- so nothing removes it when auroval's greeter is removed. The
+# test makes that case a silent exit 0 instead of a pacman error on every
+# gstreamer update for the rest of the machine's life. deploy/TRIAL.md section
+# 4 says how to take the hook off deliberately.
+
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Target = usr/lib/gstreamer-1.0/*
+Target = usr/lib/libgstreamer-1.0.so*
+
+[Action]
+Description = Warming auroval's greeter GStreamer plugin registry...
+When = PostTransaction
+Exec = /bin/sh -c '[ -x /usr/local/lib/auroval/auroval-warm-registry.sh ] || exit 0; exec /usr/local/lib/auroval/auroval-warm-registry.sh'

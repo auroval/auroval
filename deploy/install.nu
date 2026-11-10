@@ -101,6 +101,12 @@ def main [
         | save -f $"($stage)/auroval-greet.sh"
     }
     cp $"($deploy)/auroval.tmpfiles.conf" $"($stage)/auroval.tmpfiles.conf"
+    # Issue #77. One script, two callers: the root script below runs it to
+    # warm the registry at install time, and the pacman hook runs the same
+    # file every time the plugins underneath it change. An install cannot
+    # warm a registry that a gstreamer update invalidates weeks later.
+    cp $"($deploy)/auroval-warm-registry.sh" $"($stage)/auroval-warm-registry.sh"
+    cp $"($deploy)/auroval-warm-registry.hook" $"($stage)/auroval-warm-registry.hook"
     # The checked-in greetd config says vt = 1. Substitute rather than ask the
     # maintainer to edit a file he is about to copy with root privileges.
     #
@@ -113,7 +119,7 @@ def main [
     open --raw $"($deploy)/greetd-auroval.toml"
     | str replace -r '(?m)^vt = \d+$' $"vt = ($vt)"
     | save -f $"($stage)/greetd-auroval.toml"
-    ^chmod 0755 $"($stage)/auroval-greet" $"($stage)/auroval-greet.sh"
+    ^chmod 0755 $"($stage)/auroval-greet" $"($stage)/auroval-greet.sh" $"($stage)/auroval-warm-registry.sh"
     print $"         ($stage)"
     if $frame_dump != "" {
         print $"         AUROVAL_FRAME_DUMP=($frame_dump) is baked in — re-run"
@@ -221,6 +227,8 @@ def main [
         "auroval-greet"
         "auroval-greet.sh"
         "greetd-auroval.toml"
+        "auroval-warm-registry.sh"
+        "auroval-warm-registry.hook"
     ]
     let digests = ($staged_files | each {|f|
         {name: $f, sha: (open --raw $"($stage)/($f)" | hash sha256)}
@@ -268,38 +276,34 @@ def main [
         "install -d -m 0755 /usr/local/lib/auroval"
         $"install -m 0755 \"($stage)/auroval-greet\"    /usr/local/lib/auroval/auroval-greet"
         $"install -m 0755 \"($stage)/auroval-greet.sh\" /usr/local/lib/auroval/auroval-greet.sh"
+        $"install -m 0755 \"($stage)/auroval-warm-registry.sh\" /usr/local/lib/auroval/auroval-warm-registry.sh"
+        ""
+        "# Issue #77: the same script, run by pacman whenever the plugins the"
+        "# registry indexes are installed, upgraded or removed. /etc/pacman.d"
+        "# is the admin's hook directory; /usr/share/libalpm/hooks belongs to"
+        "# packages and would be overwritten by one."
+        "install -d -m 0755 /etc/pacman.d/hooks"
+        $"install -m 0644 \"($stage)/auroval-warm-registry.hook\" /etc/pacman.d/hooks/auroval-warm-registry.hook"
         ""
         "# greetd's config for auroval, alongside its own, never replacing it."
         "install -d -m 0755 /etc/greetd"
         $"install -m 0644 \"($stage)/greetd-auroval.toml\" /etc/greetd/auroval.toml"
         ""
-        "# C15, and issue #77: warm the plugin registry here, as `greeter`, so"
+        "# C15, and issue #77: warm the plugin registry now, as `greeter`, so"
         "# that the first login does not pay for it."
         "#"
-        "# Measured 2026-11-09 under cage on a real VT at 2560x1440: a cold"
-        "# greeter start reaches first frame in 1874 ms against R16's 500 ms"
-        "# budget, and 19 ms with the registry warm. A cold gst-inspect scan"
-        "# measures 0.9-1.0 s on this machine and writes 1.5 MB, so this line"
-        "# costs the install about the second it takes off the first login."
+        "# This runs the script that was just installed rather than repeating"
+        "# its body here, because the same file is run by the pacman hook on"
+        "# every plugin change -- and two copies of this logic would be two"
+        "# things to keep in step. The script says what it measures and why."
         "#"
-        "# It does NOT account for all of the 1874 ms, and that gap is open on"
-        "# #77 rather than guessed at here. What is certain is that a process"
-        "# starting with a warm registry reaches first frame in 19 ms, ten"
-        "# times over, which is what the warm runs of cage-measure.nu are."
-        "#"
-        "# Last, and guarded. `set -eux` above would otherwise abort the whole"
-        "# install over a missing gst-inspect-1.0 or a greeter user that cannot"
-        "# run it -- and an unwarmed registry is a slow first login, not a"
-        "# broken one. Deleting the registry is always safe: it is a cache in"
-        "# the FHS sense and the next start rebuilds it."
-        "if command -v gst-inspect-1.0 >/dev/null 2>&1; then"
-        "    runuser -u greeter -- env XDG_CACHE_HOME=/var/cache/auroval \\"
-        "        GST_REGISTRY=/var/cache/auroval/gst-registry.bin \\"
-        "        gst-inspect-1.0 >/dev/null \\"
-        '        || auroval_note "registry not warmed; the first login pays ~1.9 s once"'
-        "else"
-        '    auroval_note "gst-inspect-1.0 not found; registry not warmed"'
-        "fi"
+        "# Guarded. `set -eux` above would otherwise abort the whole install"
+        "# over a missing gst-inspect-1.0 or a greeter user that cannot run"
+        "# it, and an unwarmed registry is a slow first login, not a broken"
+        "# one. The script exits 1 for exactly that case and says so on"
+        "# stderr; the note is repeated at the end where tracing is off."
+        "/usr/local/lib/auroval/auroval-warm-registry.sh \\"
+        '    || auroval_note "registry not warmed; the first login pays ~1.9 s once"'
         ""
         "# R7/Q5, asked by the user who will actually be doing it. videoprobe"
         "# decodes a file into this renderer's own GL textures and prints what"
