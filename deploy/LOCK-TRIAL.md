@@ -24,12 +24,17 @@ root script copies it to `/usr/local/lib/auroval/auroval-lock`.
 | a keybind for `auroval-lock` | **none is written.** It is used by choice or not at all |
 | `/etc/pam.d/auroval-lock` | not written here. `pc-setup`'s playbook writes it |
 
-**And it could not take over even if something called it.** A bare
-`auroval-lock` prints its usage and exits 2. The only mode that locks is
-`rehearse`, and that refuses to start unless `AUROVAL_LOCK_REHEARSAL=1` is
-set. There is no production mode yet; adding one is a separate decision and a
-separate commit, and it is the commit that makes a bare invocation able to
-lock a screen.
+**And nothing calls it.** A bare `auroval-lock` prints its usage and exits 2;
+there is no invocation without an argument that locks anything. Since
+2026-11-10 there *is* a production mode — `auroval-lock lock` — and it is a
+named mode for exactly that reason. It also refuses to start while
+`AUROVAL_LOCK_SECONDS`, `AUROVAL_LOCK_BREAK_GL` or `AUROVAL_FRAME_DUMP` are
+set, because those are test hooks and the environment here is a file you
+write yourself.
+
+So the binary can now be pointed at. **Nothing points at it**: that is the
+next step of P3e and it is a line in your own config, not something the
+install does.
 
 So installing it is reversible by deleting one file, and until a later change
 it cannot lock anything you did not deliberately ask it to.
@@ -111,9 +116,11 @@ dangerous one.
 
 ## 5. What is still missing before this is a locker you rely on
 
-- **A production mode.** Today: `probe` and `rehearse` only.
-- **L7**, context loss, and the attended run that shows these screens
-  actually unlock. Nobody has seen that yet.
+- ~~A production mode.~~ **Done 2026-11-10**: `auroval-lock lock`.
+- ~~**L7**, context loss, and the attended run that shows these screens
+  actually unlock.~~ **Both done 2026-11-10.** L7 is tested six-of-six in the
+  failure round, and two attended rehearsals unlocked — the second one blind,
+  with the GL context destroyed.
 - **P3d**, the 1440p rehearsal for L14.
 - `hyprlock` comes off only after `greet.md`'s own metric is met: *used
   daily for two weeks and no lockout incident*.
