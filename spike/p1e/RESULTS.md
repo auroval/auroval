@@ -14,7 +14,7 @@ has not.
 | `/var/lib/auroval` owned by the greeter | **written** as tmpfiles; needs one root command to take effect |
 | C15 cache in the greeter's environment | **done** in `deploy/auroval-greet.sh` |
 | R16 re-measured at 2560×1440 on a real VT | **done** — median 8 ms over ten warm runs, worst 9 ms, cold 8 ms, surface 2560×1440. See below |
-| C15 cache measured in the greeter's own context | **not yet, and now known to be unmeasurable here** — nothing on the still-background path starts GStreamer, so cold and warm both came out at 8 ms. The 1018/93 ms figures remain P0's until the media path lands |
+| C15 cache measured in the greeter's own context | **done** — the media path landed, so the cold run finally starts GStreamer. Cold 1874 ms on 2026-11-09 and 1319 ms on 2026-11-10, against 19 ms warm both times. See the two later sittings at the end of this file; the warm figure is settled and the cold one is not |
 
 ## R16's number, measured
 
@@ -199,3 +199,40 @@ The third one is the `/var/lib/auroval` box: it should go from
 The R16 measurement itself is done; `auroval-vt` from a TTY login
 (Ctrl+Alt+F3) is how it gets taken again, and it will have to be taken again
 once the media path lands, because that is the run that finally tests C15.
+**That has since happened, twice — see the last section of this file.**
+
+## The two later sittings, and what changed about the status above
+
+The closing paragraph above said the R16 measurement was done and would have
+to be taken again once the media path landed. It landed, and it has been taken
+twice more. Both are in this directory as receipts.
+
+| sitting | warm median | worst | cold first frame |
+|---|---|---|---|
+| 2026-11-07, still background only | 8 ms | 9 ms | 8 ms — a rescan that never happened |
+| 2026-11-09, media path landed | 19 ms | 19 ms | **1874 ms** |
+| 2026-11-10, same binary and caches | 19 ms | 20 ms | **1319 ms** |
+
+Two readings, in order of how much they are worth.
+
+**The warm number is settled.** 19 ms twice, a millisecond apart at the worst
+case, at 2560×1440 on a real VT against a 500 ms budget. The 11 ms the media
+path costs over the still background is the whole price of GStreamer on this
+path, and it is cheaper than C15's 93 ms figure suggested.
+
+**The cold number is not settled, and the 2026-11-10 run is why.** It ran with
+the shader cache warm and the registry cleared — the same configuration that
+gave 835 ms on 2026-11-09, from which C15 derives a ~816 ms plugin scan and a
+~1039 ms shader compilation by subtraction. 1319 ms does not fit that split:
+it puts the scan alone at about 1300 ms. Nothing in the environment accounts
+for the difference. `pacman.log` shows no gstreamer change since 2026-10-13
+and no nvidia change since 2026-11-08, and no `nvidia/GLCache` entry was
+written during the run, so the shader cache was hit rather than rebuilt.
+
+What that costs us is the two numbers, not the argument. Both caches are
+expensive, the registry half is warmed by `deploy/install.nu` and the shader
+half cannot be warmed from an install — C15 measures why, and none of that
+rests on the subtraction. But anyone quoting ~816 ms or ~1039 ms as a measured
+figure is quoting a single sample that another single sample contradicts.
+A cold number worth standing on needs the same ten runs the warm one got, and
+each of those costs a cache rebuild.
