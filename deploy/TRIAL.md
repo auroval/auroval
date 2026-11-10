@@ -97,6 +97,16 @@ systemctl daemon-reload
 Nothing auroval installed is removed by this — the greeter, its config and the
 tmpfiles entry stay where they are and do nothing while greetd is disabled.
 
+The one installed file that keeps doing something is the pacman hook, which
+re-warms the greeter's plugin registry on every gstreamer update (issue #77).
+It costs about a second of an update you were already waiting for, and it
+exits silently if the greeter is gone, so there is no need to remove it. If
+you want it off anyway:
+
+```sh
+rm -f /etc/pacman.d/hooks/auroval-warm-registry.hook
+```
+
 ## 5. What to watch for during the trial
 
 This is the point of a trial rather than a switch, so the things to notice are

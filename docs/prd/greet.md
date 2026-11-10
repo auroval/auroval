@@ -286,6 +286,25 @@ numbers are not stable enough to quote. Receipt in
 **The registry half is deployment, and is fixed.** `deploy/install.nu` warms
 it as `greeter` at install time, so a fresh install does not pay the scan.
 
+**And re-warmed, 2026-11-10, which the install alone could not do.** An
+install warms the registry once; a gstreamer update invalidates it, and on a
+rolling distribution that is roughly monthly. An install that ran weeks ago
+cannot warm a registry invalidated this morning, so until now the first login
+after every gstreamer update paid the scan again — the recurrence this
+constraint is actually about.
+`deploy/auroval-warm-registry.hook` now runs the warming as a pacman
+`PostTransaction` hook on the plugin directory itself, and
+`deploy/install.nu`'s root script calls the same script, so the install and
+the hook cannot drift apart. It watches `usr/lib/gstreamer-1.0/*` rather than
+a list of package names because eleven installed packages own a file there and
+three of them — `libnice`, `gst-plugin-va`, `gst-plugin-pipewire` — are
+exactly the ones a hand-written list forgets. The script asks the filesystem
+whether the registry now postdates every plugin rather than trusting
+`gst-inspect`'s exit code, because a registry that was not rewritten is
+indistinguishable from one that needed no rewriting until somebody logs in.
+Its four behaviours are checked without root or pacman by
+`spike/p1e/warm-registry-check.nu`.
+
 **The shader half cannot be warmed there, and that is measured rather than
 assumed.** With a fresh cache each time, `auroval-greet videoprobe` compiles
 two GL programs and 60 KB, `snapshot` compiles the same two, and both of them

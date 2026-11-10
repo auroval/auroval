@@ -17,6 +17,8 @@ P1 and it is a deliberate, separate act.
 | `auroval-greet.sh` | `/usr/local/lib/auroval/auroval-greet.sh` | greetd's command. Sets C15's cache variables, execs `cage`. `/bin/sh`, because it is on the startup path |
 | `auroval.tmpfiles.conf` | `/etc/tmpfiles.d/auroval.conf` | creates `/var/lib/auroval` and `/var/cache/auroval`, owned by `greeter` |
 | `greetd-auroval.toml` | `/etc/greetd/auroval.toml` | greetd's config for auroval — **not** `config.toml`, and never read by `greetd.service` |
+| `auroval-warm-registry.sh` | `/usr/local/lib/auroval/auroval-warm-registry.sh` | warms the greeter's GStreamer plugin registry as `greeter` (C15). Run by the install **and** by the pacman hook, so the two cannot drift |
+| `auroval-warm-registry.hook` | `/etc/pacman.d/hooks/auroval-warm-registry.hook` | runs the script above whenever a file under `/usr/lib/gstreamer-1.0` is installed, upgraded or removed. Issue #77: an install cannot warm a registry that next month's gstreamer update invalidates |
 | `install.nu` | — | builds, stages, writes the one root script, writes the `auroval-vt` wrapper. Runs no `sudo` |
 
 The binary itself is installed as `/usr/local/lib/auroval/auroval-greet`, out
@@ -38,8 +40,37 @@ and run yourself:
 sudo sh target/auroval-install-root.sh
 ```
 
-That script installs four files and runs `systemd-tmpfiles --create`. It does
-nothing else.
+That script installs six files, runs `systemd-tmpfiles --create`, and warms
+the plugin registry. It does nothing else.
+
+Before it copies anything it checks a sha256 of every staged file against the
+digests `install.nu` printed to your terminal, and refuses with exit 3 if one
+does not match. That is not a fix — whoever can write the staging directory
+can usually write the script too — but it means a silent edit of a data file
+is no longer enough on its own.
+
+## The registry, and why there is a pacman hook
+
+C15: the greeter's GStreamer registry lives in `/var/cache/auroval` because
+greetd's `greeter` user has `HOME=/`. The install warms it, so a fresh install
+does not pay the plugin scan at its first login.
+
+That is only half of it, and issue #77 is the other half. Every gstreamer
+update invalidates the registry, which on a rolling distribution is roughly
+monthly, and an install that ran weeks ago cannot warm it again. Measured on a
+real VT, the login after such an update costs between 1.3 s and 1.9 s to first
+frame against R16's 500 ms budget.
+
+So the hook pays that scan during the update, where a second is invisible,
+instead of at the next login, where it is a black screen. It watches the
+plugin directory rather than a list of package names, because eleven installed
+packages own a file there and a hand-written list forgets three of them.
+
+The script's four behaviours are checked without root or pacman by:
+
+```
+nu spike/p1e/warm-registry-check.nu
+```
 
 ## Checking it worked
 
