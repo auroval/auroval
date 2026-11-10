@@ -24,6 +24,12 @@ is the thing a clock and an input field sit on, so most of §4.1 and all of
 inherits none of those clauses, and wants the opposite: a filled frame rather
 than a mostly empty one.
 
+The same split runs through §4.5's subject clauses, which this file does not
+assemble and therefore cannot enforce: a desktop brief inherits *ornamented*
+and *edged* and none of *singular*, *closed in silhouette* or *still*. That is
+§4.5.1, and the two desktop briefs here were written that way before it was
+written down.
+
 `style` is not a field. It is a theme constant (§4.1.1), it lives in this
 file, and a brief that tries to set it is refused — "two scenes drawn in
 different styles do not read as one theme" is the whole reason that section
