@@ -175,6 +175,33 @@ in this section.
 A **scene** is one subject — one skull, one portrait — rendered as a set of
 **phase variants**: dawn, day, dusk, night. A theme holds several scenes.
 
+**A loop is optional per scene, decided 2026-11-10.** This section and §6 both
+read as though every scene ships a loop and a still per phase, and the
+maintainer's direction when scene generation actually came up was the opposite
+order:
+
+> "Als je scenes genereert dus vooral desktop. Locker is veel lastiger en wil
+> ik stapje later doen en heb je er minder van nodig."
+
+So the stills come first and in number, and the loops come later and in fewer.
+That is a production order, but it has a design consequence this document has
+to answer rather than discover: **on a day whose scene has no loop, what do
+login and lock show?**
+
+They show that scene's still, and it costs nothing to implement because it is
+already what happens. R9's `background` is a fallback chain — the deployed
+config is `{ mp4, png }` and falls to the png when the video will not play — so
+a scene with no loop simply ships a chain of one. Login, lock and desktop stay
+on the same scene, §6's agreement holds every day, and the motion appears on
+the days a loop exists.
+
+**The two alternatives are both worse and both were considered.** Rotating the
+desktop over every scene while login and lock pick the nearest *looped* one
+breaks §6's agreement on most days, which is the project's whole proof. Rotating
+only over scenes that have loops leaves the still-only artwork unused until
+somebody generates video for it, which makes the cheap half of the work wait on
+the expensive half — exactly the order the maintainer rejected.
+
 - **Daily rotation** picks one scene per day, as `awww-wallpaper.sh` does today
   at `INTERVAL=86400`.
 - **Time of day** moves through that scene's phase variants as the day passes.
@@ -585,7 +612,7 @@ This is the project's whole proof: *"dat ik echt het gevoel heb dat ik gewoon in
 
 | | Login (greet) | Lock | Desktop |
 |---|---|---|---|
-| Background | Scene's moving loop | **Same moving loop** | Scene's still, current phase |
+| Background | Scene's moving loop, **or its still when the scene has no loop** | Same | Scene's still, current phase |
 | Palette | Scene's derived palette | Same | Same |
 | Font | MesloLGS Nerd Font | Same | Same |
 | Geometry | Large clock, rounded input (r=12, squircle) | Same | Window rounding r=12, `rounding_power=4` |
