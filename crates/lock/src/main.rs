@@ -226,22 +226,39 @@ fn probe() {
                     .replace("locale ", "locale       ")
             );
             println!("config       {}", config_path().display());
-            // The pool, and which rung of which candidate this binary would
-            // actually show. `greet probe` prints the same pool with the
-            // rotation state beside it; this one deliberately cannot, because
-            // the state is unreadable to the user this process runs as. What
-            // it prints instead is the truth for a locker: candidate 0.
+            // The pool, and which candidate the next lock would show.
+            //
+            // `last_shown` rather than `choose`, which is the same rule
+            // `greet probe` follows and for the same reason: a diagnostic
+            // that advances the thing it reports on is one you cannot run
+            // twice, and running it would change what the next real lock
+            // shows.
+            //
+            // This used to print *"this binary shows the first and never
+            // rotates"*, which was true and is the kind of true that rots:
+            // it stopped being so on 2026-11-10 and nothing but reading this
+            // line would have said.
+            let state = lock::rotation_state_for_probe();
             match cfg.background.len() {
                 0 => println!("background   none configured — the solid colour is all R9 has left"),
                 n => {
+                    let last = auroval_ui::rotation::last_shown(&state);
+                    let next = auroval_ui::rotation::next_after(last, n);
                     println!(
-                        "background   {n} candidate{}, this binary shows the first and never rotates",
-                        if n == 1 { "" } else { "s" }
+                        "background   {n} candidate{}, rotating per lock; state {}",
+                        if n == 1 { "" } else { "s" },
+                        state.display()
                     );
+                    match last {
+                        Some(i) => println!("  last shown   [{i}]"),
+                        None => {
+                            println!("  last shown   — (no state yet; the clock picks a start)")
+                        }
+                    }
                     for (i, chain) in cfg.background.iter().enumerate() {
                         println!(
                             "  [{i}]{}       {}",
-                            if i == 0 { " shown" } else { "      " },
+                            if Some(i) == next { " next " } else { "      " },
                             chain
                                 .iter()
                                 .map(|p| p.display().to_string())

@@ -58,6 +58,7 @@ pub mod clock;
 pub mod config;
 pub mod dump;
 pub mod render;
+pub mod rotation;
 pub mod sessions;
 pub mod store;
 pub mod theme;

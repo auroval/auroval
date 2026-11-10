@@ -1,0 +1,165 @@
+compositor   wayland-2  instance acc1aa0bf…
+work         /tmp/auroval-fail-RGaWwX
+window       14 s per case
+
+-- L6  config with a syntax error   PASS
+   ✓  names the file it could not read
+   ✓  still reached `locked`
+   ✓  still presented a frame
+      auroval-lock: /tmp/auroval-fail-RGaWwX/broken.lua: syntax error: /tmp/auroval-fail-RGaWwX/broken.lua:3: '}' expected (to close '{' at line 1) near <eof>; using defaults
+      auroval-lock: pam service auroval-lock, user dirk
+      auroval-lock: lock requested, 1 surface(s) created; waiting for `locked`
+      auroval-lock: first locked frame at 6 ms
+      auroval-lock: locked at 7 ms — the compositor has hidden the desktop
+      auroval-lock: AUROVAL_LOCK_SECONDS elapsed; exiting WITHOUT unlocking. The session stays locked -- close the nested compositor.
+      auroval-lock: surfaces     1 at 1255x674 scale 1
+      auroval-lock: first frame   6 ms after start
+      auroval-lock: memory       — (no video in the chain)
+      auroval-lock: cpu          0.4% of one core (0.05 s of cpu in 14.0 s wall)
+      auroval-lock: R7 ceiling   50% of one core — within budget
+      auroval-lock: unlock       never attempted — this run ended without a submission
+
+-- L6  config absent   PASS
+   ✓  reached `locked` with no config at all
+   ✓  presented a frame
+      auroval-lock: /tmp/auroval-fail-RGaWwX/not-here.lua: not read (No such file or directory (os error 2)); using defaults
+      auroval-lock: pam service auroval-lock, user dirk
+      auroval-lock: lock requested, 1 surface(s) created; waiting for `locked`
+      auroval-lock: first locked frame at 5 ms
+      auroval-lock: locked at 6 ms — the compositor has hidden the desktop
+      auroval-lock: AUROVAL_LOCK_SECONDS elapsed; exiting WITHOUT unlocking. The session stays locked -- close the nested compositor.
+      auroval-lock: surfaces     1 at 1255x674 scale 1
+      auroval-lock: first frame   5 ms after start
+      auroval-lock: memory       — (no video in the chain)
+      auroval-lock: cpu          0.3% of one core (0.04 s of cpu in 14.0 s wall)
+      auroval-lock: R7 ceiling   50% of one core — within budget
+      auroval-lock: unlock       never attempted — this run ended without a submission
+
+-- L6  config unreadable (mode 000)   PASS
+   ✓  names the file it could not read
+   ✓  still reached `locked`
+   ✓  still presented a frame
+      auroval-lock: /tmp/auroval-fail-RGaWwX/unreadable.lua: not read (Permission denied (os error 13)); using defaults
+      auroval-lock: pam service auroval-lock, user dirk
+      auroval-lock: lock requested, 1 surface(s) created; waiting for `locked`
+      auroval-lock: first locked frame at 6 ms
+      auroval-lock: locked at 7 ms — the compositor has hidden the desktop
+      auroval-lock: AUROVAL_LOCK_SECONDS elapsed; exiting WITHOUT unlocking. The session stays locked -- close the nested compositor.
+      auroval-lock: surfaces     1 at 1255x674 scale 1
+      auroval-lock: first frame   6 ms after start
+      auroval-lock: memory       — (no video in the chain)
+      auroval-lock: cpu          0.2% of one core (0.03 s of cpu in 14.0 s wall)
+      auroval-lock: R7 ceiling   50% of one core — within budget
+      auroval-lock: unlock       never attempted — this run ended without a submission
+
+-- L5  no GStreamer plugins   PASS
+   ✓  said what it fell back to
+   ✓  still reached `locked`
+   ✓  still presented a frame
+      auroval-lock: pam service auroval-lock, user dirk
+      auroval-lock: lock requested, 1 surface(s) created; waiting for `locked`
+      [background] background /tmp/auroval-fail-RGaWwX/clip.mp4 unavailable: no glsinkbin: Failed to find element factory with name 'glsinkbin' for creating element; trying /usr/local/share/auroval/nightshade-01.png
+      auroval-lock: first locked frame at 6 ms
+      auroval-lock: locked at 7 ms — the compositor has hidden the desktop
+      [background] decoded /usr/local/share/auroval/nightshade-01.png (2560x1440) in 59.651118ms
+      auroval-lock: AUROVAL_LOCK_SECONDS elapsed; exiting WITHOUT unlocking. The session stays locked -- close the nested compositor.
+      auroval-lock: surfaces     1 at 1255x674 scale 1
+      auroval-lock: first frame   6 ms after start
+      auroval-lock: memory       — (no video in the chain)
+      auroval-lock: problem      background /tmp/auroval-fail-RGaWwX/clip.mp4 unavailable: no glsinkbin: Failed to find element factory with name 'glsinkbin' for creating element; trying /usr/local/share/auroval/nightshade-01.png
+      auroval-lock: cpu          0.8% of one core (0.11 s of cpu in 14.0 s wall)
+      auroval-lock: R7 ceiling   50% of one core — within budget
+      auroval-lock: unlock       never attempted — this run ended without a submission
+
+-- L7  the GL context destroyed under a working lock   PASS
+   ✓  reached `locked` before anything broke
+   ✓  presented a frame first
+   ✓  the hook fired
+   ✓  noticed, and said so once
+   ✓  kept turning the loop with nothing to draw
+   ✓  reached its own deadline after the loss
+   ✓  did not panic
+   ✓  the turning came AFTER the loss
+   ✓  the deadline came AFTER the loss
+      auroval-lock: pam service auroval-lock, user dirk
+      auroval-lock: AUROVAL_LOCK_BREAK_GL=3 — THE GL CONTEXT WILL BE
+      auroval-lock:   DESTROYED ON PURPOSE after 3 presented frames.
+      auroval-lock:   This is L7's test hook. The session stays locked and
+      auroval-lock:   the only way out is still the right password.
+      auroval-lock: lock requested, 1 surface(s) created; waiting for `locked`
+      [background] playing /tmp/auroval-fail-RGaWwX/clip.mp4
+      auroval-lock: first locked frame at 29 ms
+      auroval-lock: locked at 29 ms — the compositor has hidden the desktop
+      auroval-lock: destroying the GL context on purpose after 3 frames (L7).
+      auroval-lock: the GL context is gone (An Context argument does not name a valid EGL rendering context.).
+      auroval-lock:   the screen keeps its last frame. THE FIELD STILL ACCEPTS INPUT and the password still unlocks (L7).
+      auroval-lock: draws 3 of 65 turns in 1.01 s, cpu 30.8% of one core (since start 30.8%)
+      auroval-lock: draws 0 of 63 turns in 1.01 s, cpu 9.9% of one core (since start 20.3%)
+      auroval-lock: draws 0 of 63 turns in 1.01 s, cpu 10.9% of one core (since start 17.2%)
+      auroval-lock: draws 0 of 63 turns in 1.01 s, cpu 8.9% of one core (since start 15.1%)
+      auroval-lock: draws 0 of 63 turns in 1.01 s, cpu 10.9% of one core (since start 14.3%)
+      auroval-lock: draws 0 of 63 turns in 1.01 s, cpu 9.9% of one core (since start 13.5%)
+      auroval-lock: draws 0 of 63 turns in 1.01 s, cpu 9.9% of one core (since start 13.0%)
+      auroval-lock: draws 0 of 63 turns in 1.01 s, cpu 10.9% of one core (since start 12.7%)
+      auroval-lock: draws 0 of 63 turns in 1.01 s, cpu 10.9% of one core (since start 12.5%)
+      auroval-lock: draws 0 of 63 turns in 1.01 s, cpu 10.9% of one core (since start 12.4%)
+      auroval-lock: draws 0 of 63 turns in 1.01 s, cpu 10.9% of one core (since start 12.2%)
+      auroval-lock: draws 0 of 63 turns in 1.01 s, cpu 9.9% of one core (since start 12.0%)
+      auroval-lock: draws 0 of 63 turns in 1.01 s, cpu 10.9% of one core (since start 12.0%)
+      auroval-lock: AUROVAL_LOCK_SECONDS elapsed; exiting WITHOUT unlocking. The session stays locked -- close the nested compositor.
+      auroval-lock: surfaces     1 at 1255x674 scale 1
+      auroval-lock: first frame   29 ms after start
+      auroval-lock: memory       GLMemory — the frame was already a texture here
+      auroval-lock: cpu          11.8% of one core (1.65 s of cpu in 14.0 s wall)
+      auroval-lock: R7 ceiling   50% of one core — within budget
+      auroval-lock: unlock       never attempted — this run ended without a submission
+
+-- L5  clip truncated mid-playback   PASS
+   ✓  reached `locked` before the file went
+   ✓  presented a frame
+   ✓  did not panic when the stream ended
+      auroval-lock: pam service auroval-lock, user dirk
+      auroval-lock: lock requested, 1 surface(s) created; waiting for `locked`
+      [background] playing /tmp/auroval-fail-RGaWwX/clip.mp4
+      auroval-lock: first locked frame at 18 ms
+      auroval-lock: locked at 19 ms — the compositor has hidden the desktop
+      [background] background /tmp/auroval-fail-RGaWwX/clip.mp4 unavailable: Stream contains no data.; trying /usr/local/share/auroval/nightshade-01.png
+      [background] decoded /usr/local/share/auroval/nightshade-01.png (2560x1440) in 54.785923ms
+      auroval-lock: AUROVAL_LOCK_SECONDS elapsed; exiting WITHOUT unlocking. The session stays locked -- close the nested compositor.
+      auroval-lock: surfaces     1 at 1255x674 scale 1
+      auroval-lock: first frame   18 ms after start
+      auroval-lock: memory       — (no video in the chain)
+      auroval-lock: problem      background /tmp/auroval-fail-RGaWwX/clip.mp4 unavailable: Stream contains no data.; trying /usr/local/share/auroval/nightshade-01.png
+      auroval-lock: cpu          5.6% of one core (0.78 s of cpu in 14.0 s wall)
+      auroval-lock: R7 ceiling   50% of one core — within budget
+      auroval-lock: unlock       never attempted — this run ended without a submission
+
+-- recovery  a locker killed while it holds the lock
+   ✓  it held the lock
+   ✓  a second locker is DECLINED — no supervisor can rescue this
+   ✓  it exits non-zero on `finished` — L8 asks for this; exit was 3
+   ✓  `hl.clear_crashed_lockscreen()` released it
+
+summary:
+╭───┬───────────────────────────────────────────────────┬────────╮
+│ # │                       case                        │ result │
+├───┼───────────────────────────────────────────────────┼────────┤
+│ 0 │ L6  config with a syntax error                    │ PASS   │
+│ 1 │ L6  config absent                                 │ PASS   │
+│ 2 │ L6  config unreadable (mode 000)                  │ PASS   │
+│ 3 │ L5  no GStreamer plugins                          │ PASS   │
+│ 4 │ L7  the GL context destroyed under a working lock │ PASS   │
+│ 5 │ L5  clip truncated mid-playback                   │ PASS   │
+╰───┴───────────────────────────────────────────────────┴────────╯
+
+
+What no unattended round can show: that any of these screens UNLOCKS.
+That needs a password typed by a person. The attended step, once:
+
+  Hyprland -c spike/p3/nested.lua
+  with-env {WAYLAND_DISPLAY: wayland-2, AUROVAL_CONFIG: /tmp/auroval-fail-RGaWwX/broken.lua,
+            AUROVAL_LOCK_REHEARSAL: '1'} { ./target/release/auroval-lock rehearse }
+
+Type your password into the broken-config screen. It should unlock.
+If it does not, the way out is from another tty:
+  hyprctl --instance acc1aa0bfd4bd575dcb0f76c35ccf12b660a1ab9_1794312186_1045988043 eval 'hl.clear_crashed_lockscreen()'
