@@ -145,18 +145,47 @@ it and this one cannot.
 
 ## 4. Two findings nobody was looking for
 
-**Hyprland takes 5.00 s to send `locked`.** Measured twice, at 5000 ms and
-5000 ms from process start, with the first locked frame 23–29 ms after it.
-The flatness of that figure says it is a deliberate delay in the compositor
-and not work: the client is ready in tens of milliseconds and waits for
-five seconds. The protocol permits it — the compositor may not send `locked`
-*"until a new 'locked' frame has been presented on all outputs and no security
-sensitive normal/unlocked content is possibly visible"*, and when that happens
-is its business. But it means **a locker's own first-frame budget is not the
-number a user experiences**, which is the shape R16 has for the greeter and
-would be a misleading requirement here. Recorded as **N4** in the PRD rather
-than written as a budget. Whether it is configurable in Hyprland, or specific
-to the nested backend, was not investigated.
+**~~Hyprland takes 5.00 s to send `locked`.~~ It was waiting for us.**
+Measured twice at 5000 ms from process start, with the first locked frame
+23–29 ms *after* it. The flatness said deliberate delay rather than work, and
+the conclusion drawn here was that the delay was the compositor's business.
+
+**That was wrong, and the sentence that disproves it is quoted in the
+paragraph it was written in.** The compositor may not send `locked` *"until a
+new 'locked' frame has been presented on all outputs"* — so it was waiting for
+a frame from this client. And this client created no lock surface until the
+`locked` event arrived, because `get_lock_surface`'s *"These won't be
+displayed by the compositor unless the lock is successful and the locked event
+is sent"* had been read as a prohibition instead of as the reassurance it is.
+Each side waited for the other; Hyprland broke the deadlock with a timeout and
+showed its own fallback in the meantime.
+
+Found on 2026-11-10 by the maintainer, who locked his own screen with the new
+keybind and saw *"a black rectangle with large blown-up text in it"* smearing
+under the mouse before the lock screen appeared — the compositor's fallback,
+unrepainted, for five seconds. Nobody had seen it before because every
+measurement until then was a nested window on a desktop that was repainting
+it anyway.
+
+Fixed by creating the surfaces immediately after `lock()`:
+
+| | before | after |
+|---|---|---|
+| `locked` | 5000 ms | **34 ms** with a video background, **6 ms** with a still |
+| first locked frame | 5034 ms | **27 ms** / **5 ms** |
+
+Receipt: `failure-round-2026-11-10-handshake.txt`, the whole round re-run
+against the fixed handshake — six of six, and the recovery sequence with it,
+so nothing in L5–L8 or L11 depended on the inverted order.
+
+And the order flipped: the frame now precedes `locked`, which is what the
+protocol describes. The log had been printing the two the wrong way round for
+five days, which was visible evidence of an inverted handshake that nobody
+read — because the 5 s had a name, **N4**, and a thing with a name looks
+handled.
+
+So a locker's first-frame budget *is* the number a user experiences after all,
+and N4 is answered rather than open.
 
 **Fail-closed was demonstrated by accident, which is the best way to learn
 it.** An early version of `lock-measure.nu` killed the locker before its own

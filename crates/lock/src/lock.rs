@@ -39,6 +39,15 @@
 //! happens to be on top, and the gap between asking for it and getting it is
 //! a gap in which the desktop is on screen.
 //!
+//! **And read the other half of that sentence**, which this file had quoted
+//! correctly and acted against until 2026-11-10. *"A new 'locked' frame has
+//! been presented"* means a frame from **this client**: the compositor is
+//! waiting for a lock surface. So the surfaces are created the moment
+//! `lock()` is sent, not when `locked` arrives — doing it the other way round
+//! makes both sides wait for each other, and Hyprland breaks that with a
+//! five-second timeout while it shows a fallback of its own. `add_output` has
+//! the full story.
+//!
 //! **This module reads a password and sends it to PAM**, and the paragraph
 //! here used to say the opposite -- *"it does not read a password, hold one,
 //! or have anywhere to send one"* -- which was true of the skeleton and
@@ -629,7 +638,19 @@ pub fn run(cfg: Config) -> Result<Outcome, String> {
     // `locked` event "won't be displayed", and `SessionLock::unlock` is only
     // legal after it. `locked()` below is what promotes this to held state.
     lock.pending = Some(held);
-    eprintln!("auroval-lock: lock requested; waiting for the compositor's `locked`");
+    // Immediately, and this order is the protocol's own: the compositor may
+    // not send `locked` until it has presented a locked frame on every
+    // output, so it is waiting for these. Creating them after `locked` is
+    // what cost five seconds and showed the compositor's fallback instead of
+    // a lock screen -- see `add_output`.
+    let outputs: Vec<_> = lock.output_state.outputs().collect();
+    for o in outputs {
+        lock.add_output(o);
+    }
+    eprintln!(
+        "auroval-lock: lock requested, {} surface(s) created; waiting for `locked`",
+        lock.screens.len()
+    );
 
     while !lock.done {
         loop_
@@ -789,11 +810,35 @@ impl Lock {
         if self.screens.contains_key(&id) {
             return;
         }
-        let (Some(lock), Some(compositor), Some(qh)) =
-            (&self.session_lock, &self.compositor, &self.qh)
-        else {
-            // Before `locked`, there is no lock object to hang a surface off.
-            // `locked()` walks the outputs again, so nothing is lost.
+        // `pending` as well as `session_lock`, and that is the fix for the
+        // five seconds of garbage the maintainer saw on 2026-11-10.
+        //
+        // This used to take `session_lock` alone, so no surface existed until
+        // the `locked` event had arrived -- on the reading that the protocol
+        // forbids it. It does not. `get_lock_surface` says the client is
+        // *"expected to create lock surfaces for all outputs currently
+        // present"*, and the sentence that was read as a prohibition --
+        // *"These won't be displayed by the compositor unless the lock is
+        // successful and the locked event is sent"* -- is a reassurance that
+        // doing it early is harmless, not an instruction to wait.
+        //
+        // Waiting inverted the handshake, because `locked` *"must not be sent
+        // until a new locked frame has been presented on all outputs"*. The
+        // compositor was waiting for a frame from a client that would not
+        // make a surface until the compositor stopped waiting. Hyprland broke
+        // the deadlock with a timeout -- which is N4's unexplained, suspi-
+        // ciously flat 5.00 s -- and showed its own fallback in the meantime,
+        // unrepainted, which is the black rectangle that smeared under the
+        // mouse.
+        let (Some(lock), Some(compositor), Some(qh)) = (
+            self.session_lock.as_ref().or(self.pending.as_ref()),
+            &self.compositor,
+            &self.qh,
+        ) else {
+            // Neither held nor pending: `lock()` has not been sent yet, so
+            // there is genuinely nothing to hang a surface off. `run` walks
+            // the outputs the moment it has been, and `locked` walks them
+            // again, so nothing is lost either way.
             return;
         };
         let info = self.output_state.info(&output);
@@ -1018,6 +1063,12 @@ impl SessionLockHandler for Lock {
         // Rule 3: every output that exists now, plus every one announced
         // later by `new_output`. A missed output is a monitor still showing
         // the desktop.
+        //
+        // These are normally all here already -- `run` created them the
+        // moment `lock()` was sent, which is what the compositor was waiting
+        // for. `add_output` skips what exists, so this is the belt to that
+        // braces: an output announced between the request and this event
+        // still gets a surface.
         let outputs: Vec<_> = self.output_state.outputs().collect();
         for o in outputs {
             self.add_output(o);
