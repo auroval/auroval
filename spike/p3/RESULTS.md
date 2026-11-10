@@ -266,3 +266,67 @@ barely started. Both are fixed — `finished` now exits **3**, and a run with no
 frames in it gets no budget verdict — and both are the shape of the summary
 that denied its own unlock a day earlier: a line that was true once, stated as
 a constant, with nothing reading it back.
+
+## 7. L7, and the two things that made it look broken
+
+**2026-11-10.** The 2026-11-09 round could ask four of L5–L8 and not this
+one: a broken config, a missing file, a truncated clip and a second locker
+can all be arranged from outside the process, and taking a GL context away
+cannot. So the binary carries the way to do it —
+`Gl::break_context_on_purpose`, asked for with
+`AUROVAL_LOCK_BREAK_GL=<frames>` — and the round has a sixth case. Receipt:
+`failure-round-2026-11-10.txt`, six of six.
+
+With the context destroyed three frames into a working lock, the locker
+reports the loss **once** rather than per turn, keeps turning the loop at 63
+turns a second drawing nothing, still reaches its own deadline afterwards,
+and does not panic. The two ordering checks are the point: presence proves
+nothing when the claim is *after*.
+
+### The silence that was there before the hook was
+
+`draw_all` had `if gl.make_current(target).is_err() { continue; }`. That is
+the right thing to **do** and it says nothing — after a context is lost every
+turn takes that branch, so a screen frozen on its last frame and a screen
+with nothing to redraw are the same log. It reports once now.
+
+### Why a FAIL in the middle of this was not a failure
+
+The second run of the round printed six crosses against L7. Nothing was
+wrong with L7. Two causes, both the operator's and neither the locker's:
+
+1. **The nested window was not on the visible workspace.** Hyprland does not
+   render a window you are not looking at, and a nested compositor that is
+   not being rendered never finishes the `ext-session-lock-v1` handshake. The
+   locker sat at `waiting for the compositor's locked` for ever and every
+   assertion about it came out false. Diagnosed by the maintainer, from his
+   own screen, which is the second time that has been the thing that caught
+   it.
+2. **A hand-run had left the lock held.** `AUROVAL_LOCK_SECONDS` exits
+   *without* unlocking (L9), so every later run was sent `finished` and
+   exited 3. That is L8 working, and it reads like a fault.
+
+The round now reports **VOID** rather than FAIL for a case that never reached
+`locked`, and names which of the two it was. A requirement that was never
+asked has not been failed, and a harness that cannot tell the difference will
+eventually send somebody to fix code that is fine.
+
+### What the hook costs, and what it cannot reach
+
+Measured rather than assumed, and the first version of this section had it
+wrong. After the loss the process spends **11–18% of one core** with a video
+background and **0–1%** with a still — unchanged by skipping the draw path,
+because the cost is GStreamer decoding on its own threads whether or not
+anyone pulls the samples.
+
+Stopping the pipeline would reclaim that and is deliberately not done.
+`Video` wraps **this** context — `GLContext::new_wrapped` over our own handle,
+not a context of its own — so taking the pipeline to `Null` frees GLMemory
+against the context that was just destroyed. That is the hazard, not the way
+out of it.
+
+The same wrapping is the honest limit of the hook. A real driver reset takes
+GStreamer's view of the context with it, and GStreamer would then make GL
+calls on a dead context from its own threads with none of our code in
+between. Destroying a context between two frames does not reproduce that, and
+L7 says so rather than claiming the stronger thing.

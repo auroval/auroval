@@ -553,3 +553,48 @@ impl Gl {
         self.draw_text(s, px, cx - w * 0.5, cy + baseline, colour);
     }
 }
+
+impl Gl {
+    /// Destroy this context on purpose, so that L7 can be asked at all.
+    ///
+    /// # Why this exists in the shipped binary
+    ///
+    /// L7 says losing the GL context must not prevent unlocking, and the
+    /// 2026-11-09 failure round could not ask it: four of L5–L8 can be
+    /// provoked from outside the process — a broken config, a missing file,
+    /// a truncated clip, a second locker — and this one cannot. There is no
+    /// honest way to take a GL context away from a process you are not
+    /// inside. So either the binary carries a way to do it or the
+    /// requirement stays an argument, and an untested MUST on the unlock
+    /// path is worse than a test hook with a loud name.
+    ///
+    /// # What it is, and what it is not
+    ///
+    /// A driver reload, a GPU hang recovery and a `GL_CONTEXT_LOST` all end
+    /// the same way for the code above them: a context that no longer works,
+    /// and every later `eglMakeCurrent` failing. `eglDestroyContext` on a
+    /// released context produces exactly that failure, which is why it is
+    /// what this uses.
+    ///
+    /// It is **not** the same event. A real reset can also invalidate the
+    /// textures, the programs and the GStreamer context sharing this
+    /// display, and it arrives without warning in the middle of a call
+    /// rather than between two frames. So this proves the recovery path is
+    /// reached and that input and PAM survive it; it does not prove this
+    /// process survives a driver reset, and L7 should say so rather than
+    /// claim the stronger thing.
+    ///
+    /// The context is released before it is destroyed, deliberately: EGL
+    /// defines `eglDestroyContext` on a *current* context as a request to
+    /// delete it when it stops being current, so destroying it while current
+    /// would leave a working context and a test that proves nothing.
+    pub fn break_context_on_purpose(&mut self) -> Result<(), String> {
+        self.egl
+            .make_current(self.display, None, None, None)
+            .map_err(|e| format!("releasing the context: {e}"))?;
+        self.egl
+            .destroy_context(self.display, self.context)
+            .map_err(|e| format!("destroying the context: {e}"))?;
+        Ok(())
+    }
+}

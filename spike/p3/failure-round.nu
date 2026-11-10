@@ -33,6 +33,16 @@
 # frame -- and the attended step the script prints at the end is where the
 # unlock half gets its evidence.
 #
+# KEEP THE NESTED WINDOW IN FRONT WHILE THIS RUNS. Hyprland does not render
+# a window on a workspace you are not looking at, and a nested compositor
+# that is not being rendered never finishes the `ext-session-lock-v1`
+# handshake -- so the locker sits at `waiting for the compositor's locked`
+# for ever and every assertion about it comes out false. On 2026-11-10 that
+# printed six crosses against L7 and nothing was wrong with L7. Cases now
+# report VOID rather than FAIL when they never reached `locked`, which is the
+# reader that was missing, but the round still needs that window visible to
+# produce an answer at all.
+#
 # usage:
 #   Hyprland -c spike/p3/nested.lua          # from the session you are in
 #   nu spike/p3/failure-round.nu wayland-2
@@ -74,6 +84,17 @@ def clear-lock [sig: string] {
 def check [log: string, pattern: string, want: bool, what: string]: nothing -> record {
     let hit = ((open $log | lines | where ($it =~ $pattern) | length) > 0)
     {what: $what, ok: ($hit == $want), saw: $hit}
+}
+
+# Presence is not the claim L7 makes. "The loop was still turning AFTER the
+# context went" is an ordering, and two greps that both say yes can still be
+# describing a log where the second line came first. So this reads the line
+# numbers.
+def check-order [log: string, first: string, then: string, what: string]: nothing -> record {
+    let lines = (if ($log | path exists) { open $log | lines } else { [] })
+    let i = ($lines | enumerate | where ($it.item =~ $first) | get -o 0.index)
+    let j = ($lines | enumerate | where ($it.item =~ $then) | reverse | get -o 0.index)
+    {what: $what, ok: ($i != null and $j != null and $j > $i), saw: ($i != null and $j != null)}
 }
 
 def main [display: string, --seconds: int = 14] {
@@ -175,6 +196,34 @@ def main [display: string, --seconds: int = 14] {
             ]
         }
         {
+            name: "L7  the GL context destroyed under a working lock"
+            cfg: $"($work)/good.lua"
+            env: {
+                # Three frames in, so the lock was working and a frame had
+                # reached the screen before anything was taken away.
+                AUROVAL_LOCK_BREAK_GL: "3"
+                # The per-second line is the evidence that the loop kept
+                # turning once drawing became impossible -- `draws 0 of N`.
+                AUROVAL_LOG_DRAWS: "1"
+            }
+            break_clip: false
+            want: [
+                [pattern want what];
+                ['locked at'                             true  "reached `locked` before anything broke"]
+                ['first locked frame at'                 true  "presented a frame first"]
+                ['destroying the GL context on purpose'  true  "the hook fired"]
+                ['the GL context is gone'                true  "noticed, and said so once"]
+                ['draws 0 of [0-9]+ turns'               true  "kept turning the loop with nothing to draw"]
+                ['AUROVAL_LOCK_SECONDS elapsed'          true  "reached its own deadline after the loss"]
+                ['panic'                                 false "did not panic"]
+            ]
+            order: [
+                [first then what];
+                ['the GL context is gone' 'draws 0 of [0-9]+ turns' "the turning came AFTER the loss"]
+                ['the GL context is gone' 'AUROVAL_LOCK_SECONDS elapsed' "the deadline came AFTER the loss"]
+            ]
+        }
+        {
             name: "L5  clip truncated mid-playback"
             cfg: $"($work)/good.lua"
             env: {}
@@ -234,9 +283,50 @@ def main [display: string, --seconds: int = 14] {
         clear-lock $sig
         cp $clip $mine
 
-        let checks = ($case.want | each {|w| (check $log $w.pattern $w.want $w.what) })
-        let passed = (($checks | where not ok | length) == 0)
-        print $"-- ($case.name)   (if $passed { 'PASS' } else { 'FAIL' })"
+        let checks = (
+            ($case.want | each {|w| (check $log $w.pattern $w.want $w.what) })
+            | append (($case.order? | default []) | each {|o| (check-order $log $o.first $o.then $o.what) })
+        )
+        # A case that never reached `locked` has not failed its requirement;
+        # it has not asked it. Said once and loudly, because the first time
+        # this happened it printed six ✗ against L7 and the requirement was
+        # fine -- the nested compositor had stopped answering.
+        #
+        # Two ways that happens, both found on 2026-11-10 and neither the
+        # locker's doing:
+        #
+        #   * the nested window is not on the workspace you are looking at,
+        #     so Hyprland stops rendering it, so it never finishes the lock
+        #     handshake. The round only works while that window is VISIBLE.
+        #   * the compositor is still holding a lock from an earlier run. The
+        #     locker is then sent `finished` and exits 3, which this names
+        #     separately because it is L8's behaviour working correctly.
+        let asked = (((check $log 'locked at' true "") | get saw)
+            or ((check $log 'first locked frame at' true "") | get saw))
+        let declined = ((check $log '`finished`' true "") | get saw)
+        let verdict = (if $asked {
+            if (($checks | where not ok | length) == 0) { "PASS" } else { "FAIL" }
+        } else if $declined {
+            "VOID"
+        } else {
+            "VOID"
+        })
+        let passed = ($verdict == "PASS")
+        print $"-- ($case.name)   ($verdict)"
+        if not $asked {
+            print "   !  this case never reached `locked`, so it asked its requirement"
+            print "      NOTHING. Not a failure of the locker."
+            if $declined {
+                print "      The compositor sent `finished` (exit 3): it is still holding a"
+                print "      lock from an earlier run. Clear it and run again:"
+                print $"        hyprctl --instance ($sig) eval 'hl.clear_crashed_lockscreen\(\)'"
+            } else {
+                print "      The compositor never answered at all. The usual cause is the"
+                print "      nested window not being on the workspace you are looking at --"
+                print "      Hyprland stops rendering it, so it never completes the"
+                print "      handshake. Put that window in front and run again."
+            }
+        }
         for c in $checks {
             print $"   (if $c.ok { '✓' } else { '✗' })  ($c.what)"
         }
@@ -249,7 +339,7 @@ def main [display: string, --seconds: int = 14] {
             | each {|l| $"      ($l)" }
             | str join "\n")
         print ""
-        $results = ($results | append {case: $case.name, result: (if $passed { "PASS" } else { "FAIL" })})
+        $results = ($results | append {case: $case.name, result: $verdict})
     }
 
     # The recovery sequence, asserted rather than remembered. This is the
