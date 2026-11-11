@@ -154,6 +154,30 @@ DESKTOP_CONSTANT = [
 # to be truncated away. It holds for both surfaces.
 NO_MARKS = "no text, no lettering, no signature, no logo, no watermark"
 
+# The same clause for a scene whose subject *is* writing. scene-08's jars want
+# brushed characters on their paper labels, and the blanket "no lettering"
+# above is aimed at a different thing entirely: a signature in the corner, a
+# stock watermark, a logo the model saw a million of. Both were one string, so
+# a scene could not keep one and drop the other.
+#
+# The ban is therefore narrowed rather than lifted. Everything that protects
+# the frame stays; only the labels are let through, and they are named, so
+# writing anywhere else is still refused.
+#
+# What this clause cannot do is make the characters mean anything. A 4B
+# distilled model draws glyph-shaped marks, not words, so a run under this
+# flag has to be *read* before it ships -- which is the one check a blanket
+# ban never needed.
+NO_MARKS_LABELS = (
+    "no signature, no logo, no watermark, and no writing anywhere in the "
+    "picture except the brushed characters on the jars' paper labels"
+)
+
+LETTERING = {
+    None: NO_MARKS,
+    "labels": NO_MARKS_LABELS,
+}
+
 SURFACES = {
     "greeter": GREETER_CONSTANT + GREETER_NEGATIVE_AS_POSITIVE,
     "desktop": DESKTOP_CONSTANT,
@@ -168,7 +192,7 @@ GUIDANCE = 1.0
 WIDTH, HEIGHT = 2560, 1440
 
 
-def assemble(subject: str, surface: str = "greeter") -> str:
+def assemble(subject: str, surface: str = "greeter", lettering: str | None = None) -> str:
     """The full prompt, in the order the clauses are given to the model.
 
     Style first because it is the most visible thing about the image (§4.1.1),
@@ -176,7 +200,7 @@ def assemble(subject: str, surface: str = "greeter") -> str:
     record goes; it is recorded here so that the next scene does not have to
     guess at it the way this one did.
     """
-    parts = [STYLE, subject, *SURFACES[surface], NO_MARKS]
+    parts = [STYLE, subject, *SURFACES[surface], LETTERING[lettering]]
     return ". ".join(p.rstrip(" .,") for p in parts) + "."
 
 
@@ -208,6 +232,17 @@ def load_brief(path: Path) -> dict:
             "a greeter background keeps a rectangle clear for the clock and "
             "the input field, and a wallpaper fills the frame."
         )
+    # Optional, and absent means the strictest reading. A brief that says
+    # nothing about lettering gets the blanket ban, so adding this key could
+    # not change any scene that already existed.
+    lettering = brief.get("lettering")
+    if lettering not in LETTERING:
+        sys.exit(
+            f"{path}: 'lettering' must be omitted or one of "
+            f"{sorted(k for k in LETTERING if k)}; omitted bans all writing, "
+            "'labels' bans all writing except the characters on the jars' "
+            "paper labels."
+        )
     return brief
 
 
@@ -221,7 +256,7 @@ def main() -> None:
     args = ap.parse_args()
 
     brief = load_brief(args.brief)
-    prompt = assemble(brief["subject"], brief["surface"])
+    prompt = assemble(brief["subject"], brief["surface"], brief.get("lettering"))
     seeds = [int(s) for s in args.seeds.split(",") if s.strip()]
 
     print(f"tag     {brief['tag']}")
@@ -329,6 +364,7 @@ def main() -> None:
                 {
                     "tag": brief["tag"],
                     "surface": brief["surface"],
+                    "lettering": brief.get("lettering"),
                     "seed": seed,
                     "model": MODEL,
                     "revision": REVISION,
