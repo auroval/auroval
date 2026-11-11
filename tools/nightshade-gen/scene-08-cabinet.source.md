@@ -7,6 +7,20 @@ edge to edge and keeps nothing clear, because nothing sits on top of it
 Chosen by the maintainer on 2026-11-10 from six seeds (1, 3, 7, 11, 17, 23), together
 with the other two scenes committed that day.
 
+> **This record describes the seed-11 run, and the brief has since changed.**
+> On 2026-11-11 the maintainer found that the seed-11 master shows a lamb both
+> inside and outside a jar on the middle shelf — its hindquarters within the
+> glass, its foreleg across the rim. The brief was the cause: *"standing in
+> that liquid the things the cabinet keeps"* was its only containment clause,
+> buried mid-sentence where it read as subject rather than structure, and
+> *"a two-headed lamb foetus"* was split by the model into two separate lambs.
+> `scene-08-cabinet.json` now states containment three times and binds the
+> lamb to one jar, and asks for brushed characters on the labels under the new
+> `lettering: labels` key. Twelve candidates were generated under the amended
+> brief; none has been selected. Everything below — seed, prompt, measured
+> hue — still describes the image that shipped, and will be rewritten when a
+> replacement is chosen.
+
 ## Why this subject
 
 An apothecary specimen cabinet. Not one of §4.5.2's five: proposed 2026-11-10 while generating the other two, on the grounds that it satisfies both clauses a desktop scene inherits (§4.5.1). *Ornamented* is the whole substance of it rather than a layer on top — ranked jars, cobwebs, instruments, shelf after shelf of surface. *Edged* sits in what the jars hold: the form is the traditional cabinet still life and the content is a two-headed foetus, loose teeth, a bored skull.

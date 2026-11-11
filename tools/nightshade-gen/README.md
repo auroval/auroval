@@ -112,6 +112,31 @@ transformer and its text encoder at 2560×1440 do not fit a consumer card
 alongside a running compositor, and offloading costs wall-clock and nothing
 else.
 
+**One process per seed, not one process per batch.** `--seeds 31,37,41,43,47,53`
+ran three seeds and then died on the fourth with `CUDA out of memory`, trying
+to allocate 350 MiB on a 12 GiB card that had 274 MiB free. Nothing leaked:
+the desktop held ~650 MiB across Sunshine, Firefox, Signal and the
+compositor's helpers, the run itself held 9.75 GiB, and 807 MiB of that was
+reserved-but-unallocated -- fragmentation that grows with every seed the same
+process generates. So a long `--seeds` list is the least reliable way to ask
+for several candidates, which is unfortunate, because it is the obvious one.
+
+Loop outside the tool instead, one invocation per seed, and the card gets
+everything back in between:
+
+```nu
+$env.PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True"
+for seed in [31 37 41 43 47 53] {
+    print $"seed ($seed)"
+    .venv-gen/bin/python tools/nightshade-gen/generate.py (
+        "tools/nightshade-gen/scene-08-cabinet.json"
+    ) OUT/ --seeds $seed
+}
+```
+
+It costs about 30 s per seed in model reload, against a generation that takes
+about 45 s. That is the whole price, and it buys a batch that finishes.
+
 ## What this tool does not do
 
 It does not judge. `tools/scene-check/scene_check.py` measures a candidate
