@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Prepare a candidate for review at the scale its defects live at.
 
 This exists because of a specific failure. On 2026-11-11 six cabinet
