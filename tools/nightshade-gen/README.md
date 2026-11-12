@@ -137,6 +137,28 @@ for seed in [31 37 41 43 47 53] {
 It costs about 30 s per seed in model reload, against a generation that takes
 about 45 s. That is the whole price, and it buys a batch that finishes.
 
+**If you wrap that loop in a shell script, set `pipefail`.** A loop whose
+generation is piped into `grep | tail` tests the exit status of `tail`, which
+is always 0. On 2026-11-12 that produced six consecutive "seed ok" lines for
+six consecutive CUDA OOMs and ended with `all done: 0 candidates`. A check
+that cannot fail is worse than no check.
+
+## Reviewing a candidate: `review.py`
+
+`review.py` prepares a master for a judgement that a contact sheet cannot
+support. It cuts the image into 1:1 tiles — no resampling, so every pixel is
+the pixel the model drew — and measures the border strips, both as a 24 px
+band and as the outermost 4 px, because an average hides a hairline.
+
+```nu
+.venv-gen/bin/python tools/nightshade-gen/review.py OUT/ --out /tmp/tiles
+```
+
+It exits non-zero when a border fails. It does **not** decide whether a
+specimen is inside its jar: that is a soft, broken, low-contrast line in a
+painting full of similar lines, and a detector for it would cry wolf often
+enough to train you into clicking past it. Read the tiles.
+
 ## What this tool does not do
 
 It does not judge. `tools/scene-check/scene_check.py` measures a candidate
