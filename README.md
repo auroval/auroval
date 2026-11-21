@@ -109,7 +109,7 @@ The DNS at the registrar, for the apex:
 | AAAA | `@` | `2606:50c0:8002::153` |
 | AAAA | `@` | `2606:50c0:8003::153` |
 | CNAME | `www` | `auroval.github.io.` |
-| MX | `@` | `0 .` |
+| MX | `@` | *(none — see below)* |
 | TXT | `@` | `v=spf1 -all` |
 | TXT | `_dmarc` | `v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s` |
 
@@ -138,8 +138,25 @@ appears on a project page, because a domain that visibly sends no mail is a
 poor one to forge. The registrar's default `v=spf1 ~all` said *"probably not"*,
 which is not a useful thing to say.
 
-If a mailbox is ever wanted on this domain, all three come out first, before
-anything is pointed anywhere.
+**The null MX is not in the zone, because this registrar will not serve one.**
+TransIP's DNS editor reads a bare `.` as an empty value and substitutes the
+apex, so `MX 0 .` is stored and published as `MX 0 auroval.org.` — which is the
+exact record the paragraph above warns about, only with a lower priority
+number. Their own documentation says the mail-related records are managed while
+the panel's *TransIP instellingen* switch is on; with it off the record can be
+removed, which is where this ended up. Verified against `ns0.transip.net`
+directly rather than through a resolver, so it was the zone and not a cache.
+
+So the zone states its intent with `v=spf1 -all` and `p=reject` and has no `MX`
+at all. The cost is the fallback this section already describes: a sender with
+no `MX` to go on tries the `A` record, reaches a host that does not answer on
+port 25, and queues for a few days before bouncing. For a domain that receives
+no mail, a slow bounce is an acceptable price for a record the registrar cannot
+express — but it is a worse answer than the null MX, and it is written down
+here so that nobody spends another afternoon on that dot.
+
+If a mailbox is ever wanted on this domain, the SPF and DMARC records come out
+first, before anything is pointed anywhere.
 
 `.app`, `.nl` and `.online` are redirects and need no records here; they point at
 `.org` at the registrar.
