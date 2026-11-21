@@ -1,0 +1,29 @@
+name: Zola
+description: >-
+  Installs the Zola pinned in .devcontainer/zola-version.txt, using the same
+  script the devcontainer image builds with.
+runs:
+  using: composite
+  steps:
+    # Neither the version nor the install logic is written here. Both live
+    # under .devcontainer/, which the image's Dockerfile also builds from, so
+    # the runner and the container cannot drift apart -- the whole point of
+    # having a container. The reasons for the pin and the checksums are in
+    # zola-version.txt.
+    #
+    # The list sits under .devcontainer/ because that directory is the Docker
+    # build context and `COPY` cannot reach outside it; see the header of
+    # system-deps.txt. Reaching down into it from here is the cheaper half of
+    # that trade.
+    #
+    # $GITHUB_WORKSPACE rather than a relative path, so this does not depend on
+    # whatever working directory a caller happens to be in. The binary goes to
+    # ~/.local/bin rather than /usr/local/bin so the step needs no sudo.
+    - shell: bash
+      run: |
+        set -euo pipefail
+        script="$GITHUB_WORKSPACE/.devcontainer/install-zola.sh"
+        test -f "$script" || { echo "::error::missing $script"; exit 1; }
+        mkdir -p "$HOME/.local/bin"
+        sh "$script" "$HOME/.local/bin"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"

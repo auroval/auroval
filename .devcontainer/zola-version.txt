@@ -1,0 +1,42 @@
+# The static site generator the website is built with, pinned once.
+#
+# Zola is not in Debian bookworm, so unlike system-deps.txt this cannot be an
+# apt package: it is a release tarball from GitHub, which means the version and
+# the checksum have to be written down or the build is trusting whatever the
+# network hands it. The checksums below are the digests GitHub publishes for
+# the release assets themselves, not ones computed locally after downloading.
+#
+# It is deliberately NOT installed on the maintainer's host. The host is Arch
+# and runs the compositor; the container is where tooling lives. See
+# .devcontainer/Dockerfile for the same reasoning applied to the Rust
+# toolchain.
+#
+# The readers, which must not disagree:
+#
+#   .devcontainer/Dockerfile              installs it into the image
+#   .github/actions/zola/action.yml       installs it on the runner
+#
+# Both parse this file with the same three greps. Format: `key value...`, one
+# per line, `#` starts a comment. Add an architecture by adding a sha256 line;
+# anything not listed fails loudly rather than falling back to an unverified
+# download.
+#
+# To bump: change the version, then replace both digests with the ones from
+#   https://api.github.com/repos/getzola/zola/releases/latest
+# (each asset's `digest` field, already `sha256:`-prefixed there). Do not
+# compute them from a tarball you downloaded -- that checks the download
+# against itself.
+
+version 0.23.6
+
+# The two architectures are not symmetrical, and the file says so rather than
+# hiding it behind a constructed URL. x86_64 takes the musl build: statically
+# linked, so it does not care which libc or which Debian release it lands in.
+# Upstream publishes no aarch64 musl asset, so aarch64 takes the gnu one, which
+# is fine inside this image and is the reason the target triple is spelled out
+# here instead of being assembled from the architecture.
+sha256 x86_64  7d77a4220a4f699cba2fc0e0c7859f780e887e269159ad4fab90e11ea16c906f
+sha256 aarch64 266448fffbf7c7004ca399d0e76dd699541771096d8a42aede98cebe2a029d02
+
+target x86_64  x86_64-unknown-linux-musl
+target aarch64 aarch64-unknown-linux-gnu

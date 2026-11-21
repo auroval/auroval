@@ -53,6 +53,73 @@ constraints with their sources, and the assumptions that are still
 If you are evaluating whether this project should exist, read its "Ruled out"
 section. It includes a working alternative that needs no code.
 
+## The website
+
+[`site/`](site/) is auroval.org, built with Zola. It is one page today — what
+the suite is, the tenets with their costs, and the palette rule with its
+measurements — and the documentation under `docs/` is the obvious thing it
+grows into, which is why it is a generator and not a hand-written page.
+
+Two of its files are **generated and must not be edited**: `site/sass/_tokens.scss`
+and `site/static/gamut.json` both come out of
+[`tools/scene-check/emit_web_tokens.py`](tools/scene-check/emit_web_tokens.py),
+which derives them with the same `build_palette()` the theme uses. CI fails if
+either is stale. Regenerate with:
+
+```
+python3 tools/scene-check/emit_web_tokens.py --write
+```
+
+Zola itself is **not installed on the host**. It is pinned and checksummed in
+[`.devcontainer/zola-version.txt`](.devcontainer/zola-version.txt) and installed
+into the devcontainer image and onto CI runners by the same script, so the two
+cannot drift. Inside the container:
+
+```
+zola --root site serve
+```
+
+The brand's one fixed hue, and what choosing it cost, is
+[`docs/decisions/b1-brand-hue.md`](docs/decisions/b1-brand-hue.md).
+
+### Hosting
+
+**GitHub Pages**, published by
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml) on every push to
+`main` that touches the site or the generator. `ci.yml` builds the site too, but
+only as a pull-request gate — the two are separate so that a workflow a fork can
+trigger never holds the permissions a deploy needs.
+
+The custom domain is **not** recorded in a `CNAME` file. GitHub reads one only
+when Pages publishes from a branch; with a custom workflow it is ignored, and a
+`CNAME` in the repository neither adds nor removes a domain. The setting lives in
+**Settings → Pages → Custom domain**, set to `auroval.org`, with *Enforce HTTPS*
+on once the certificate has been issued.
+
+The DNS at the registrar, for the apex:
+
+| Type | Name | Value |
+|------|------|-------|
+| A | `@` | `185.199.108.153` |
+| A | `@` | `185.199.109.153` |
+| A | `@` | `185.199.110.153` |
+| A | `@` | `185.199.111.153` |
+| AAAA | `@` | `2606:50c0:8000::153` |
+| AAAA | `@` | `2606:50c0:8001::153` |
+| AAAA | `@` | `2606:50c0:8002::153` |
+| AAAA | `@` | `2606:50c0:8003::153` |
+| CNAME | `www` | `auroval.github.io.` |
+
+Those are GitHub's published apex addresses, confirmed against
+`pages.github.com` when this was written. They change rarely but they do change:
+check
+[GitHub's own documentation](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site)
+before trusting this table rather than the other way round. All four records of
+each family are wanted — they are not alternatives.
+
+`.app`, `.nl` and `.online` are redirects and need no records here; they point at
+`.org` at the registrar.
+
 ## Licence
 
 **MIT OR Apache-2.0**, at your option. See [`LICENSE-MIT`](LICENSE-MIT) and

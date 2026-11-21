@@ -1,0 +1,46 @@
+# The website. Built with Zola, which is pinned in .devcontainer/zola-version.txt
+# and installed into the devcontainer rather than onto the maintainer's host.
+#
+# Zola rather than a hand-written page or a Node generator: docs/ is already a
+# large body of markdown, and a documentation section is the obvious next thing
+# this site grows. One Rust binary with no lockfile and no node_modules is the
+# cheapest way to leave that door open in a repository that is otherwise Rust
+# and Python.
+
+base_url = "https://auroval.org"
+title = "auroval"
+description = "One look for Hyprland that does not stop at the login screen."
+default_language = "en"
+
+# The site is one page today. Both stay off until there is a stream worth
+# subscribing to and more than one page worth searching.
+generate_feeds = false
+build_search_index = false
+
+# Sass lives in site/sass/. _tokens.scss there is GENERATED -- see
+# tools/scene-check/emit_web_tokens.py -- and CI fails if it is edited by hand
+# or left stale.
+compile_sass = true
+
+# A page that is one screen of prose has no business shipping unminified CSS,
+# and the stylesheet is the only asset besides the fonts.
+minify_html = true
+
+[markdown]
+# Syntax highlighting is deliberately not configured yet: there are no code
+# blocks on the site. Zola 0.23 moved these keys under a `highlighting` table,
+# so turn it on there when a documentation section arrives rather than
+# carrying settings for a feature nothing uses.
+smart_punctuation = true
+
+[extra]
+# Written here rather than in the template because they appear more than once
+# and because a dead link in a footer is the kind of thing nobody notices.
+repo_url = "https://github.com/auroval/auroval"
+theme_doc = "https://github.com/auroval/auroval/blob/main/docs/themes/nightshade.md"
+decision_doc = "https://github.com/auroval/auroval/blob/main/docs/decisions/b1-brand-hue.md"
+
+# The brand hue, for anything that needs to say it out loud. The COLOURS are
+# not here: they are in the generated stylesheet, and duplicating one of them
+# into config would be the drift b1-brand-hue.md warned about.
+brand_hue = 330

@@ -1,0 +1,229 @@
+// The site's stylesheet. Colour is not defined here: _tokens.scss is generated
+// from the project's own build_palette() and this file only spends what it
+// publishes. See docs/decisions/b1-brand-hue.md.
+@use "tokens";
+
+:root {
+  --display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --body: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--on-surface);
+  font-family: var(--body);
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+// The side gutter is a safe-area inset plus a fixed margin, so the page does
+// not run under a phone's rounded corners or a notch in landscape.
+.wrap {
+  max-width: 62rem;
+  margin: 0 auto;
+  padding-inline: calc(1rem + env(safe-area-inset-left)) calc(1rem + env(safe-area-inset-right));
+}
+
+h1, h2, h3 {
+  font-family: var(--display);
+  text-wrap: balance;
+  margin: 0;
+  font-weight: 500;
+  font-variation-settings: 'opsz' 36, 'SOFT' 40, 'WONK' 0;
+}
+
+p { margin: 0; }
+
+// Links carry the accent because the accent clears 4.5:1 with margin -- that
+// margin is the whole reason 330 deg was chosen over its neighbours at the
+// chroma cap. The underline is not decoration: colour alone is not a link.
+a {
+  color: var(--primary);
+  text-underline-offset: .18em;
+  text-decoration-thickness: 1px;
+}
+a:hover { text-decoration-thickness: 2px; }
+
+// One visible focus style for everything, on the accent, with an offset so it
+// never sits on top of the thing it is marking.
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: .9em;
+  background: var(--surface-2);
+  padding: .12em .4em;
+  border-radius: 2px;
+}
+
+section { padding-block: 2.75rem; }
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: .75rem;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--on-surface);
+}
+
+.stack { display: flex; flex-direction: column; gap: 1.25rem; }
+.stack-sm { display: flex; flex-direction: column; gap: .5rem; }
+
+/* hero */
+.hero { padding-block: 4.5rem 3.5rem; }
+
+.wordmark {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: clamp(3.4rem, 13vw, 7.5rem);
+  line-height: .92;
+  letter-spacing: -.025em;
+  margin: 0;
+  // opsz at the top of the range: Fraunces thins its hairlines as it grows.
+  // WONK 1 brings in the wonky alternates; SOFT 0 keeps the terminals sharp.
+  font-variation-settings: 'opsz' 144, 'SOFT' 0, 'WONK' 1;
+}
+.wordmark .o { color: var(--primary); }
+
+.lede { font-size: clamp(1.1rem, 2.4vw, 1.45rem); max-width: 34ch; font-weight: 400; }
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: .6rem;
+  font-family: var(--mono);
+  font-size: .8rem;
+  border: 1px solid var(--outline);
+  border-radius: 2px;
+  padding: .35rem .7rem;
+  align-self: flex-start;
+}
+.dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--primary); flex: none; }
+
+/* surfaces */
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1.75rem; }
+.grid > div { min-width: 0; }
+.grid h3 { font-size: 1.15rem; }
+.num { font-family: var(--mono); font-size: .75rem; color: var(--on-surface); letter-spacing: .1em; }
+
+/* tenets */
+.tenet { display: grid; grid-template-columns: 3.5rem 1fr; gap: 1.25rem; align-items: start; }
+.tenet .num { padding-top: .45rem; }
+.tenet h3 { font-size: 1.3rem; margin-bottom: .35rem; }
+.cost { font-size: .92rem; border-left: 2px solid var(--tertiary); padding-left: .9rem; margin-top: .7rem; }
+.cost b {
+  font-family: var(--mono);
+  font-size: .7rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  display: block;
+  color: var(--tertiary);
+  font-weight: 500;
+}
+
+/* palette */
+.tbl { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: .82rem; }
+.tblwrap { overflow-x: auto; }
+.tbl th {
+  text-align: left;
+  font-weight: 500;
+  padding: .5rem .8rem .5rem 0;
+  border-bottom: 1px solid var(--outline);
+  white-space: nowrap;
+  font-size: .7rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.tbl td { padding: .6rem .8rem .6rem 0; border-bottom: 1px solid var(--surface-3); white-space: nowrap; }
+.tbl td:last-child, .tbl th:last-child { padding-right: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.sw {
+  display: inline-block;
+  width: 2.4rem;
+  height: 1.1rem;
+  border-radius: 2px;
+  vertical-align: -.2rem;
+  margin-right: .65rem;
+  border: 1px solid var(--surface-3);
+}
+
+/* type specimen */
+.spec { display: grid; gap: 1.9rem; }
+.spec > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: .45rem;
+  border-top: 1px solid var(--surface-3);
+  padding-top: 1.1rem;
+}
+.spec .meta {
+  font-family: var(--mono);
+  font-size: .7rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem 1.1rem;
+}
+.spec .meta span:last-child { color: var(--secondary); }
+.spec .line { line-height: 1.05; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.spec .job { font-size: .92rem; max-width: 52ch; }
+.spec .f-display {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: clamp(2rem, 7vw, 3.4rem);
+  font-variation-settings: 'opsz' 120, 'SOFT' 0, 'WONK' 1;
+}
+.spec .f-body { font-family: var(--body); font-weight: 500; font-size: clamp(1.6rem, 5vw, 2.5rem); }
+.spec .f-mono {
+  font-family: var(--mono);
+  font-weight: 400;
+  font-size: clamp(1.15rem, 3.4vw, 1.75rem);
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* chart */
+figure { margin: 0; }
+.chart { width: 100%; height: auto; display: block; touch-action: pan-y; }
+.axis { fill: var(--on-surface); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+.readout {
+  font-family: var(--mono);
+  font-size: .82rem;
+  display: flex;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  margin-top: .8rem;
+  min-height: 1.4em;
+  font-variant-numeric: tabular-nums;
+}
+figcaption { font-size: .92rem; margin-top: 1rem; max-width: 58ch; }
+
+/* repos */
+.repo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 1rem;
+  align-items: baseline;
+  padding-block: 1.1rem;
+  border-bottom: 1px solid var(--surface-3);
+}
+.repo h3 { font-size: 1.2rem; }
+.repo p { font-size: .95rem; flex: 1 1 20rem; min-width: 0; }
+.repo .path { font-family: var(--mono); font-size: .8rem; }
+
+footer { padding-block: 3rem; border-top: 1px solid var(--outline); font-size: .9rem; }
+.foot { display: flex; flex-wrap: wrap; gap: .75rem 2rem; justify-content: space-between; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

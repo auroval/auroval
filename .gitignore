@@ -24,3 +24,12 @@ __pycache__/
 *.swp
 *~
 .DS_Store
+
+# Zola's build output. The site is generated from site/content, site/templates
+# and site/sass; what lands in site/public is a build artefact and is deployed
+# from CI rather than committed.
+/site/public/
+# Zola's image-processing cache, which only exists once a template resizes
+# something. Nothing does yet, and when something does this keeps the resized
+# copies out of the tree.
+/site/static/processed_images/

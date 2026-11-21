@@ -1,0 +1,90 @@
+# Deploys the site to GitHub Pages, serving auroval.org.
+#
+# A separate workflow rather than a job in ci.yml, for two reasons:
+#
+#   - Permissions. ci.yml runs on pull requests, including from forks, with
+#     `contents: read` and nothing else. Deploying needs `pages: write` and
+#     `id-token: write`, and those belong on a workflow that only ever runs on
+#     main -- not on one a fork can trigger.
+#   - Blast radius. A required status check and a deploy fail for different
+#     reasons and want different attention. Keeping them apart means a broken
+#     deploy never blocks a merge, and a red CI never half-publishes.
+#
+# The duplicated build is the price, and it is the cheap half of the trade:
+# Zola builds this site in well under a second.
+#
+# There is deliberately NO site/static/CNAME file. GitHub creates and reads one
+# only when Pages publishes from a branch; with a custom workflow like this one
+# the file is ignored, and a CNAME in the repository does not add or remove a
+# domain either way. The custom domain lives in Settings -> Pages, which is the
+# documented source of truth -- see README for the record of what it is set to
+# and which DNS records back it.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    # Only when something that can change the output changed. The same list as
+    # ci.yml's `site` filter, minus the parts that only affect checking.
+    paths:
+      - 'site/**'
+      - 'tools/scene-check/**'
+      - '.devcontainer/zola-version.txt'
+      - '.devcontainer/install-zola.sh'
+      - '.github/workflows/pages.yml'
+      - '.github/actions/zola/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time, and never cancel one in flight: a cancelled deploy can
+# leave the live site mid-swap. Queue instead.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - uses: ./.github/actions/zola
+
+      # Re-checked here even though ci.yml already checks it on the pull
+      # request. The two can diverge: a push straight to main, an admin merge,
+      # or a path filter that let one through. A stale palette is not a build
+      # error -- it is a site that is live in the wrong colours -- so the gate
+      # belongs in front of the deploy as well as in front of the merge.
+      - run: python tools/scene-check/emit_web_tokens.py --check
+
+      # No --base-url override: config.toml already carries the production one,
+      # and a deploy that silently rewrote it would be a deploy nobody could
+      # reproduce locally.
+      - run: zola --root site build
+
+      # No actions/configure-pages step. Its job is to hand the generator the
+      # base path GitHub will serve from, and Zola already has an absolute
+      # base_url in config.toml -- so it would contribute nothing, while
+      # needing `pages` permission in a job that is otherwise read-only.
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site/public
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write      # publish to the Pages site
+      id-token: write    # OIDC token the deploy action verifies with
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

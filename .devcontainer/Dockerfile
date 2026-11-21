@@ -33,6 +33,19 @@ RUN set -eu; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/* /tmp/system-deps.txt
 
+# The website's generator, pinned and checksummed in zola-version.txt and
+# installed by install-zola.sh -- the same script the `zola` composite action
+# runs on the runner, for the same reason system-deps.txt is one list: the
+# container exists so that a green pull request means something, and a
+# generator that differs between here and CI would quietly break that.
+#
+# Zola lives here rather than on the host on purpose. The host is Arch and runs
+# the compositor; tooling that only builds artefacts belongs in the container.
+COPY zola-version.txt install-zola.sh /tmp/zola/
+RUN set -eu; \
+    sh /tmp/zola/install-zola.sh /usr/local/bin; \
+    rm -rf /tmp/zola
+
 # The same pin CI's test job uses: these tests assert pixel values, so the
 # rasteriser has to be the same one every run. This pair cannot be shared the
 # way the package list is -- here it is an ENV baked into the image, there it is
