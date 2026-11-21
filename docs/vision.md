@@ -1,7 +1,9 @@
 # Vision
 
-An opinionated look for Hyprland: the login screen, the lock screen, the bar and
-the window overview as one set of parts that agree with each other.
+**Auroval Shell** — an opinionated look for Hyprland: the login screen, the lock
+screen, the bar and the window overview as one set of parts that agree with each
+other. The name is settled in the [README](../README.md#the-name); the quotes
+below predate it and say "auroval", which at the time meant this.
 
 This document was written from an interview with the maintainer. Where his own
 words say it better than a summary would, they are quoted in Dutch with a

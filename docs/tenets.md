@@ -1,8 +1,8 @@
 # Tenets
 
-Tie-breakers, not values. Each one names a choice between two genuine goods, so
-that an argument six months from now is already settled. Every tenet states its
-cost, because a tenet without a cost is a slogan.
+Tie-breakers for **Auroval Shell**, not values. Each one names a choice between
+two genuine goods, so that an argument six months from now is already settled.
+Every tenet states its cost, because a tenet without a cost is a slogan.
 
 Drawn from an interview with the maintainer; his wording is quoted where it is
 the content rather than a summary of it.

@@ -1,4 +1,4 @@
-# auroval
+# Auroval Shell
 
 An opinionated look for Hyprland, as one set of parts that agree with each
 other: the login screen, the lock screen, the bar, the window overview, and the
@@ -12,6 +12,34 @@ spare. See [PRD C6](docs/prd/greet.md) and the receipts in
 [`spike/p0/RESULTS.md`](spike/p0/RESULTS.md). The code so far is that spike plus
 the greetd protocol implementation it needed; there is no `greet` yet.
 
+## The name
+
+**Auroval Shell** is this suite. **Auroval Remote**
+([`auroval/remote`](https://github.com/auroval/remote)) is a remote desktop for
+Wayland and macOS: a separate project that shares the name, the language and the
+licence and nothing else. Both are introduced at
+[auroval.org](https://auroval.org).
+
+Until 2026-11-21 this suite was called plain "Auroval", which was the same word
+the remote desktop used for itself — so the two names collided in prose, in
+search and in anyone's head. The qualifier went on *this* project because the
+other one already ships releases, a Homebrew tap and a Flatpak, and was renamed
+once this year already (from AetherDesk); a second rename there would cost
+users, while a rename here costs a few documents. "Shell" rather than "Desktop"
+because beside a product that *is* a remote desktop, "Auroval Desktop" reads as
+that product's desktop-side half instead of as its own project.
+
+The rule, for everything below and for the code:
+
+| | |
+|---|---|
+| `auroval` | the organisation, this repository, and the crate and binary prefix (`auroval-greet`, `auroval-ui`, `/var/cache/auroval`) |
+| Auroval Shell | the product — what somebody installs, configures and looks at |
+
+Paths and crate names are deliberately **not** renamed: they are already
+namespaced by the repository they live in, and renaming them would churn every
+deploy script and config path to settle a question nobody asks at that level.
+
 ## Why a suite, and why start at the login screen
 
 Hyprland has no shortage of desktop shells — Wayle, Noctalia, Way-Shell,
@@ -20,9 +48,9 @@ bar with notifications and a launcher, several of them well.
 
 None of them is a greeter. The login screen is where a themed desktop gives
 itself away: it is the one surface that belongs to no session, so it falls back
-to whatever the display manager ships. auroval starts there and works outward,
-which is the opposite order from every project listed above and the reason this
-one exists.
+to whatever the display manager ships. Auroval Shell starts there and works
+outward, which is the opposite order from every project listed above and the
+reason this one exists.
 
 The components share one renderer, one configuration language (hyprlang, which
 Hyprland and hyprlock already use) and one palette. That sharing is the whole
@@ -55,10 +83,13 @@ section. It includes a working alternative that needs no code.
 
 ## The website
 
-[`site/`](site/) is auroval.org, built with Zola. It is one page today — what
-the suite is, the tenets with their costs, and the palette rule with its
-measurements — and the documentation under `docs/` is the obvious thing it
-grows into, which is why it is a generator and not a hand-written page.
+[`site/`](site/) is auroval.org, built with Zola, and it is the *brand's* site
+rather than this project's: the landing page introduces both Auroval Shell and
+Auroval Remote, and `/shell/` carries this project's design argument — the
+tenets with their costs, the palette rule with its measurements, the type
+specimen and the gamut figure. The documentation under `docs/` is the obvious
+thing that second page grows into, which is why the site is a generator and not
+a hand-written page.
 
 Two of its files are **generated and must not be edited**: `site/sass/_tokens.scss`
 and `site/static/gamut.json` both come out of
@@ -184,6 +215,6 @@ built on hardware video decode.
 
 **A caveat that the licence does not cover.** Apache-2.0's patent grant
 concerns contributions to *this* software. It says nothing about H.264 or HEVC
-codec patents, which are a separate matter entirely. auroval ships no decoder —
-GStreamer and the GPU driver do the decoding — so this is somebody else's
-licensing problem, but it is not solved by anything in this file.
+codec patents, which are a separate matter entirely. Auroval Shell ships no
+decoder — GStreamer and the GPU driver do the decoding — so this is somebody
+else's licensing problem, but it is not solved by anything in this file.

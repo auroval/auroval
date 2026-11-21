@@ -1,4 +1,4 @@
-# nightshade — auroval's first theme
+# nightshade — Auroval Shell's first theme
 
 Status: **draft for review** · Org: `auroval` · 2026-11-07
 
@@ -64,9 +64,10 @@ The generation happens **once**, and the result is committed:
 
 Two consequences, both load-bearing:
 
-1. **A theme is a package.** Installing auroval does not install every theme's
-   media. Each theme is its own artefact — `auroval-theme-nightshade` — carrying
-   its images, its loops, and its derived palette (§4). The core carries none.
+1. **A theme is a package.** Installing Auroval Shell does not install every
+   theme's media. Each theme is its own artefact — `auroval-theme-nightshade` —
+   carrying its images, its loops, and its derived palette (§4). The core
+   carries none.
 2. **Media lives outside any home directory.** This is forced anyway by
    [C10](../prd/greet.md): the greeter runs as its own unprivileged user and
    cannot traverse a home at mode `0700`. A theme package installs to a
@@ -114,7 +115,7 @@ Two constraints settle most of the design before any mechanism is chosen.
 **The media must reach a system path**, by C10 and R15 above. So installing a
 theme needs root, whatever installs it.
 
-**And auroval needs an install path of its own regardless of packaging.**
+**And Auroval Shell needs an install path of its own regardless of packaging.**
 Tenet 6 says a person's own video wins; R15 says the greeter never reads a
 home. Together those mean a user's own file must also land on a system path —
 and a file somebody shot themselves never arrives as a signed distribution
