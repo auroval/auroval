@@ -21,8 +21,26 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..700,0..100,0..1&family=Archivo:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 
-<link rel="stylesheet" href="{{ get_url(path='main.css') | safe }}">
-<link rel="icon" href="{{ get_url(path='favicon.svg') | safe }}" type="image/svg+xml">
+{#- Root-relative, not get_url(). get_url() writes the absolute base_url, which
+    pins every asset to https://auroval.org -- and on 2026-11-21 that was a page
+    nobody could read: GitHub had not yet issued the certificate for the custom
+    domain, so https failed, and the page served over http asked for its
+    stylesheet over the https that was failing. One document arrived and nothing
+    else. A root-relative href is fetched over whatever scheme the page itself
+    came in on, so the site is styled either way and stays styled through any
+    later certificate gap.
+
+    The trade-off, stated rather than discovered: this is only correct while the
+    site is served from a domain root. base_url has no path component and the
+    custom domain is the documented deployment (see pages.yml), so it holds. If
+    the custom domain were ever dropped, Pages would serve this at
+    auroval.github.io/auroval/ and these two links would 404 -- which is the
+    loud kind of wrong, and the fix would be to put get_url() back.
+
+    Only subresources change. Canonical and sitemap URLs must stay absolute,
+    and Zola generates those from base_url, which is untouched. -#}
+<link rel="stylesheet" href="/main.css">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 </head>
 <body>
 <div class="wrap">
