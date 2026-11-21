@@ -9,11 +9,15 @@
 
 base_url = "https://auroval.org"
 title = "auroval"
-description = "One look for Hyprland that does not stop at the login screen."
+# The umbrella's description, not a product's. Auroval Shell's own line --
+# "One look for Hyprland that does not stop at the login screen" -- moved to
+# site/content/shell.md with the page it belongs to, when the front page
+# stopped being that project's page and became the brand's.
+description = "Two Rust projects for a Wayland desktop: one that gives it a single look, one that puts it on another machine."
 default_language = "en"
 
-# The site is one page today. Both stay off until there is a stream worth
-# subscribing to and more than one page worth searching.
+# Two pages today: the landing and /shell/. Both stay off until there is a
+# stream worth subscribing to and enough pages that searching beats reading.
 generate_feeds = false
 build_search_index = false
 
@@ -38,6 +42,8 @@ smart_punctuation = true
 # and because a dead link in a footer is the kind of thing nobody notices.
 repo_url = "https://github.com/auroval/auroval"
 theme_doc = "https://github.com/auroval/auroval/blob/main/docs/themes/nightshade.md"
+remote_url = "https://github.com/auroval/remote"
+remote_releases = "https://github.com/auroval/remote/releases"
 decision_doc = "https://github.com/auroval/auroval/blob/main/docs/decisions/b1-brand-hue.md"
 
 # The brand hue, for anything that needs to say it out loud. The COLOURS are

@@ -93,7 +93,10 @@ section { padding-block: 2.75rem; }
   // WONK 1 brings in the wonky alternates; SOFT 0 keeps the terminals sharp.
   font-variation-settings: 'opsz' 144, 'SOFT' 0, 'WONK' 1;
 }
-.wordmark .o { color: var(--primary); }
+// Scoped to nothing on purpose: this marks the one letter or word that
+// distinguishes a name -- the o in the wordmark, Shell and Remote in the
+// product names -- and it is the same mark in each place.
+.o { color: var(--primary); }
 
 .lede { font-size: clamp(1.1rem, 2.4vw, 1.45rem); max-width: 34ch; font-weight: 400; }
 
@@ -109,6 +112,52 @@ section { padding-block: 2.75rem; }
   align-self: flex-start;
 }
 .dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--primary); flex: none; }
+
+// A subpage gets a display heading, not the wordmark. The wordmark is the
+// brand's signature and belongs to the front door; repeating it at the top of
+// every page would say "auroval" where the page needs to say which page it is.
+.page-title {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: clamp(2.4rem, 7vw, 4rem);
+  line-height: 1;
+  letter-spacing: -.02em;
+  font-variation-settings: 'opsz' 144, 'SOFT' 0, 'WONK' 1;
+}
+
+// The way back up. In the eyebrow row rather than as a button, because it is
+// orientation and not an action.
+.back { text-decoration: none; letter-spacing: .14em; }
+.back:hover { text-decoration: underline; text-decoration-thickness: 1px; }
+
+/* products */
+// Two columns where there is room and one where there is not. minmax keeps a
+// product from being squeezed into a column too narrow for its paragraph; the
+// rule is the same as .grid's, at the width a paragraph rather than a label
+// needs.
+.products { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 2.5rem; }
+.product {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .9rem;
+  min-width: 0;
+  border-top: 2px solid var(--surface-3);
+  padding-top: 1.35rem;
+}
+.product h2 { font-size: clamp(1.5rem, 3.5vw, 1.9rem); }
+.product p { font-size: .97rem; }
+// margin-top:auto pins the links to the bottom of whichever column is taller,
+// so the two products line up on their last row rather than on their first.
+.product .links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem 1.4rem;
+  font-family: var(--mono);
+  font-size: .8rem;
+  margin-top: auto;
+  padding-top: .4rem;
+}
 
 /* surfaces */
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1.75rem; }
