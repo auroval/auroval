@@ -41,8 +41,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import colourmath as cm  # noqa: E402
-import scene_check as sc  # noqa: E402
+import colourmath as cm
+import scene_check as sc
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "site/sass/_tokens.scss"
@@ -185,9 +185,9 @@ def render_curve() -> str:
         f' "c_max": {PLOT_C_MAX:g},\n'
         f' "plot": {{"x0": {PLOT_X0:g}, "y0": {PLOT_Y0:g}, '
         f'"x1": {PLOT_X1:g}, "y1": {PLOT_Y1:g}}},\n'
-        f" \"polyline\": {json.dumps(polyline)},\n"
-        f" \"stops\": [\n{stops}\n ],\n"
-        f" \"markers\": [\n{markers}\n ],\n"
+        f' "polyline": {json.dumps(polyline)},\n'
+        f' "stops": [\n{stops}\n ],\n'
+        f' "markers": [\n{markers}\n ],\n'
         f' "points": [\n{rows}\n ]\n'
         "}\n"
     )
@@ -246,7 +246,7 @@ def main() -> int:
         # Say which direction to fix it in. A diff that leaves the reader
         # guessing whether to edit the file or the generator invites editing
         # the file, which is how a generated file stops being generated.
-        print("", file=sys.stderr)
+        print(file=sys.stderr)
         print("The generator is the authority. Run", file=sys.stderr)
         print("  python3 tools/scene-check/emit_web_tokens.py --write", file=sys.stderr)
         print("and commit the result. Do not edit these files by hand.", file=sys.stderr)
