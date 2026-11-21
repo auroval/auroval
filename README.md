@@ -53,6 +53,114 @@ constraints with their sources, and the assumptions that are still
 If you are evaluating whether this project should exist, read its "Ruled out"
 section. It includes a working alternative that needs no code.
 
+## The website
+
+[`site/`](site/) is auroval.org, built with Zola. It is one page today — what
+the suite is, the tenets with their costs, and the palette rule with its
+measurements — and the documentation under `docs/` is the obvious thing it
+grows into, which is why it is a generator and not a hand-written page.
+
+Two of its files are **generated and must not be edited**: `site/sass/_tokens.scss`
+and `site/static/gamut.json` both come out of
+[`tools/scene-check/emit_web_tokens.py`](tools/scene-check/emit_web_tokens.py),
+which derives them with the same `build_palette()` the theme uses. CI fails if
+either is stale. Regenerate with:
+
+```
+python3 tools/scene-check/emit_web_tokens.py --write
+```
+
+Zola itself is **not installed on the host**. It is pinned and checksummed in
+[`.devcontainer/zola-version.txt`](.devcontainer/zola-version.txt) and installed
+into the devcontainer image and onto CI runners by the same script, so the two
+cannot drift. Inside the container:
+
+```
+zola --root site serve
+```
+
+The brand's one fixed hue, and what choosing it cost, is
+[`docs/decisions/b1-brand-hue.md`](docs/decisions/b1-brand-hue.md).
+
+### Hosting
+
+**GitHub Pages**, published by
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml) on every push to
+`main` that touches the site or the generator. `ci.yml` builds the site too, but
+only as a pull-request gate — the two are separate so that a workflow a fork can
+trigger never holds the permissions a deploy needs.
+
+The custom domain is **not** recorded in a `CNAME` file. GitHub reads one only
+when Pages publishes from a branch; with a custom workflow it is ignored, and a
+`CNAME` in the repository neither adds nor removes a domain. The setting lives in
+**Settings → Pages → Custom domain**, set to `auroval.org`, with *Enforce HTTPS*
+on once the certificate has been issued.
+
+The DNS at the registrar, for the apex:
+
+| Type | Name | Value |
+|------|------|-------|
+| A | `@` | `185.199.108.153` |
+| A | `@` | `185.199.109.153` |
+| A | `@` | `185.199.110.153` |
+| A | `@` | `185.199.111.153` |
+| AAAA | `@` | `2606:50c0:8000::153` |
+| AAAA | `@` | `2606:50c0:8001::153` |
+| AAAA | `@` | `2606:50c0:8002::153` |
+| AAAA | `@` | `2606:50c0:8003::153` |
+| CNAME | `www` | `auroval.github.io.` |
+| MX | `@` | *(none — see below)* |
+| TXT | `@` | `v=spf1 -all` |
+| TXT | `_dmarc` | `v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s` |
+
+Those are GitHub's published apex addresses, confirmed against
+`pages.github.com` when this was written. They change rarely but they do change:
+check
+[GitHub's own documentation](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site)
+before trusting this table rather than the other way round. All four records of
+each family are wanted — they are not alternatives.
+
+**The last three records say that this domain has nothing to do with mail**, and
+they are there on purpose rather than by omission. The registrar's default zone
+had an `MX` pointing at the apex, which is fine while the apex is the
+registrar's own hosting and silently wrong the moment it is GitHub's: GitHub
+runs no SMTP, so mail would be sent to a machine that cannot refuse it
+properly.
+
+Deleting the `MX` is not enough either. With no `MX` at all, a sending server
+falls back to the `A` record — straight back at GitHub — and the mail sits in a
+retry queue for days before bouncing. `MX 0 .` is a null MX
+([RFC 7505](https://www.rfc-editor.org/rfc/rfc7505)): it says *this domain
+accepts no mail*, and a sender rejects immediately instead of trying. `v=spf1
+-all` and `p=reject` say the matching thing in the other direction — nobody is
+authorised to send as `auroval.org` — which is worth having for a name that
+appears on a project page, because a domain that visibly sends no mail is a
+poor one to forge. The registrar's default `v=spf1 ~all` said *"probably not"*,
+which is not a useful thing to say.
+
+**The null MX is not in the zone, because this registrar will not serve one.**
+TransIP's DNS editor reads a bare `.` as an empty value and substitutes the
+apex, so `MX 0 .` is stored and published as `MX 0 auroval.org.` — which is the
+exact record the paragraph above warns about, only with a lower priority
+number. Their own documentation says the mail-related records are managed while
+the panel's *TransIP instellingen* switch is on; with it off the record can be
+removed, which is where this ended up. Verified against `ns0.transip.net`
+directly rather than through a resolver, so it was the zone and not a cache.
+
+So the zone states its intent with `v=spf1 -all` and `p=reject` and has no `MX`
+at all. The cost is the fallback this section already describes: a sender with
+no `MX` to go on tries the `A` record, reaches a host that does not answer on
+port 25, and queues for a few days before bouncing. For a domain that receives
+no mail, a slow bounce is an acceptable price for a record the registrar cannot
+express — but it is a worse answer than the null MX, and it is written down
+here so that nobody spends another afternoon on that dot.
+
+If a mailbox is ever wanted on this domain, the SPF and DMARC records come out
+first, before anything is pointed anywhere.
+
+`.app`, `.nl` and `.online` are redirects and need no records here; they point at
+`.org` at the registrar.
+
 ## Licence
 
 **MIT OR Apache-2.0**, at your option. See [`LICENSE-MIT`](LICENSE-MIT) and

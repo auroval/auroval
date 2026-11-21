@@ -27,6 +27,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       python: ${{ steps.filter.outputs.python }}
       devcontainer: ${{ steps.filter.outputs.devcontainer }}
+      site: ${{ steps.filter.outputs.site }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
@@ -56,6 +57,18 @@ jobs:
               - '.github/workflows/ci.yml'
             devcontainer:
               - '.devcontainer/**'
+            site:
+              - 'site/**'
+              # The site's colour tokens and its gamut figure are GENERATED
+              # from scene-check, so a change there can make a committed site
+              # file stale without touching site/ at all. That staleness is
+              # exactly what the site job checks, so it has to be able to see
+              # it happen.
+              - 'tools/scene-check/**'
+              - '.devcontainer/zola-version.txt'
+              - '.devcontainer/install-zola.sh'
+              - '.github/workflows/ci.yml'
+              - '.github/actions/**'
 
   fmt:
     name: rustfmt
@@ -163,6 +176,47 @@ jobs:
       # self-test asserts they still carry the same colours.
       - run: python tools/nightshade-pack/pack.py --self-test
 
+  site:
+    name: site
+    needs: changes
+    if: needs.changes.outputs.site == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - uses: ./.github/actions/zola
+
+      # emit_web_tokens.py imports scene_check for build_palette(), which is the
+      # whole point -- the site's colours are derived by the same code as the
+      # theme's, not transcribed. That import pulls in numpy and Pillow, so the
+      # drift check needs scene-check's requirements even though nothing here
+      # touches an image.
+      - run: pip install -r tools/scene-check/requirements.txt
+
+      # The drift check runs BEFORE the build, deliberately. Both would fail on
+      # a stale palette, but only this one says which file is stale and which
+      # command regenerates it; a Zola build would just produce a site with the
+      # wrong colours and pass.
+      #
+      # It lives in this job rather than in `python` because what it guards is
+      # a site file: editing site/sass/_tokens.scss by hand must fail a pull
+      # request that never touches tools/.
+      - run: python tools/scene-check/emit_web_tokens.py --check
+
+      # `zola check` fetches external links as well as validating internal
+      # ones, which makes it dependent on other people's uptime. Internal
+      # links and the markdown are what this repository can be responsible
+      # for, so external checking is off here; a dead outbound link is worth
+      # catching on a schedule, not on every pull request.
+      - run: zola --root site check --skip-external-links
+
+      # The real build, at the real base URL. Nothing is deployed from here:
+      # this job is the pull-request gate, and .github/workflows/pages.yml does
+      # the publishing on main. The deliberate duplication is explained there.
+      - run: zola --root site build
+
   devcontainer:
     name: devcontainer builds
     needs: changes
@@ -177,7 +231,7 @@ jobs:
   ci:
     name: CI
     if: always()
-    needs: [changes, fmt, clippy, test, docs, python, devcontainer]
+    needs: [changes, fmt, clippy, test, docs, python, site, devcontainer]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any needed job failed or was cancelled
@@ -188,6 +242,7 @@ jobs:
           TEST: ${{ needs.test.result }}
           DOCS: ${{ needs.docs.result }}
           PYTHON: ${{ needs.python.result }}
+          SITE: ${{ needs.site.result }}
           DEVCONTAINER: ${{ needs.devcontainer.result }}
         run: |
           set -eu
@@ -205,5 +260,6 @@ jobs:
           check test "$TEST"
           check docs "$DOCS"
           check python "$PYTHON"
+          check site "$SITE"
           check devcontainer "$DEVCONTAINER"
           exit $status

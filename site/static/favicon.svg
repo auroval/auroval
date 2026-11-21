@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The one letter the wordmark colours: the middle o, at the brand hue.
+       Hard-coded rather than tokenised because a favicon is a standalone file
+       with no stylesheet; docs/decisions/b1-brand-hue.md is the authority. -->
+  <rect width="32" height="32" rx="7" fill="#251d24"/>
+  <circle cx="16" cy="16" r="8" fill="none" stroke="#fb07f1" stroke-width="4"/>
+</svg>

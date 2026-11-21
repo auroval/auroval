@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}{{ config.title }}{% endblock %}</title>
+<meta name="description" content="{% block description %}{{ config.description }}{% endblock %}">
+<meta name="color-scheme" content="dark">
+
+{#- The site is dark only, and says so rather than shipping a light theme it
+    would have to maintain. surface is L* 12 by construction (nightshade.md
+    §4.3), so there is no light variant of these tokens to switch to -- a light
+    mode would be a second palette, not a second theme. theme-color matches the
+    generated --surface; it is the one place a token is written twice, because
+    a meta tag cannot read CSS. -#}
+<meta name="theme-color" content="#251d24">
+
+{#- Preconnect before the stylesheet so the font handshake overlaps it.
+    gstatic needs crossorigin; googleapis does not. -#}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..700,0..100,0..1&family=Archivo:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<link rel="stylesheet" href="{{ get_url(path='main.css') | safe }}">
+<link rel="icon" href="{{ get_url(path='favicon.svg') | safe }}" type="image/svg+xml">
+</head>
+<body>
+<div class="wrap">
+{% block content %}{% endblock %}
+
+<footer>
+  <div class="foot">
+    <span>auroval — {{ config.description }}</span>
+    <span><a href="{{ config.extra.repo_url }}">Source on GitHub</a> · MIT or Apache-2.0</span>
+  </div>
+</footer>
+</div>
+{% block scripts %}{% endblock %}
+</body>
+</html>
