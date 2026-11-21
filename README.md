@@ -109,6 +109,9 @@ The DNS at the registrar, for the apex:
 | AAAA | `@` | `2606:50c0:8002::153` |
 | AAAA | `@` | `2606:50c0:8003::153` |
 | CNAME | `www` | `auroval.github.io.` |
+| MX | `@` | `0 .` |
+| TXT | `@` | `v=spf1 -all` |
+| TXT | `_dmarc` | `v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s` |
 
 Those are GitHub's published apex addresses, confirmed against
 `pages.github.com` when this was written. They change rarely but they do change:
@@ -116,6 +119,27 @@ check
 [GitHub's own documentation](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site)
 before trusting this table rather than the other way round. All four records of
 each family are wanted — they are not alternatives.
+
+**The last three records say that this domain has nothing to do with mail**, and
+they are there on purpose rather than by omission. The registrar's default zone
+had an `MX` pointing at the apex, which is fine while the apex is the
+registrar's own hosting and silently wrong the moment it is GitHub's: GitHub
+runs no SMTP, so mail would be sent to a machine that cannot refuse it
+properly.
+
+Deleting the `MX` is not enough either. With no `MX` at all, a sending server
+falls back to the `A` record — straight back at GitHub — and the mail sits in a
+retry queue for days before bouncing. `MX 0 .` is a null MX
+([RFC 7505](https://www.rfc-editor.org/rfc/rfc7505)): it says *this domain
+accepts no mail*, and a sender rejects immediately instead of trying. `v=spf1
+-all` and `p=reject` say the matching thing in the other direction — nobody is
+authorised to send as `auroval.org` — which is worth having for a name that
+appears on a project page, because a domain that visibly sends no mail is a
+poor one to forge. The registrar's default `v=spf1 ~all` said *"probably not"*,
+which is not a useful thing to say.
+
+If a mailbox is ever wanted on this domain, all three come out first, before
+anything is pointed anywhere.
 
 `.app`, `.nl` and `.online` are redirects and need no records here; they point at
 `.org` at the registrar.
