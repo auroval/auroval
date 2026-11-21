@@ -1,5 +1,9 @@
 # B1 — what colour is auroval itself?
 
+This is the *brand's* hue, not one product's: it paints auroval.org, which
+introduces both Auroval Shell and Auroval Remote. See the
+[README](../../README.md#the-name) for which name means what.
+
 Status: **decided — one fixed hue, 330°.** Chosen by the maintainer on
 2026-11-20, which is option B below. The question is new: it is not in the PRD
 and not in [`nightshade.md`](../themes/nightshade.md) §8, because it only
@@ -51,8 +55,9 @@ derivation rule is unchanged and continues to govern the product.
   calls, so the site's surface, text, outline and error roles come out of the
   project's own code with its own contrast floors already applied.
 - **Against** The site shows a colour the product may never show. Someone who
-  installs auroval after seeing a magenta page gets whatever their wallpaper
-  gives them, which is usually not magenta. That gap is real and permanent.
+  installs Auroval Shell after seeing a magenta page gets whatever their
+  wallpaper gives them, which is usually not magenta. That gap is real and
+  permanent.
 
 ### C. No accent — neutral chrome only
 
