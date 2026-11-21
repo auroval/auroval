@@ -188,6 +188,13 @@ jobs:
           python-version: '3.11'
       - uses: ./.github/actions/zola
 
+      # emit_web_tokens.py imports scene_check for build_palette(), which is the
+      # whole point -- the site's colours are derived by the same code as the
+      # theme's, not transcribed. That import pulls in numpy and Pillow, so the
+      # drift check needs scene-check's requirements even though nothing here
+      # touches an image.
+      - run: pip install -r tools/scene-check/requirements.txt
+
       # The drift check runs BEFORE the build, deliberately. Both would fail on
       # a stale palette, but only this one says which file is stale and which
       # command regenerates it; a Zola build would just produce a site with the
