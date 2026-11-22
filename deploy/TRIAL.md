@@ -12,7 +12,8 @@ command and this project never runs one for you.
 
 ## 1. What changes, exactly
 
-Three things, and none of them touches SDDM's own configuration:
+Three things the install and systemd do, and none of them touches SDDM's own
+configuration:
 
 - `greetd.service` is enabled and `sddm.service` disabled. Both carry
   `Alias=display-manager.service`, so exactly one of them may be enabled at a
@@ -27,6 +28,64 @@ Three things, and none of them touches SDDM's own configuration:
   `vt = 3` over a file that said 1, while the greetd started before it went on
   serving tty1. Nothing compared them, and the only place it would have shown
   is the next reboot. `install.nu` now says so when the two differ.
+
+And a fourth thing that **you** change, by hand, because this project will not
+write it for you — see below.
+
+### The keyring, and why this edit is yours to make
+
+`/etc/pam.d/sddm` hands the password you just typed to gnome-keyring.
+`/etc/pam.d/greetd` is six lines and carries nothing of the sort, so after the
+switch your login keyring stays locked and the first application that wants a
+stored secret raises a dialog asking for the same password again.
+
+Two lines fix it. Add them to `/etc/pam.d/greetd`, in these positions — the
+order is the one `/etc/pam.d/sddm` already proves on an Arch machine:
+
+```
+#%PAM-1.0
+
+auth       required     pam_securetty.so
+auth       requisite    pam_nologin.so
+auth       include      system-local-login
+-auth      optional     pam_gnome_keyring.so
+
+account    include      system-local-login
+
+session    include      system-local-login
+-session   optional     pam_gnome_keyring.so auto_start
+```
+
+The leading `-` means a missing module is not an error, and `optional` means a
+failing one does not fail the login: if gnome-keyring is not installed, or
+breaks, you still get in. The `auth` line captures the password; the `session`
+line passes it to the daemon. Keep `auth include system-local-login` where it
+is — that is the line that checks your password at all.
+
+**`install.nu` does not do this, on purpose.** `/etc/pam.d/greetd` is greetd's
+file, shipped by greetd's package, in the same way `/etc/greetd/config.toml`
+is — and §2's way out is two commands and no graphical session. An edit this
+project wrote into a PAM stack would survive that rollback and sit on a
+machine that is back on SDDM. It is also a per-machine authentication
+decision: the unlock works only while your keyring password *is* your login
+password, which nothing here can check. See issue #111.
+
+**What this does not fix.** If your keyring password differs from your login
+password — because you set one explicitly, or carried the keyring over from
+another machine — PAM hands over the wrong secret and you get the dialog
+anyway. That is correct behaviour and there is no edit to this file that
+changes it; the way out is to change the keyring's password to match, in
+Seahorse or whatever you use, or to live with the prompt.
+
+To check it afterwards, from inside a session you logged into normally:
+
+```
+busctl --user call org.freedesktop.secrets /org/freedesktop/secrets/collection/login \
+    org.freedesktop.DBus.Properties Get ss org.freedesktop.Secret.Collection Locked
+```
+
+`v b false` means unlocked. If you had to answer a dialog to get there it
+proves nothing — see §5.
 
 ## 2. The way out, before the way in
 
@@ -119,6 +178,13 @@ the ones no harness has seen:
   session it preselects is the one you want.
 - **How long it takes to draw** on a cold boot rather than a warm start. R16
   is 8 ms warm; a cold boot is a different measurement and nobody has taken it.
+- **A password dialog you did not expect**, in the first minutes after login.
+  That is the keyring (§1) and it means the PAM lines are missing, in the wrong
+  place, or defeated by a keyring password that is not your login password.
+  Measured, not remembered: a `SystemPrompter` unit in
+  `systemctl --user list-units --all` says a dialog was raised at some point
+  this boot, which is the half of the check you cannot see once you have
+  clicked the thing away.
 - **Anything that makes you reach for the power button.** That is the finding,
   whatever it turns out to be.
 
