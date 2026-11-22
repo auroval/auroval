@@ -29,8 +29,8 @@ configuration:
   serving tty1. Nothing compared them, and the only place it would have shown
   is the next reboot. `install.nu` now says so when the two differ.
 
-And a fourth thing that **you** change, by hand, because this project will not
-write it for you — see below.
+And two more that **you** put in place by hand, because this project will not
+write either of them for you — see below.
 
 ### The keyring, and why this edit is yours to make
 
@@ -86,6 +86,31 @@ busctl --user call org.freedesktop.secrets /org/freedesktop/secrets/collection/l
 
 `v b false` means unlocked. If you had to answer a dialog to get there it
 proves nothing — see §5.
+
+### The theme, which is the only thing that makes it look like anything
+
+`/etc/auroval/greet.lua` is what the greeter and the lock screen both read, and
+without it they fall back on a solid colour and hyprlock's borrowed accent.
+`deploy/greet.lua` in this repository is the one this machine should run: one
+scene from `/usr/local/share/auroval/`, its R9 fallback chain, and the palette
+that scene derives to.
+
+```sh
+install -Dm644 deploy/greet.lua /etc/auroval/greet.lua
+```
+
+No reload is needed and no service restarts: greetd execs a fresh greeter when
+a session ends, so the next **log out** picks the file up. A restart of
+`greetd` would not be the same measurement — on this machine the desktop
+session is on tty1 and was opened by that same greetd, so restarting it puts a
+greeter on a VT that already has a compositor.
+
+`install.nu` does not write this file either, and for the same reason as the
+PAM lines above: which scenes a machine shows is a per-machine choice, and §4's
+rollback should not leave this project's configuration behind on a machine that
+is back on SDDM. If the file is missing or unparseable the greeter says so in
+the journal and draws on defaults — R13 — so a mistake here costs the look and
+never the login.
 
 ## 2. The way out, before the way in
 
@@ -188,8 +213,18 @@ the ones no harness has seen:
 - **Anything that makes you reach for the power button.** That is the finding,
   whatever it turns out to be.
 
-The look is deliberately unfinished: there is no `/etc/auroval/greet.lua` on
-this machine, so the greeter runs on `Palette::default()` — hyprlock's own
-colours on a solid background, with no image behind it. The background is #34
-and the theme is #5. Using it plainly for a week is a good way to find out
-what the theme actually needs.
+The look is no longer bare, and was never quite as bare as an earlier version
+of this paragraph said. `/etc/auroval/greet.lua` has been on this machine since
+2026-11-08 and has always configured a background; what it lacked until
+2026-11-22 was a `palette`, so the greeter drew nightshade's scene under
+hyprlock's Catppuccin accent. `deploy/greet.lua` is the file as it should be —
+one scene, and the palette that scene derives to — and §1 says how to install
+it.
+
+One thing is deliberately held back there: the pool is **one** candidate, not
+the two that are installed. scene-01 and scene-05 extract to hues 175° apart
+(cyan against red-orange) while `palette` is a single table, so a two-deep pool
+would show one scene's picture under the other's accent on half its boots. The
+second candidate is in the file, commented, with the numbers. That question is
+Q11's, the background is #34, and the theme is #5. Using it plainly for a week
+is still the best way to find out what the theme actually needs.

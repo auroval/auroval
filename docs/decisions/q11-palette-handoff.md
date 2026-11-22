@@ -1,6 +1,9 @@
 # Q11 — how does the palette reach the greeter?
 
-Status: **open — recommendation below, not yet chosen.** Written 2026-11-22
+Status: **decided — option A, the palette inline in the theme.** Chosen by the
+maintainer on 2026-11-22. The sub-question at the end — one palette per theme
+or one per candidate — is **still open**, and it is not hypothetical: see the
+measurement there. Written 2026-11-22
 because the last unticked box of P1 (#18) turns out to rest on it, and because
 the item that was supposed to answer it is not merely unbuilt but aimed at the
 wrong thing.
@@ -18,10 +21,26 @@ detail at the edge of the phase; it is the phase's last door.
 
 Measured on the target machine, 2026-11-22.
 
-- **`/etc/auroval/` exists and is empty.** Created 2026-11-08, root-owned,
-  nothing in it. So `Config::load` finds no file, `Palette::default()` is in
-  force, and the greeter is running hyprlock's Catppuccin colours — which is
-  exactly what `theme.rs` says that default is for: *"This is a placeholder"*.
+- **`/etc/auroval/greet.lua` exists, and declares no palette.** Corrected
+  2026-11-22, a few hours after this document first claimed the directory was
+  empty. It is not. The file has been there since 2026-11-08 22:33, root-owned
+  and world-readable, and it configures a pool of **two** scenes with their R9
+  chains. What it carries is no `palette` table, so `absorb` leaves that field
+  untouched and `Palette::default()` is in force — the greeter is running
+  hyprlock's Catppuccin colours, which is exactly what `theme.rs` says that
+  default is for: *"This is a placeholder"*.
+
+  **Where the wrong claim came from**, because the shape of the mistake is
+  worth more than the correction: from a journal line, `/etc/auroval/greet.lua:
+  not read`, logged by a real greetd start at **13:29** on 2026-11-08 — nine
+  hours before the file was written that evening. A dated observation was read
+  as present state, and `cat` on the path would have settled it in one command.
+  Everything else in this document was measured against something live.
+
+  The conclusion does not change and its reason does: the palette is missing
+  **from a file that exists and is already read**, not missing along with the
+  file. That makes the fix smaller than this document first said, and the
+  sub-question at the end bigger — see both below.
 - **The Lua side already accepts a palette.** `config.rs` reads a
   `palette = { role = "rrggbb" }` table out of the theme, flattens it, and
   hands it to `Palette::parse`. There is no missing mechanism here, and no
@@ -157,10 +176,17 @@ theme reads it as a variable.
 **A, and reword P1's line to match §4.4.**
 
 Then, to unblock the three requirements this gates, the smallest honest step is
-not a mechanism at all: **write one `/etc/auroval/greet.lua` on this machine**,
-carrying a background that exists and a palette derived from that scene's
-canonical frame. Theme packages (#5) do not exist yet and this does not wait on
-them — an installed theme package would put the same file in the same place.
+not a mechanism at all and is smaller than this document first said: **add a
+`palette` table to the `/etc/auroval/greet.lua` that is already there**,
+derived from the canonical frame of the scene it already points at. Theme
+packages (#5) do not exist yet and this does not wait on them — an installed
+theme package would put the same table in the same file.
+
+`deploy/greet.lua` is that file, under version control, installed by hand like
+the PAM lines in TRIAL.md §1 and for the same reasons. Run through the real
+`Config::load`, it reports no problems, keeps its R9 chain, and yields
+`primary = 00bcd0` against the default's `89b4fa` — which is the check the
+measurement below says not to skip.
 
 ## The sub-question this opens, and it is a real one
 
@@ -180,5 +206,25 @@ Two shapes, neither measured:
   Cheaper, and it makes "a theme" smaller than nightshade currently assumes:
   §4.4's own two-scene example is the case that breaks.
 
-This does not block the recommendation — one scene has no pool and no
-disagreement — but it has to be answered before a theme ships two.
+**And this machine already ships two**, which is the half of the correction
+that costs something. The pool in `/etc/auroval/greet.lua` is scene-01 and
+scene-05, and they do not share a hue. Measured 2026-11-22 with
+`tools/scene-check/scene_check.py` against the installed stills:
+
+| scene | hue | `primary` | C\* |
+|---|---|---|---|
+| nightshade-01 | 213.5° | `00bcd0` — cyan | 38.4 |
+| nightshade-05 | 38.7° | `ff3522` — red-orange | 93.5 |
+
+A 175° swing, and §4.3.1 had already named the floor of that trough: 213° is
+cyan, where no choice of lightness can make an accent neon, while 38.7° is in
+the band where it cannot help but be. One `palette` table cannot serve both, so
+with both in the pool **half of all boots show the lantern under a cyan
+accent** — the disagreement §4.4 derives at packaging time to prevent, arriving
+through the other door.
+
+So the sub-question is live rather than hypothetical, and the recommendation
+carries one more line with it: **the pool goes to one candidate** until the
+sub-question is answered. `deploy/greet.lua` leaves scene-05 commented out,
+with these numbers in the comment, so that nothing is lost and uncommenting it
+is how you see the fault.

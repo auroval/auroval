@@ -482,6 +482,52 @@ mod tests {
 
     // ---- R13 ---------------------------------------------------------------
 
+    /// The theme this repository actually ships, against the real loader.
+    ///
+    /// Q11's measurement is the reason this test exists: matugen's
+    /// `colors.lua` run through `Palette::parse` yields `Palette::default()`
+    /// **silently**, every line skipped, which is indistinguishable from "no
+    /// theme installed". A shipped palette that quietly does nothing is the
+    /// one failure this file cannot be allowed to have, and eyeballing the
+    /// hex digits is exactly how it would be missed. So the assertion is not
+    /// that the palette parses — it is that the result **differs from the
+    /// default**, which is the only form of the claim that can fail.
+    #[test]
+    fn the_shipped_theme_parses_and_is_not_quietly_the_default() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../deploy/greet.lua");
+        let c = Config::load(&path);
+
+        assert!(c.problems.is_empty(), "no problems: {:?}", c.problems);
+        assert_ne!(
+            c.palette.primary,
+            Palette::default().primary,
+            "the shipped palette parsed to the default, which is how a theme \
+             that does nothing looks exactly like no theme at all"
+        );
+        assert_eq!(
+            c.palette.surface[3],
+            Palette::default().surface[3],
+            "a theme supplies a hue, not the input field's translucency"
+        );
+        assert_eq!(
+            c.background.len(),
+            1,
+            "one candidate while `palette` is one table -- Q11's sub-question"
+        );
+        assert_eq!(
+            c.background[0].len(),
+            2,
+            "R9's chain: the loop, then the still behind it"
+        );
+        for rung in &c.background[0] {
+            assert!(
+                crate::store::is_outside_homes(rung),
+                "C10: no rung of the chain may live in a home -- {}",
+                rung.display()
+            );
+        }
+    }
+
     #[test]
     fn a_broken_config_still_logs_in_and_the_error_names_the_line() {
         let path = fixture("broken-syntax.lua");
