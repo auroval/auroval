@@ -78,7 +78,7 @@ jobs:
       # base path GitHub will serve from, and Zola already has an absolute
       # base_url in config.toml -- so it would contribute nothing, while
       # needing `pages` permission in a job that is otherwise read-only.
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site/public
 
@@ -94,4 +94,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
