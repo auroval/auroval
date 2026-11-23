@@ -96,7 +96,8 @@ scene from `/usr/local/share/auroval/`, its R9 fallback chain, and the palette
 that scene derives to.
 
 ```sh
-install -Dm644 deploy/greet.lua /etc/auroval/greet.lua
+install -Dm644 /home/dirk/Documents/projects/auroval/deploy/greet.lua \
+    /etc/auroval/greet.lua
 ```
 
 No reload is needed and no service restarts: greetd execs a fresh greeter when
