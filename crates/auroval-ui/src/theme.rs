@@ -164,12 +164,13 @@ impl Palette {
         p
     }
 
-    #[allow(dead_code)]
-    pub fn load(path: &std::path::Path) -> Palette {
-        std::fs::read_to_string(path)
-            .map(|t| Palette::parse(&t))
-            .unwrap_or_default()
-    }
+    // There was a `load(path)` here, reading a palette out of a file of its
+    // own beside the theme. Removed 2026-11-22: Q11 chose the palette inline
+    // in the theme, which `config.rs` reads through `parse` above, so a second
+    // file is a second thing that has to agree with the first. If you are
+    // about to add it back, read Q11's option B — the problem it solves is one
+    // nightshade.md §4.4 removed by deriving the palette per scene at
+    // packaging time.
 }
 
 fn hex(s: &str) -> Option<Rgba> {
